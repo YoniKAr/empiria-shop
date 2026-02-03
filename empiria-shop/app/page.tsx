@@ -81,7 +81,7 @@ export default async function ShopHome() {
             <Link href="/" className="flex items-center gap-2">
             <Image 
                 src="/logo.png" 
-                alt="Empiria Logo" 
+                alt="Empiria Logo" // here
                 width={130} 
                 height={40} 
                 className="object-contain"
