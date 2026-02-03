@@ -2,6 +2,7 @@ import { auth0 } from '@/lib/auth0';
 import { createClient } from '@supabase/supabase-js';
 import Link from 'next/link';
 import { Search, MapPin, Calendar, Ticket } from 'lucide-react';
+import Image from 'next/image'
 
 // --- MOCK DATA (Fallback if DB is empty) ---
 const MOCK_EVENTS = [
@@ -77,12 +78,16 @@ export default async function ShopHome() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           
           {/* Logo */}
-          <Link href="/" className="flex items-center gap-2">
-            <div className="bg-black text-white p-1.5 rounded-lg">
-                <Ticket size={20} />
-            </div>
-            <span className="font-bold text-xl tracking-tight">Empiria</span>
-          </Link>
+            <Link href="/" className="flex items-center gap-2">
+            <Image 
+                src="/logo.png" 
+                alt="Empiria Logo" 
+                width={130} 
+                height={40} 
+                className="object-contain"
+                priority
+            />
+            </Link>
 
           {/* User Actions */}
           <div className="flex items-center gap-4">
