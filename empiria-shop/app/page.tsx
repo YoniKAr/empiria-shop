@@ -1,8 +1,9 @@
 import { auth0 } from '@/lib/auth0';
 import { createClient } from '@supabase/supabase-js';
 import Link from 'next/link';
-import { Search, MapPin, Calendar, Ticket } from 'lucide-react';
+import { Calendar } from 'lucide-react';
 import Image from 'next/image'
+import SearchBar from './components/SearchBar';
 
 // --- MOCK DATA (Fallback if DB is empty) ---
 const MOCK_EVENTS = [
@@ -121,28 +122,7 @@ export default async function ShopHome() {
                     </p>
 
                     {/* Search Bar */}
-                    <div className="bg-white p-2 rounded-full shadow-xl border border-gray-200 max-w-3xl mx-auto flex flex-col sm:flex-row gap-2">
-                        <div className="flex-1 flex items-center px-4 h-12 bg-gray-50 sm:bg-transparent rounded-full sm:rounded-none">
-                            <Search className="text-gray-400 w-5 h-5 mr-3" />
-                            <input
-                                type="text"
-                                placeholder="Search events, artists, categories..."
-                                className="bg-transparent w-full outline-none text-sm font-medium placeholder:text-gray-400"
-                            />
-                        </div>
-                        <div className="hidden sm:block w-px bg-gray-200 h-8 self-center"></div>
-                        <div className="flex-1 flex items-center px-4 h-12 bg-gray-50 sm:bg-transparent rounded-full sm:rounded-none">
-                            <MapPin className="text-gray-400 w-5 h-5 mr-3" />
-                            <input
-                                type="text"
-                                placeholder="City or Location"
-                                className="bg-transparent w-full outline-none text-sm font-medium placeholder:text-gray-400"
-                            />
-                        </div>
-                        <button className="bg-orange-600 text-white h-12 px-8 rounded-full font-bold hover:bg-orange-700 transition-colors">
-                            Search
-                        </button>
-                    </div>
+                    <SearchBar />
                 </div>
 
                 {/* Decorative Background Elements */}
