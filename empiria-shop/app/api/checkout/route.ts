@@ -190,6 +190,7 @@ export async function POST(request: NextRequest) {
         transfer_data: {
           destination: organizer.stripe_account_id,
         },
+        ...(customerEmail && { receipt_email: customerEmail }),
         metadata, // Also attach to PaymentIntent for reference
       },
       metadata, // Attach to session for webhook access
