@@ -12,6 +12,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { stripe } from '@/lib/stripe';
 import { getSupabaseAdmin } from '@/lib/supabase';
+import { sendOrderConfirmationEmail } from '@/lib/email';
 
 export async function POST(request: NextRequest) {
   const body = await request.text();
@@ -129,7 +130,16 @@ async function handleCheckoutCompleted(session: any) {
 
     console.log('[Webhook] Order created:', order.id);
 
-    // 2. Create order_items and tickets for each tier selection
+    // 2. Fetch event details for confirmation email
+    const { data: eventData } = await supabase
+      .from('events')
+      .select('title, start_at, end_at, venue_name, city')
+      .eq('id', eventId)
+      .single();
+
+    // 3. Create order_items and tickets for each tier selection
+    const allTickets: Array<{ id: string; qr_code_secret: string; tierName: string }> = [];
+
     for (const selection of tierSelections) {
       // Create order item
       const { error: itemError } = await supabase.from('order_items').insert({
@@ -169,6 +179,39 @@ async function handleCheckoutCompleted(session: any) {
         console.error('[Webhook] Failed to create tickets:', ticketError);
       } else {
         console.log(`[Webhook] Created ${tickets?.length} tickets for tier ${selection.tierName}`);
+        // Accumulate tickets with tier name for email
+        if (tickets) {
+          for (const t of tickets) {
+            allTickets.push({ id: t.id, qr_code_secret: t.qr_code_secret, tierName: selection.tierName });
+          }
+        }
+      }
+    }
+
+    // 4. Send confirmation email (non-blocking — failures must not break the webhook)
+    if (userEmail && eventData && allTickets.length > 0) {
+      try {
+        await sendOrderConfirmationEmail({
+          to: userEmail,
+          attendeeName: userName,
+          orderId: order.id,
+          eventTitle: eventData.title,
+          eventDate: eventData.start_at,
+          eventEndDate: eventData.end_at || undefined,
+          venueName: eventData.venue_name || '',
+          city: eventData.city || '',
+          lineItems: tierSelections.map((s) => ({
+            tierName: s.tierName,
+            quantity: s.quantity,
+            unitPrice: s.unitPrice,
+          })),
+          total: subtotal,
+          currency: session.currency || 'cad',
+          tickets: allTickets,
+        });
+        console.log('[Webhook] Confirmation email sent to:', userEmail);
+      } catch (emailError) {
+        console.error('[Webhook] Failed to send confirmation email:', emailError);
       }
     }
 
