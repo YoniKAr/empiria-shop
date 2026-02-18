@@ -4,7 +4,7 @@
 // ──────────────────────────────────────────────────
 
 import { NextRequest, NextResponse } from 'next/server';
-import { auth0 } from '@/lib/auth0';
+import { getSafeSession } from '@/lib/auth0';
 import { stripe } from '@/lib/stripe';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { toStripeAmount } from '@/lib/utils';
@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 2. Get session (optional — guests can checkout too)
-    const session = await auth0.getSession();
+    const session = await getSafeSession();
     const user = session?.user;
 
     // 3. Fetch event + organizer info from Supabase

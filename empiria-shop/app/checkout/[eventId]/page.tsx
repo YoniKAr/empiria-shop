@@ -1,8 +1,8 @@
-import { auth0 } from '@/lib/auth0';
+import { getSafeSession } from '@/lib/auth0';
 import { createClient } from '@supabase/supabase-js';
 
 export default async function CheckoutPage({ params }: { params: { eventId: string } }) {
-  const session = await auth0.getSession();
+  const session = await getSafeSession();
   const user = session?.user;
 
   // Fetch Event Info

@@ -3,7 +3,7 @@
 // Updated to include the TicketSelector component
 // ──────────────────────────────────────────────────
 
-import { auth0 } from '@/lib/auth0';
+import { getSafeSession } from '@/lib/auth0';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { getCurrencySymbol } from '@/lib/utils';
 import Link from 'next/link';
@@ -25,7 +25,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
   if (!event) notFound();
 
   // Get session for pre-filling user info
-  const session = await auth0.getSession();
+  const session = await getSafeSession();
   const user = session?.user;
 
   const currency = event.currency || 'cad';
