@@ -7,17 +7,15 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const response = await auth0.middleware(request);
+  // Only run auth0.middleware() for /auth/* routes (login, callback, logout).
+  // For all other routes, pass through without session rolling — this prevents
+  // the SDK from refreshing/recreating stale host-only cookies on every request.
+  // getSession() still reads the shared .empiriaindia.com cookie directly.
+  if (request.nextUrl.pathname.startsWith('/auth/')) {
+    return await auth0.middleware(request);
+  }
 
-  // Clear any stale host-only appSession cookie left from before AUTH0_COOKIE_DOMAIN
-  // was configured. This only expires the cookie on "shop.empiriaindia.com" (no Domain
-  // attribute = host-only), leaving the shared ".empiriaindia.com" cookie untouched.
-  response.headers.append(
-    'Set-Cookie',
-    'appSession=; Path=/; Max-Age=0; SameSite=Lax; Secure; HttpOnly'
-  );
-
-  return response;
+  return NextResponse.next();
 }
 
 export const config = {
