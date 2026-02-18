@@ -188,7 +188,23 @@ async function handleCheckoutCompleted(session: any) {
       }
     }
 
-    // 4. Send confirmation email (non-blocking — failures must not break the webhook)
+    // 4. Fetch Stripe receipt URL from the charge
+    let receiptUrl: string | undefined;
+    if (session.payment_intent) {
+      try {
+        const paymentIntent = await stripe.paymentIntents.retrieve(session.payment_intent, {
+          expand: ['latest_charge'],
+        });
+        const charge = paymentIntent.latest_charge;
+        if (charge && typeof charge === 'object' && charge.receipt_url) {
+          receiptUrl = charge.receipt_url;
+        }
+      } catch (err) {
+        console.error('[Webhook] Failed to fetch receipt URL:', err);
+      }
+    }
+
+    // 5. Send confirmation email (non-blocking — failures must not break the webhook)
     if (userEmail && eventData && allTickets.length > 0) {
       try {
         await sendOrderConfirmationEmail({
@@ -208,6 +224,7 @@ async function handleCheckoutCompleted(session: any) {
           total: subtotal,
           currency: session.currency || 'cad',
           tickets: allTickets,
+          receiptUrl,
         });
         console.log('[Webhook] Confirmation email sent to:', userEmail);
       } catch (emailError) {

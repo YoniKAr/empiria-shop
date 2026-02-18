@@ -27,6 +27,7 @@ interface OrderEmailData {
   total: number;
   currency: string;
   tickets: TicketInfo[];
+  receiptUrl?: string;
 }
 
 export async function sendOrderConfirmationEmail(data: OrderEmailData) {
@@ -216,6 +217,21 @@ function buildEmailHtml(data: OrderEmailData): string {
               </p>
             </td>
           </tr>
+
+          <!-- Payment Receipt -->
+          ${data.receiptUrl ? `
+          <tr>
+            <td style="padding: 4px 32px 16px;">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+                <tr>
+                  <td align="center" style="padding: 12px 0;">
+                    <a href="${data.receiptUrl}" target="_blank" style="display: inline-block; padding: 10px 24px; background: #111827; color: #ffffff; font-size: 14px; font-weight: 600; text-decoration: none; border-radius: 6px;">View Payment Receipt</a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          ` : ''}
 
           <!-- Tickets -->
           <tr>
