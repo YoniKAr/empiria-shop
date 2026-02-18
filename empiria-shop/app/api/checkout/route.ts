@@ -184,6 +184,7 @@ export async function POST(request: NextRequest) {
       mode: 'payment',
       line_items: lineItems,
       ...(customerEmail && { customer_email: customerEmail }),
+      invoice_creation: { enabled: true },
       payment_intent_data: {
         // Route funds to organizer's connected account
         application_fee_amount: platformFeeStripe,
