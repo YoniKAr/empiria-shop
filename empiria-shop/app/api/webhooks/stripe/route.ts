@@ -188,8 +188,10 @@ async function handleCheckoutCompleted(session: any) {
       }
     }
 
-    // 4. Fetch Stripe receipt URL from the charge
+    // 4. Fetch Stripe receipt URL + invoice URLs
     let receiptUrl: string | undefined;
+    let invoiceUrl: string | undefined;
+    let invoicePdf: string | undefined;
     if (session.payment_intent) {
       try {
         const paymentIntent = await stripe.paymentIntents.retrieve(session.payment_intent, {
@@ -201,6 +203,15 @@ async function handleCheckoutCompleted(session: any) {
         }
       } catch (err) {
         console.error('[Webhook] Failed to fetch receipt URL:', err);
+      }
+    }
+    if (session.invoice) {
+      try {
+        const invoice = await stripe.invoices.retrieve(session.invoice);
+        if (invoice.hosted_invoice_url) invoiceUrl = invoice.hosted_invoice_url;
+        if (invoice.invoice_pdf) invoicePdf = invoice.invoice_pdf;
+      } catch (err) {
+        console.error('[Webhook] Failed to fetch invoice URLs:', err);
       }
     }
 
@@ -225,6 +236,8 @@ async function handleCheckoutCompleted(session: any) {
           currency: session.currency || 'cad',
           tickets: allTickets,
           receiptUrl,
+          invoiceUrl,
+          invoicePdf,
         });
         console.log('[Webhook] Confirmation email sent to:', userEmail);
       } catch (emailError) {

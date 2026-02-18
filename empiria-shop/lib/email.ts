@@ -28,6 +28,8 @@ interface OrderEmailData {
   currency: string;
   tickets: TicketInfo[];
   receiptUrl?: string;
+  invoiceUrl?: string;
+  invoicePdf?: string;
 }
 
 export async function sendOrderConfirmationEmail(data: OrderEmailData) {
@@ -218,14 +220,16 @@ function buildEmailHtml(data: OrderEmailData): string {
             </td>
           </tr>
 
-          <!-- Payment Receipt -->
-          ${data.receiptUrl ? `
+          <!-- Payment Receipt & Invoice -->
+          ${(data.receiptUrl || data.invoiceUrl || data.invoicePdf) ? `
           <tr>
             <td style="padding: 4px 32px 16px;">
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
                 <tr>
                   <td align="center" style="padding: 12px 0;">
-                    <a href="${data.receiptUrl}" target="_blank" style="display: inline-block; padding: 10px 24px; background: #111827; color: #ffffff; font-size: 14px; font-weight: 600; text-decoration: none; border-radius: 6px;">View Payment Receipt</a>
+                    ${data.receiptUrl ? `<a href="${data.receiptUrl}" target="_blank" style="display: inline-block; padding: 10px 20px; background: #111827; color: #ffffff; font-size: 14px; font-weight: 600; text-decoration: none; border-radius: 6px;">View Payment Receipt</a>` : ''}
+                    ${data.invoiceUrl ? `<a href="${data.invoiceUrl}" target="_blank" style="display: inline-block; padding: 10px 20px; background: #ffffff; color: #111827; font-size: 14px; font-weight: 600; text-decoration: none; border-radius: 6px; border: 1px solid #d1d5db; margin-left: 8px;">View Invoice</a>` : ''}
+                    ${data.invoicePdf ? `<a href="${data.invoicePdf}" target="_blank" style="display: inline-block; padding: 10px 20px; background: #ffffff; color: #111827; font-size: 14px; font-weight: 600; text-decoration: none; border-radius: 6px; border: 1px solid #d1d5db; margin-left: 8px;">Download Invoice PDF</a>` : ''}
                   </td>
                 </tr>
               </table>
