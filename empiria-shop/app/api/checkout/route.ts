@@ -184,14 +184,12 @@ export async function POST(request: NextRequest) {
       mode: 'payment',
       line_items: lineItems,
       ...(customerEmail && { customer_email: customerEmail }),
-      invoice_creation: { enabled: true },
       payment_intent_data: {
         // Route funds to organizer's connected account
         application_fee_amount: platformFeeStripe,
         transfer_data: {
           destination: organizer.stripe_account_id,
         },
-        ...(customerEmail && { receipt_email: customerEmail }),
         metadata, // Also attach to PaymentIntent for reference
       },
       metadata, // Attach to session for webhook access
