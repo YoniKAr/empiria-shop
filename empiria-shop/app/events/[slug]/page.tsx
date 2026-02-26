@@ -18,7 +18,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
   // Fetch event + ticket tiers
   const { data: event } = await supabase
     .from('events')
-    .select('*, ticket_tiers(*)')
+    .select('*, categories(name), ticket_tiers(*)')
     .eq('slug', slug)
     .single();
 
@@ -107,6 +107,11 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
               <span className="bg-orange-600 px-3 py-1 rounded text-xs font-bold uppercase tracking-wide text-white">
                 {isPast ? 'Past Event' : 'Event'}
               </span>
+              {(event as any).categories?.name && (
+                <span className="bg-white/20 backdrop-blur px-3 py-1 rounded text-xs font-medium text-white">
+                  {(event as any).categories.name}
+                </span>
+              )}
               {event.city && (
                 <span className="bg-white/20 backdrop-blur px-3 py-1 rounded text-xs font-medium text-white">
                   {event.city}

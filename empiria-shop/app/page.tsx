@@ -59,6 +59,7 @@ export default async function ShopHome() {
         .select(`
       id, title, slug, cover_image_url, start_at,
       venue_name, city, currency,
+      categories (name),
       ticket_tiers (price)
     `)
         .eq('status', 'published')
@@ -171,8 +172,15 @@ export default async function ShopHome() {
 
                                     {/* Content */}
                                     <div className="p-5 flex flex-col flex-1">
-                                        <div className="text-orange-600 font-bold text-xs uppercase tracking-wider mb-2">
-                                            {new Date(event.start_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', weekday: 'short' })}
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <span className="text-orange-600 font-bold text-xs uppercase tracking-wider">
+                                                {new Date(event.start_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', weekday: 'short' })}
+                                            </span>
+                                            {(event as any).categories?.name && (
+                                                <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                                                    {(event as any).categories.name}
+                                                </span>
+                                            )}
                                         </div>
                                         <h3 className="font-bold text-lg leading-tight mb-2 group-hover:text-orange-600 transition-colors line-clamp-2">
                                             {event.title}

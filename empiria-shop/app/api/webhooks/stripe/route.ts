@@ -94,8 +94,8 @@ async function handleCheckoutCompleted(session: any) {
   const organizerPayout = parseFloat(metadata.organizer_payout);
 
   // Determine user_id for order/tickets
-  // If user is logged in, use auth0_id. Otherwise, use email as identifier.
-  const userId = userAuth0Id || `guest:${userEmail}`;
+  // If user is logged in, use auth0_id. Otherwise, null (guest checkout).
+  const userId = userAuth0Id || null;
 
   try {
     // 1. Create the order
@@ -110,9 +110,11 @@ async function handleCheckoutCompleted(session: any) {
         platform_fee_amount: platformFee,
         organizer_payout_amount: organizerPayout,
         currency: session.currency || 'cad',
+        buyer_email: userEmail || null,
+        buyer_name: userName || null,
         payout_breakdown: {
-          platform_fee_percent: metadata.platform_fee_percent,
-          platform_fee_fixed: metadata.platform_fee_fixed,
+          platform_fee_percent: parseFloat(metadata.platform_fee_percent) || 0,
+          platform_fee_fixed: parseFloat(metadata.platform_fee_fixed) || 0,
           subtotal,
           platform_fee: platformFee,
           organizer_payout: organizerPayout,

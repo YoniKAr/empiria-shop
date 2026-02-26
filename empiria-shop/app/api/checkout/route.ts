@@ -172,6 +172,8 @@ export async function POST(request: NextRequest) {
       user_name: contactName || user?.name || '',
       tier_selections: JSON.stringify(validatedSelections),
       platform_fee: platformFee.toFixed(2),
+      platform_fee_percent: feePercent.toString(),
+      platform_fee_fixed: feeFixed.toString(),
       organizer_payout: organizerPayout.toFixed(2),
       subtotal: subtotal.toFixed(2),
       source_app: 'shop',
