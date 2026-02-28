@@ -57,13 +57,14 @@ export default async function ShopHome() {
     const { data: realEvents } = await supabase
         .from('events')
         .select(`
-      id, title, slug, cover_image_url, start_at,
+      id, title, slug, cover_image_url,
       venue_name, city, currency,
       categories (name),
-      ticket_tiers (price)
+      ticket_tiers (price),
+      event_occurrences (starts_at)
     `)
         .eq('status', 'published')
-        .order('start_at', { ascending: true })
+        .order('created_at', { ascending: false })
         .limit(12);
 
     const displayEvents = realEvents && realEvents.length > 0 ? realEvents : MOCK_EVENTS;
@@ -174,7 +175,13 @@ export default async function ShopHome() {
                                     <div className="p-5 flex flex-col flex-1">
                                         <div className="flex items-center gap-2 mb-2">
                                             <span className="text-orange-600 font-bold text-xs uppercase tracking-wider">
-                                                {new Date(event.start_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', weekday: 'short' })}
+                                                {(() => {
+                                                    const occs = (event as any).event_occurrences;
+                                                    const dateStr = occs?.[0]?.starts_at || (event as any).start_at;
+                                                    return dateStr
+                                                        ? new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', weekday: 'short' })
+                                                        : 'TBD';
+                                                })()}
                                             </span>
                                             {(event as any).categories?.name && (
                                                 <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">

@@ -18,11 +18,12 @@ export async function POST(request: NextRequest) {
   try {
     // 1. Parse request body
     const body = await request.json();
-    const { eventId, tiers, contactEmail, contactName } = body as {
+    const { eventId, tiers, contactEmail, contactName, occurrenceId } = body as {
       eventId: string;
       tiers: TierSelection[];
       contactEmail?: string;
       contactName?: string;
+      occurrenceId?: string;
     };
 
     if (!eventId || !tiers || tiers.length === 0) {
@@ -41,7 +42,7 @@ export async function POST(request: NextRequest) {
 
     const { data: event, error: eventError } = await supabase
       .from('events')
-      .select('id, title, slug, organizer_id, platform_fee_percent, platform_fee_fixed, currency, status, end_at, total_capacity, total_tickets_sold')
+      .select('id, title, slug, organizer_id, platform_fee_percent, platform_fee_fixed, currency, status, total_capacity, total_tickets_sold')
       .eq('id', eventId)
       .single();
 
@@ -53,8 +54,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Event is not available for purchase' }, { status: 400 });
     }
 
-    if (new Date(event.end_at) < new Date()) {
-      return NextResponse.json({ error: 'Event has already ended' }, { status: 400 });
+    // Validate occurrence if provided
+    if (occurrenceId) {
+      const { data: occurrence } = await supabase
+        .from('event_occurrences')
+        .select('id, event_id, starts_at, is_cancelled')
+        .eq('id', occurrenceId)
+        .single();
+
+      if (!occurrence || occurrence.event_id !== eventId) {
+        return NextResponse.json({ error: 'Invalid event date selected' }, { status: 400 });
+      }
+      if (occurrence.is_cancelled) {
+        return NextResponse.json({ error: 'This event date has been cancelled' }, { status: 400 });
+      }
+      if (new Date(occurrence.starts_at) < new Date()) {
+        return NextResponse.json({ error: 'This event date has already started' }, { status: 400 });
+      }
     }
 
     // 4. Fetch organizer's Stripe Connect account
@@ -177,6 +193,7 @@ export async function POST(request: NextRequest) {
       organizer_payout: organizerPayout.toFixed(2),
       subtotal: subtotal.toFixed(2),
       source_app: 'shop',
+      occurrence_id: occurrenceId || '',
     };
 
     // 10. Create Stripe Checkout Session

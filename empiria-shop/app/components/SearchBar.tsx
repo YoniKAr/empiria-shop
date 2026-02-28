@@ -114,7 +114,7 @@ export default function SearchBar() {
                                             <div className="text-xs text-gray-500 flex items-center gap-1">
                                                 <span>{event.city}</span>
                                                 <span>•</span>
-                                                <span>{new Date(event.start_at).toLocaleDateString()}</span>
+                                                <span>{event.event_occurrences?.[0]?.starts_at ? new Date(event.event_occurrences[0].starts_at).toLocaleDateString() : 'TBD'}</span>
                                             </div>
                                         </div>
                                     </button>

@@ -15,10 +15,10 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
   const { slug } = await params;
   const supabase = getSupabaseAdmin();
 
-  // Fetch event + ticket tiers
+  // Fetch event + ticket tiers + occurrences
   const { data: event } = await supabase
     .from('events')
-    .select('*, categories(name), ticket_tiers(*)')
+    .select('*, categories(name), ticket_tiers(*), event_occurrences(*)')
     .eq('slug', slug)
     .single();
 
@@ -43,9 +43,18 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
     0
   );
 
-  const eventDate = new Date(event.start_at);
-  const endDate = new Date(event.end_at);
-  const isPast = endDate < new Date();
+  // Compute occurrence-based dates
+  const allOccurrences = (event.event_occurrences || [])
+    .filter((o: any) => !o.is_cancelled)
+    .sort((a: any, b: any) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime());
+
+  const futureOccurrences = allOccurrences.filter(
+    (o: any) => new Date(o.starts_at) > new Date()
+  );
+
+  const firstOcc = allOccurrences[0];
+  const eventDate = firstOcc ? new Date(firstOcc.starts_at) : null;
+  const isPast = allOccurrences.length > 0 && futureOccurrences.length === 0;
 
   return (
     <div className="min-h-screen bg-white">
@@ -122,22 +131,32 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
               {event.title}
             </h1>
             <div className="flex flex-wrap gap-4 sm:gap-6 text-sm md:text-base font-medium text-white/90">
-              <div className="flex items-center gap-2">
-                <Calendar className="w-4 h-4" />
-                {eventDate.toLocaleDateString('en-US', {
-                  weekday: 'long',
-                  month: 'long',
-                  day: 'numeric',
-                  year: 'numeric',
-                })}
-              </div>
-              <div className="flex items-center gap-2">
-                <Clock className="w-4 h-4" />
-                {eventDate.toLocaleTimeString('en-US', {
-                  hour: 'numeric',
-                  minute: '2-digit',
-                })}
-              </div>
+              {eventDate && (
+                <>
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4" />
+                    {eventDate.toLocaleDateString('en-US', {
+                      weekday: 'long',
+                      month: 'long',
+                      day: 'numeric',
+                      year: 'numeric',
+                    })}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-4 h-4" />
+                    {eventDate.toLocaleTimeString('en-US', {
+                      hour: 'numeric',
+                      minute: '2-digit',
+                    })}
+                  </div>
+                </>
+              )}
+              {allOccurrences.length > 1 && (
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-4 h-4" />
+                  {allOccurrences.length} dates
+                </div>
+              )}
               {event.venue_name && (
                 <div className="flex items-center gap-2">
                   <MapPin className="w-4 h-4" /> {event.venue_name}
@@ -218,6 +237,12 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
               currencySymbol={currencySymbol}
               userEmail={user?.email}
               userName={user?.name}
+              occurrences={futureOccurrences.map((o: any) => ({
+                id: o.id,
+                starts_at: o.starts_at,
+                ends_at: o.ends_at,
+                label: o.label || '',
+              }))}
             />
           )}
         </div>

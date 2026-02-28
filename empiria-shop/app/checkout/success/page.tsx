@@ -64,9 +64,18 @@ export default async function CheckoutSuccessPage({
   // Fetch event info
   const { data: event } = await supabase
     .from('events')
-    .select('title, slug, start_at, end_at, venue_name, city, cover_image_url')
+    .select('title, slug, venue_name, city, cover_image_url')
     .eq('id', eventId)
     .single();
+
+  // Fetch first occurrence for display
+  const { data: successOcc } = await supabase
+    .from('event_occurrences')
+    .select('starts_at')
+    .eq('event_id', eventId)
+    .order('starts_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
 
   // Fetch tickets for this order + generate QR codes server-side
   let tickets: any[] = [];
@@ -86,7 +95,7 @@ export default async function CheckoutSuccessPage({
     );
   }
 
-  const eventDate = event ? new Date(event.start_at) : null;
+  const eventDate = successOcc ? new Date(successOcc.starts_at) : null;
 
   return (
     <div className="min-h-screen bg-gray-50">

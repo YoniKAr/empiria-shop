@@ -20,6 +20,13 @@ interface TicketTier {
   is_hidden: boolean;
 }
 
+interface OccurrenceOption {
+  id: string;
+  starts_at: string;
+  ends_at: string;
+  label: string;
+}
+
 interface TicketSelectorProps {
   tiers: TicketTier[];
   eventId: string;
@@ -27,6 +34,7 @@ interface TicketSelectorProps {
   currencySymbol: string;
   userEmail?: string;
   userName?: string;
+  occurrences?: OccurrenceOption[];
 }
 
 export default function TicketSelector({
@@ -36,10 +44,14 @@ export default function TicketSelector({
   currencySymbol,
   userEmail,
   userName,
+  occurrences = [],
 }: TicketSelectorProps) {
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedOccurrenceId, setSelectedOccurrenceId] = useState<string>(
+    occurrences.length === 1 ? occurrences[0].id : ''
+  );
 
   // Contact info for guest checkout
   const [guestEmail, setGuestEmail] = useState('');
@@ -89,6 +101,11 @@ export default function TicketSelector({
       return;
     }
 
+    if (occurrences.length > 1 && !selectedOccurrenceId) {
+      setError('Please select an event date');
+      return;
+    }
+
     const email = userEmail || guestEmail;
     const name = userName || guestName;
 
@@ -109,6 +126,7 @@ export default function TicketSelector({
           tiers: selections,
           contactEmail: email,
           contactName: name,
+          occurrenceId: selectedOccurrenceId || (occurrences.length === 1 ? occurrences[0].id : undefined),
         }),
       });
 
@@ -131,6 +149,47 @@ export default function TicketSelector({
     <div className="border border-gray-200 rounded-xl shadow-lg p-6 sticky top-24 bg-white">
       <h3 className="font-bold text-xl mb-1">Get Tickets</h3>
       <p className="text-sm text-gray-500 mb-5">Select your tickets below</p>
+
+      {/* Occurrence picker */}
+      {occurrences.length > 1 && (
+        <div className="mb-5">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Select a Date</p>
+          <div className="space-y-2">
+            {occurrences.map((occ) => {
+              const occDate = new Date(occ.starts_at);
+              const isSelected = selectedOccurrenceId === occ.id;
+              return (
+                <button
+                  key={occ.id}
+                  type="button"
+                  onClick={() => { setSelectedOccurrenceId(occ.id); setError(null); }}
+                  className={`w-full text-left p-3 border rounded-lg transition-colors ${
+                    isSelected
+                      ? 'border-orange-300 bg-orange-50'
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <div className="font-medium text-sm">
+                    {occDate.toLocaleDateString('en-US', {
+                      weekday: 'short',
+                      month: 'short',
+                      day: 'numeric',
+                    })}
+                    {' at '}
+                    {occDate.toLocaleTimeString('en-US', {
+                      hour: 'numeric',
+                      minute: '2-digit',
+                    })}
+                  </div>
+                  {occ.label && (
+                    <div className="text-xs text-gray-500 mt-0.5">{occ.label}</div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Tier list */}
       <div className="space-y-3 mb-5">

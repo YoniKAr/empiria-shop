@@ -83,6 +83,7 @@ async function handleCheckoutCompleted(session: any) {
   const userAuth0Id = metadata.user_auth0_id || null;
   const userEmail = metadata.user_email || session.customer_email || '';
   const userName = metadata.user_name || '';
+  const occurrenceId = metadata.occurrence_id || null;
   const tierSelections = JSON.parse(metadata.tier_selections) as Array<{
     tierId: string;
     quantity: number;
@@ -135,9 +136,36 @@ async function handleCheckoutCompleted(session: any) {
     // 2. Fetch event details for confirmation email
     const { data: eventData } = await supabase
       .from('events')
-      .select('title, start_at, end_at, venue_name, city')
+      .select('title, venue_name, city')
       .eq('id', eventId)
       .single();
+
+    // Fetch occurrence dates for email (or first occurrence if no specific one)
+    let emailStartDate = '';
+    let emailEndDate: string | undefined;
+    if (occurrenceId) {
+      const { data: occ } = await supabase
+        .from('event_occurrences')
+        .select('starts_at, ends_at')
+        .eq('id', occurrenceId)
+        .single();
+      if (occ) {
+        emailStartDate = occ.starts_at;
+        emailEndDate = occ.ends_at;
+      }
+    } else {
+      const { data: firstOcc } = await supabase
+        .from('event_occurrences')
+        .select('starts_at, ends_at')
+        .eq('event_id', eventId)
+        .order('starts_at', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (firstOcc) {
+        emailStartDate = firstOcc.starts_at;
+        emailEndDate = firstOcc.ends_at;
+      }
+    }
 
     // 3. Create order_items and tickets for each tier selection
     const allTickets: Array<{ id: string; qr_code_secret: string; tierName: string }> = [];
@@ -170,6 +198,7 @@ async function handleCheckoutCompleted(session: any) {
         attendee_name: userName,
         attendee_email: userEmail,
         status: 'valid' as const,
+        occurrence_id: occurrenceId,
       }));
 
       const { data: tickets, error: ticketError } = await supabase
@@ -225,8 +254,8 @@ async function handleCheckoutCompleted(session: any) {
           attendeeName: userName,
           orderId: order.id,
           eventTitle: eventData.title,
-          eventDate: eventData.start_at,
-          eventEndDate: eventData.end_at || undefined,
+          eventDate: emailStartDate,
+          eventEndDate: emailEndDate,
           venueName: eventData.venue_name || '',
           city: eventData.city || '',
           lineItems: tierSelections.map((s) => ({
