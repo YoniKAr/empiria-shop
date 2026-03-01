@@ -48,19 +48,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
         }));
 
     return (
-        <div className="min-h-screen relative">
-            {/* Full-page blurred background */}
-            {event.cover_image_url && (
-                <div className="fixed inset-0 -z-10">
-                    <img
-                        src={event.cover_image_url}
-                        alt=""
-                        className="w-full h-full object-cover"
-                    />
-                    <div className="absolute inset-0 bg-white/85 backdrop-blur-2xl" />
-                </div>
-            )}
-
+        <div className="min-h-screen bg-white">
             <Navbar />
 
             {/* EventHero banner */}
