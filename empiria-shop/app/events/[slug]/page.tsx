@@ -47,6 +47,15 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
             available: tier.remaining_quantity ?? tier.available ?? 0,
         }));
 
+    // Resolve cover image to a full URL
+    // Supabase may store it as a full URL or just a storage path like "events/xxx.jpg"
+    const rawCoverUrl = event.cover_image_url ?? '';
+    const coverImageUrl = rawCoverUrl.startsWith('http')
+        ? rawCoverUrl
+        : rawCoverUrl
+            ? `${process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL}/storage/v1/object/public/${rawCoverUrl}`
+            : '';
+
     return (
         <div className="min-h-screen bg-white">
             <Navbar />
@@ -54,7 +63,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
             {/* EventHero banner */}
             <EventHero
                 title={event.title}
-                coverImageUrl={event.cover_image_url ?? ''}
+                coverImageUrl={coverImageUrl}
                 startAt={heroStartAt}
                 venueName={event.venue_name}
                 city={event.city}
