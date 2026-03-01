@@ -30,7 +30,7 @@ export function EventDetails({
         <div className="flex flex-col gap-10">
             {/* Quick info cards */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="bg-secondary/50 border border-border rounded-xl p-5 flex items-start gap-4">
+                <div className="bg-white border border-border rounded-xl p-5 flex items-start gap-4">
                     <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-[#F98C1F]/10 flex items-center justify-center">
                         <Clock className="w-5 h-5 text-[#F98C1F]" />
                     </div>
