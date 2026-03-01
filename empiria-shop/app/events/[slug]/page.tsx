@@ -1,8 +1,3 @@
-// ──────────────────────────────────────────────────
-// 📁 app/events/[slug]/page.tsx — REPLACE your existing file
-// Updated to include the TicketSelector component
-// ──────────────────────────────────────────────────
-
 import { getSafeSession } from '@/lib/auth0';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { getCurrencySymbol } from '@/lib/utils';
@@ -11,209 +6,138 @@ import { notFound } from 'next/navigation';
 import { Calendar, MapPin, Clock, Users, ArrowLeft, Ticket } from 'lucide-react';
 import TicketSelector from '@/components/TicketSelector';
 import Navbar from '@/components/Navbar';
+import { EventHero } from '@/app/components/EventHero';
+import { EventDetails } from '@/app/components/EventDetails';
 
 export default async function EventPage({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = await params;
-  const supabase = getSupabaseAdmin();
+    const { slug } = await params;
+    const supabase = getSupabaseAdmin();
 
-  // Fetch event + ticket tiers + occurrences
-  const { data: event } = await supabase
-    .from('events')
-    .select('*, categories(name), ticket_tiers(*), event_occurrences(*)')
-    .eq('slug', slug)
-    .single();
+    // Fetch event + ticket tiers + occurrences
+    const { data: event } = await supabase
+        .from('events')
+        .select('*, categories(name), ticket_tiers(*), event_occurrences(*)')
+        .eq('slug', slug)
+        .single();
 
-  if (!event) notFound();
+    if (!event) notFound();
 
-  // Get session for pre-filling user info
-  const session = await getSafeSession();
-  const user = session?.user;
+    // Get session for pre-filling user info
+    const session = await getSafeSession();
+    const user = session?.user;
 
-  const currency = event.currency || 'cad';
-  const currencySymbol = getCurrencySymbol(currency);
+    const currency = event.currency || 'cad';
+    const currencySymbol = getCurrencySymbol(currency);
 
-  // Sort tiers by price ascending
-  const sortedTiers = [...(event.ticket_tiers || [])].sort(
-    (a: any, b: any) => a.price - b.price
-  );
+    // Sort tiers by price ascending
+    const sortedTiers = [...(event.ticket_tiers || [])].sort(
+        (a: any, b: any) => a.price - b.price
+    );
 
-  // Calculate some display info
-  const lowestPrice = sortedTiers.length > 0 ? sortedTiers[0].price : 0;
-  const totalRemaining = sortedTiers.reduce(
-    (sum: number, t: any) => sum + (t.remaining_quantity || 0),
-    0
-  );
+    // Calculate some display info
+    const lowestPrice = sortedTiers.length > 0 ? sortedTiers[0].price : 0;
+    const totalRemaining = sortedTiers.reduce(
+        (sum: number, t: any) => sum + (t.remaining_quantity || 0),
+        0
+    );
 
-  // Compute occurrence-based dates
-  const allOccurrences = (event.event_occurrences || [])
-    .filter((o: any) => !o.is_cancelled)
-    .sort((a: any, b: any) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime());
+    // Compute occurrence-based dates
+    const allOccurrences = (event.event_occurrences || [])
+        .filter((o: any) => !o.is_cancelled)
+        .sort((a: any, b: any) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime());
 
-  const futureOccurrences = allOccurrences.filter(
-    (o: any) => new Date(o.starts_at) > new Date()
-  );
+    const futureOccurrences = allOccurrences.filter(
+        (o: any) => new Date(o.starts_at) > new Date()
+    );
 
-  const firstOcc = allOccurrences[0];
-  const eventDate = firstOcc ? new Date(firstOcc.starts_at) : null;
-  const isPast = allOccurrences.length > 0 && futureOccurrences.length === 0;
+    const firstOcc = allOccurrences[0];
+    const eventDate = firstOcc ? new Date(firstOcc.starts_at) : null;
+    const isPast = allOccurrences.length > 0 && futureOccurrences.length === 0;
 
-  return (
-    <div className="min-h-screen bg-white">
-      <Navbar />
+    // Derive start/end for EventHero & EventDetails
+    const heroStartAt = firstOcc?.starts_at || event.start_at || new Date().toISOString();
+    const heroEndAt = firstOcc?.ends_at || event.end_at || heroStartAt;
+    const categoryName = (event as any).categories?.name || 'Event';
+    const organizer = event.organizer || event.organizer_name || 'Organizer';
 
-      {/* Banner */}
-      <div className="h-[350px] sm:h-[420px] bg-gray-900 relative">
-        {event.cover_image_url && (
-          <img
-            src={event.cover_image_url}
-            alt={event.title}
-            className="w-full h-full object-cover opacity-50"
-          />
-        )}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
-        <div className="absolute bottom-0 left-0 w-full p-6 sm:p-10">
-          <div className="max-w-5xl mx-auto">
-            <Link
-              href="/"
-              className="inline-flex items-center gap-1.5 text-white/70 hover:text-white text-sm mb-4 transition-colors"
-            >
-              <ArrowLeft size={14} /> Back to events
-            </Link>
-            <div className="flex items-center gap-3 mb-3">
-              <span className="bg-orange-600 px-3 py-1 rounded text-xs font-bold uppercase tracking-wide text-white">
-                {isPast ? 'Past Event' : 'Event'}
-              </span>
-              {(event as any).categories?.name && (
-                <span className="bg-white/20 backdrop-blur px-3 py-1 rounded text-xs font-medium text-white">
-                  {(event as any).categories.name}
-                </span>
-              )}
-              {event.city && (
-                <span className="bg-white/20 backdrop-blur px-3 py-1 rounded text-xs font-medium text-white">
-                  {event.city}
-                </span>
-              )}
-            </div>
-            <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold text-white mb-4 leading-tight">
-              {event.title}
-            </h1>
-            <div className="flex flex-wrap gap-4 sm:gap-6 text-sm md:text-base font-medium text-white/90">
-              {eventDate && (
-                <>
-                  <div className="flex items-center gap-2">
-                    <Calendar className="w-4 h-4" />
-                    {eventDate.toLocaleDateString('en-US', {
-                      weekday: 'long',
-                      month: 'long',
-                      day: 'numeric',
-                      year: 'numeric',
-                    })}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Clock className="w-4 h-4" />
-                    {eventDate.toLocaleTimeString('en-US', {
-                      hour: 'numeric',
-                      minute: '2-digit',
-                    })}
-                  </div>
-                </>
-              )}
-              {allOccurrences.length > 1 && (
-                <div className="flex items-center gap-2">
-                  <Calendar className="w-4 h-4" />
-                  {allOccurrences.length} dates
-                </div>
-              )}
-              {event.venue_name && (
-                <div className="flex items-center gap-2">
-                  <MapPin className="w-4 h-4" /> {event.venue_name}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
+    return (
+        <div className="min-h-screen bg-background">
+            <Navbar />
 
-      {/* Content */}
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-10 grid grid-cols-1 md:grid-cols-3 gap-10">
-        {/* Left: Event details */}
-        <div className="md:col-span-2 space-y-8">
-          {/* Quick info bar */}
-          <div className="flex flex-wrap gap-4 p-4 bg-gray-50 rounded-xl">
-            <div className="flex items-center gap-2 text-sm">
-              <Ticket className="w-4 h-4 text-orange-600" />
-              <span className="text-gray-600">From</span>
-              <span className="font-bold">
-                {lowestPrice === 0 ? 'Free' : `${currencySymbol}${lowestPrice.toLocaleString()}`}
-              </span>
-            </div>
-            {totalRemaining > 0 && (
-              <div className="flex items-center gap-2 text-sm">
-                <Users className="w-4 h-4 text-orange-600" />
-                <span className="text-gray-600">{totalRemaining.toLocaleString()} tickets available</span>
-              </div>
-            )}
-          </div>
-
-          {/* About */}
-          <div>
-            <h2 className="text-2xl font-bold mb-4">About this event</h2>
-            <div className="prose max-w-none text-gray-600 leading-relaxed">
-              {event.description ? (
-                typeof event.description === 'string' ? (
-                  <p>{event.description}</p>
-                ) : typeof event.description === 'object' && event.description?.text ? (
-                  <p>{event.description.text}</p>
-                ) : (
-                  <p>{JSON.stringify(event.description)}</p>
-                )
-              ) : (
-                <p className="text-gray-400 italic">No description provided.</p>
-              )}
-            </div>
-          </div>
-
-          {/* Venue info */}
-          {(event.venue_name || event.address_text) && (
-            <div>
-              <h2 className="text-2xl font-bold mb-4">Venue</h2>
-              <div className="p-5 bg-gray-50 rounded-xl">
-                {event.venue_name && (
-                  <p className="font-semibold text-lg">{event.venue_name}</p>
-                )}
-                {event.address_text && (
-                  <p className="text-gray-600 mt-1">{event.address_text}</p>
-                )}
-                {event.city && <p className="text-gray-500 text-sm mt-1">{event.city}</p>}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Right: Ticket widget */}
-        <div className="relative">
-          {isPast ? (
-            <div className="border border-gray-200 rounded-xl p-6 bg-gray-50 text-center">
-              <p className="text-gray-500 font-medium">This event has ended</p>
-            </div>
-          ) : (
-            <TicketSelector
-              tiers={sortedTiers}
-              eventId={event.id}
-              eventCurrency={currency}
-              currencySymbol={currencySymbol}
-              userEmail={user?.email}
-              userName={user?.name}
-              occurrences={futureOccurrences.map((o: any) => ({
-                id: o.id,
-                starts_at: o.starts_at,
-                ends_at: o.ends_at,
-                label: o.label || '',
-              }))}
+            {/* EventHero banner */}
+            <EventHero
+                title={event.title}
+                coverImageUrl={event.cover_image_url ?? ''}
+                startAt={heroStartAt}
+                venueName={event.venue_name}
+                city={event.city}
+                category={isPast ? 'Past Event' : categoryName}
             />
-          )}
+
+            {/* Content */}
+            <div className="max-w-5xl mx-auto px-4 sm:px-6 py-10 grid grid-cols-1 md:grid-cols-3 gap-10">
+                {/* Left: Event details */}
+                <div className="md:col-span-2 space-y-8">
+                    {/* Quick info bar */}
+                    <div className="flex flex-wrap gap-4 p-4 bg-secondary/50 rounded-xl">
+                        <div className="flex items-center gap-2 text-sm">
+                            <Ticket className="w-4 h-4 text-[#F98C1F]" />
+                            <span className="text-muted-foreground">From</span>
+                            <span className="font-bold">
+                                {lowestPrice === 0 ? 'Free' : `${currencySymbol}${lowestPrice.toLocaleString()}`}
+                            </span>
+                        </div>
+                        {totalRemaining > 0 && (
+                            <div className="flex items-center gap-2 text-sm">
+                                <Users className="w-4 h-4 text-[#F98C1F]" />
+                                <span className="text-muted-foreground">{totalRemaining.toLocaleString()} tickets available</span>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* EventDetails component */}
+                    <EventDetails
+                        description={
+                            event.description
+                                ? typeof event.description === 'string'
+                                    ? event.description
+                                    : typeof event.description === 'object' && (event.description as any)?.text
+                                        ? (event.description as any).text
+                                        : JSON.stringify(event.description)
+                                : 'No description provided.'
+                        }
+                        startAt={heroStartAt}
+                        endAt={heroEndAt}
+                        venueName={event.venue_name}
+                        city={event.city}
+                        organizer={organizer}
+                    />
+                </div>
+
+                {/* Right: Ticket widget */}
+                <div className="relative">
+                    {isPast ? (
+                        <div className="border border-border rounded-xl p-6 bg-secondary/50 text-center">
+                            <p className="text-muted-foreground font-medium">This event has ended</p>
+                        </div>
+                    ) : (
+                        <TicketSelector
+                            tiers={sortedTiers}
+                            eventId={event.id}
+                            eventCurrency={currency}
+                            currencySymbol={currencySymbol}
+                            userEmail={user?.email}
+                            userName={user?.name}
+                            occurrences={futureOccurrences.map((o: any) => ({
+                                id: o.id,
+                                starts_at: o.starts_at,
+                                ends_at: o.ends_at,
+                                label: o.label || '',
+                            }))}
+                        />
+                    )}
+                </div>
+            </div>
         </div>
-      </div>
-    </div>
-  );
+    );
 }
