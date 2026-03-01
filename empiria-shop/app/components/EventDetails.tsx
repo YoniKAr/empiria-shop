@@ -30,35 +30,35 @@ export function EventDetails({
         <div className="flex flex-col gap-10">
             {/* Quick info cards */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="bg-white border border-border rounded-xl p-5 flex items-start gap-4">
-                    <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-[#F98C1F]/10 flex items-center justify-center">
+                <div className="bg-white border border-gray-200 rounded-xl p-5 flex items-start gap-4">
+                    <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-orange-50 flex items-center justify-center">
                         <Clock className="w-5 h-5 text-[#F98C1F]" />
                     </div>
                     <div>
-                        <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium mb-1">When</p>
-                        <p className="text-sm text-foreground font-medium">{formatDateTime(startAt)}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">to {formatDateTime(endAt)}</p>
+                        <p className="text-xs text-gray-500 uppercase tracking-wider font-medium mb-1">When</p>
+                        <p className="text-sm text-gray-900 font-medium">{formatDateTime(startAt)}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">to {formatDateTime(endAt)}</p>
                     </div>
                 </div>
 
-                <div className="bg-secondary/50 border border-border rounded-xl p-5 flex items-start gap-4">
-                    <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-[#F98C1F]/10 flex items-center justify-center">
+                <div className="bg-white border border-gray-200 rounded-xl p-5 flex items-start gap-4">
+                    <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-orange-50 flex items-center justify-center">
                         <MapPin className="w-5 h-5 text-[#F98C1F]" />
                     </div>
                     <div>
-                        <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium mb-1">Where</p>
-                        <p className="text-sm text-foreground font-medium">{venueName}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">{city}</p>
+                        <p className="text-xs text-gray-500 uppercase tracking-wider font-medium mb-1">Where</p>
+                        <p className="text-sm text-gray-900 font-medium">{venueName}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">{city}</p>
                     </div>
                 </div>
 
-                <div className="bg-secondary/50 border border-border rounded-xl p-5 flex items-start gap-4">
-                    <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-[#F98C1F]/10 flex items-center justify-center">
+                <div className="bg-white border border-gray-200 rounded-xl p-5 flex items-start gap-4">
+                    <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-orange-50 flex items-center justify-center">
                         <Info className="w-5 h-5 text-[#F98C1F]" />
                     </div>
                     <div>
-                        <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium mb-1">Organized by</p>
-                        <p className="text-sm text-foreground font-medium">{organizer}</p>
+                        <p className="text-xs text-gray-500 uppercase tracking-wider font-medium mb-1">Organized by</p>
+                        <p className="text-sm text-gray-900 font-medium">{organizer}</p>
                     </div>
                 </div>
             </div>
@@ -70,7 +70,7 @@ export function EventDetails({
                         About This Event
                     </h2>
                     <button
-                        className="flex items-center gap-2 text-sm text-muted-foreground hover:text-[#F98C1F] transition-colors"
+                        className="flex items-center gap-2 text-sm text-gray-500 hover:text-[#F98C1F] transition-colors"
                         aria-label="Share event"
                     >
                         <Share2 className="w-4 h-4" />
@@ -78,7 +78,7 @@ export function EventDetails({
                     </button>
                 </div>
                 <div className="prose max-w-none">
-                    <p className="text-muted-foreground leading-relaxed text-base">{description}</p>
+                    <p className="text-gray-600 leading-relaxed text-base">{description}</p>
                 </div>
             </div>
 
@@ -96,7 +96,7 @@ export function EventDetails({
                     ].map((highlight) => (
                         <div
                             key={highlight}
-                            className="flex items-center gap-3 text-sm text-muted-foreground"
+                            className="flex items-center gap-3 text-sm text-gray-600"
                         >
                             <span className="w-1.5 h-1.5 rounded-full bg-[#F98C1F] flex-shrink-0" />
                             {highlight}
