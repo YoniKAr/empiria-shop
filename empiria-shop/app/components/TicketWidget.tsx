@@ -28,7 +28,7 @@ export function TicketWidget({ tiers, eventId }: TicketWidgetProps) {
 
     return (
         <div className="sticky top-24">
-            <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-lg shadow-black/5">
+            <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-lg shadow-black/5">
                 {/* Header */}
                 <div className="bg-[#F98C1F] px-6 py-5">
                     <div className="flex items-center gap-3">
@@ -56,10 +56,10 @@ export function TicketWidget({ tiers, eventId }: TicketWidgetProps) {
                                 }}
                                 disabled={isSoldOut}
                                 className={`relative w-full text-left p-4 rounded-xl border-2 transition-all duration-200 ${isSoldOut
-                                        ? "border-border opacity-50 cursor-not-allowed"
+                                        ? "border-gray-200 opacity-50 cursor-not-allowed bg-white"
                                         : isSelected
-                                            ? "border-[#F98C1F] bg-[#F98C1F]/5"
-                                            : "border-border hover:border-[#F98C1F]/40 bg-transparent"
+                                            ? "border-[#F98C1F] bg-orange-50"
+                                            : "border-gray-200 hover:border-orange-300 bg-white"
                                     }`}
                             >
                                 {/* Selected indicator */}
@@ -70,10 +70,10 @@ export function TicketWidget({ tiers, eventId }: TicketWidgetProps) {
                                 )}
 
                                 <div className="flex flex-col gap-1.5">
-                                    <span className="font-semibold text-foreground text-sm">
+                                    <span className="font-semibold text-gray-900 text-sm">
                                         {tier.name}
                                     </span>
-                                    <span className="text-xs text-muted-foreground leading-relaxed">
+                                    <span className="text-xs text-gray-500 leading-relaxed">
                                         {tier.description}
                                     </span>
                                     <div className="flex items-center justify-between mt-1">
@@ -81,11 +81,11 @@ export function TicketWidget({ tiers, eventId }: TicketWidgetProps) {
                                             {tier.price === 0 ? "FREE" : `₹${tier.price.toLocaleString()}`}
                                         </span>
                                         {isSoldOut ? (
-                                            <span className="text-xs text-destructive font-medium">
+                                            <span className="text-xs text-red-500 font-medium">
                                                 Sold Out
                                             </span>
                                         ) : (
-                                            <span className="text-xs text-muted-foreground">
+                                            <span className="text-xs text-gray-500">
                                                 {tier.available} left
                                             </span>
                                         )}
@@ -99,24 +99,24 @@ export function TicketWidget({ tiers, eventId }: TicketWidgetProps) {
                 {/* Quantity selector */}
                 {selected && selected.available > 0 && (
                     <div className="px-5 pb-4">
-                        <div className="flex items-center justify-between bg-secondary rounded-xl px-4 py-3">
-                            <span className="text-sm text-muted-foreground">Quantity</span>
+                        <div className="flex items-center justify-between bg-gray-100 rounded-xl px-4 py-3">
+                            <span className="text-sm text-gray-600">Quantity</span>
                             <div className="flex items-center gap-3">
                                 <button
                                     onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                                    className="w-8 h-8 rounded-lg bg-border flex items-center justify-center text-foreground hover:bg-[#F98C1F]/20 transition-colors"
+                                    className="w-8 h-8 rounded-lg bg-gray-200 flex items-center justify-center text-gray-700 hover:bg-orange-100 transition-colors"
                                     aria-label="Decrease quantity"
                                 >
                                     <Minus className="w-3.5 h-3.5" />
                                 </button>
-                                <span className="text-foreground font-bold text-sm w-6 text-center">
+                                <span className="text-gray-900 font-bold text-sm w-6 text-center">
                                     {quantity}
                                 </span>
                                 <button
                                     onClick={() =>
                                         setQuantity(Math.min(selected.available, quantity + 1))
                                     }
-                                    className="w-8 h-8 rounded-lg bg-border flex items-center justify-center text-foreground hover:bg-[#F98C1F]/20 transition-colors"
+                                    className="w-8 h-8 rounded-lg bg-gray-200 flex items-center justify-center text-gray-700 hover:bg-orange-100 transition-colors"
                                     aria-label="Increase quantity"
                                 >
                                     <Plus className="w-3.5 h-3.5" />
@@ -130,7 +130,7 @@ export function TicketWidget({ tiers, eventId }: TicketWidgetProps) {
                 <div className="px-5 pb-6">
                     {selected && (
                         <div className="flex items-center justify-between mb-4 px-1">
-                            <span className="text-sm text-muted-foreground">Total</span>
+                            <span className="text-sm text-gray-600">Total</span>
                             <span className="text-2xl font-bold text-[#F98C1F] font-[family-name:var(--font-space-grotesk)]">
                                 {total === 0 ? "FREE" : `₹${total.toLocaleString()}`}
                             </span>
@@ -145,8 +145,8 @@ export function TicketWidget({ tiers, eventId }: TicketWidgetProps) {
                     </Link>
 
                     <div className="flex items-center justify-center gap-2 mt-4">
-                        <ShieldCheck className="w-3.5 h-3.5 text-muted-foreground" />
-                        <p className="text-xs text-muted-foreground">
+                        <ShieldCheck className="w-3.5 h-3.5 text-gray-400" />
+                        <p className="text-xs text-gray-400">
                             Secure checkout powered by Stripe
                         </p>
                     </div>
