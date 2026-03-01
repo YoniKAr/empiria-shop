@@ -45,7 +45,7 @@ export default function UserMenu({ userName, userPicture, userRole }: UserMenuPr
         onClick={() => setOpen((v) => !v)}
         className="flex items-center gap-2 cursor-pointer group"
       >
-        <span className="text-sm font-medium hidden sm:block">Hi, {firstName}</span>
+        <span className="text-sm font-medium text-gray-900 hidden sm:block">Hi, {firstName}</span>
         <div className="w-8 h-8 rounded-full bg-gray-100 overflow-hidden border border-gray-200">
           {userPicture && (
             <img src={userPicture} alt="Profile" className="w-full h-full object-cover" />
