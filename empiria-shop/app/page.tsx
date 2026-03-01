@@ -10,6 +10,7 @@ import Link from 'next/link';
 import { Calendar } from 'lucide-react';
 import Image from 'next/image'
 import SearchBar from './components/SearchBar';
+import UserMenu from '@/components/UserMenu';
 
 // --- MOCK DATA (Fallback if DB is empty) ---
 const MOCK_EVENTS = [
@@ -54,6 +55,17 @@ export default async function ShopHome() {
 
     const supabase = getSupabaseAdmin();
 
+    // Fetch user role for dashboard links
+    let userRole: string | null = null;
+    if (user?.sub) {
+        const { data: profile } = await supabase
+            .from('users')
+            .select('role')
+            .eq('auth0_id', user.sub)
+            .single();
+        userRole = profile?.role || null;
+    }
+
     const { data: realEvents } = await supabase
         .from('events')
         .select(`
@@ -91,12 +103,11 @@ export default async function ShopHome() {
                     {/* User Actions */}
                     <div className="flex items-center gap-4">
                         {user ? (
-                            <div className="flex items-center gap-3">
-                                <span className="text-sm font-medium hidden sm:block">Hi, {user.name?.split(' ')[0]}</span>
-                                <a href="https://profile.empiriaindia.com" className="w-8 h-8 rounded-full bg-gray-100 overflow-hidden border border-gray-200">
-                                    {user.picture && <img src={user.picture} alt="Profile" className="w-full h-full object-cover" />}
-                                </a>
-                            </div>
+                            <UserMenu
+                                userName={user.name || 'User'}
+                                userPicture={user.picture || null}
+                                userRole={userRole}
+                            />
                         ) : (
                             <a
                                 href="https://auth.empiriaindia.com/auth/login?returnTo=https://shop.empiriaindia.com"

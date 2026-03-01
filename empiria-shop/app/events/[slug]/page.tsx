@@ -10,6 +10,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Calendar, MapPin, Clock, Users, ArrowLeft, Ticket } from 'lucide-react';
 import TicketSelector from '@/components/TicketSelector';
+import UserMenu from '@/components/UserMenu';
 
 export default async function EventPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -27,6 +28,17 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
   // Get session for pre-filling user info
   const session = await getSafeSession();
   const user = session?.user;
+
+  // Fetch user role for dashboard links
+  let userRole: string | null = null;
+  if (user?.sub) {
+    const { data: profile } = await supabase
+      .from('users')
+      .select('role')
+      .eq('auth0_id', user.sub)
+      .single();
+    userRole = profile?.role || null;
+  }
 
   const currency = event.currency || 'cad';
   const currencySymbol = getCurrencySymbol(currency);
@@ -69,19 +81,11 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
           </Link>
           <div className="flex items-center gap-4">
             {user ? (
-              <div className="flex items-center gap-3">
-                <span className="text-sm font-medium hidden sm:block">
-                  Hi, {user.name?.split(' ')[0]}
-                </span>
-                <a
-                  href="https://profile.empiriaindia.com"
-                  className="w-8 h-8 rounded-full bg-gray-100 overflow-hidden border border-gray-200"
-                >
-                  {user.picture && (
-                    <img src={user.picture} alt="Profile" className="w-full h-full object-cover" />
-                  )}
-                </a>
-              </div>
+              <UserMenu
+                userName={user.name || 'User'}
+                userPicture={user.picture || null}
+                userRole={userRole}
+              />
             ) : (
               <a
                 href="https://auth.empiriaindia.com/auth/login?returnTo=https://shop.empiriaindia.com"
