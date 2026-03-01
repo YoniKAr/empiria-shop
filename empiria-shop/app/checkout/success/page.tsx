@@ -9,7 +9,8 @@ import { formatCurrency } from '@/lib/utils';
 import { generateQRCodeDataURL } from '@/lib/qrcode';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { CheckCircle2, Ticket, Calendar, MapPin, ArrowRight } from 'lucide-react';
+import { CheckCircle2, Calendar, MapPin, ArrowRight } from 'lucide-react';
+import Navbar from '@/components/Navbar';
 
 export default async function CheckoutSuccessPage({
   searchParams,
@@ -99,17 +100,7 @@ export default async function CheckoutSuccessPage({
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Navbar */}
-      <nav className="bg-white border-b border-gray-100">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center">
-          <Link href="/" className="flex items-center gap-2">
-            <div className="bg-black text-white p-1.5 rounded-lg">
-              <Ticket size={20} />
-            </div>
-            <span className="font-bold text-xl tracking-tight">Empiria</span>
-          </Link>
-        </div>
-      </nav>
+      <Navbar />
 
       <div className="max-w-3xl mx-auto px-4 sm:px-6 py-12">
         {/* Success header */}

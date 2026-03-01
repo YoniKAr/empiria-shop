@@ -10,7 +10,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Calendar, MapPin, Clock, Users, ArrowLeft, Ticket } from 'lucide-react';
 import TicketSelector from '@/components/TicketSelector';
-import UserMenu from '@/components/UserMenu';
+import Navbar from '@/components/Navbar';
 
 export default async function EventPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -28,17 +28,6 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
   // Get session for pre-filling user info
   const session = await getSafeSession();
   const user = session?.user;
-
-  // Fetch user role for dashboard links
-  let userRole: string | null = null;
-  if (user?.sub) {
-    const { data: profile } = await supabase
-      .from('users')
-      .select('role')
-      .eq('auth0_id', user.sub)
-      .single();
-    userRole = profile?.role || null;
-  }
 
   const currency = event.currency || 'cad';
   const currencySymbol = getCurrencySymbol(currency);
@@ -70,33 +59,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
 
   return (
     <div className="min-h-screen bg-white">
-      {/* Navbar */}
-      <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-100">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2">
-            <div className="bg-black text-white p-1.5 rounded-lg">
-              <Ticket size={20} />
-            </div>
-            <span className="font-bold text-xl tracking-tight">Empiria</span>
-          </Link>
-          <div className="flex items-center gap-4">
-            {user ? (
-              <UserMenu
-                userName={user.name || 'User'}
-                userPicture={user.picture || null}
-                userRole={userRole}
-              />
-            ) : (
-              <a
-                href="https://auth.empiriaindia.com/auth/login?returnTo=https://shop.empiriaindia.com"
-                className="text-sm font-bold bg-black text-white px-5 py-2.5 rounded-full hover:bg-gray-800 transition-colors"
-              >
-                Sign In
-              </a>
-            )}
-          </div>
-        </div>
-      </nav>
+      <Navbar />
 
       {/* Banner */}
       <div className="h-[350px] sm:h-[420px] bg-gray-900 relative">

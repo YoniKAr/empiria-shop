@@ -3,14 +3,12 @@
 //                        + SearchBar component + Image logo (remote)
 // ──────────────────────────────────────────────────
 
-import { getSafeSession } from '@/lib/auth0';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { getCurrencySymbol } from '@/lib/utils';
 import Link from 'next/link';
 import { Calendar } from 'lucide-react';
-import Image from 'next/image'
 import SearchBar from './components/SearchBar';
-import UserMenu from '@/components/UserMenu';
+import Navbar from '@/components/Navbar';
 
 // --- MOCK DATA (Fallback if DB is empty) ---
 const MOCK_EVENTS = [
@@ -50,21 +48,7 @@ const MOCK_EVENTS = [
 ];
 
 export default async function ShopHome() {
-    const session = await getSafeSession();
-    const user = session?.user;
-
     const supabase = getSupabaseAdmin();
-
-    // Fetch user role for dashboard links
-    let userRole: string | null = null;
-    if (user?.sub) {
-        const { data: profile } = await supabase
-            .from('users')
-            .select('role')
-            .eq('auth0_id', user.sub)
-            .single();
-        userRole = profile?.role || null;
-    }
 
     const { data: realEvents } = await supabase
         .from('events')
@@ -84,41 +68,7 @@ export default async function ShopHome() {
     return (
         <div className="min-h-screen bg-white font-sans text-slate-900">
 
-            {/* --- NAVBAR --- */}
-            <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-100">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-
-                    {/* Logo */}
-                    <Link href="/" className="flex items-center gap-2">
-                        <Image
-                            src="/logo.png"
-                            alt="Empiria Logo"
-                            width={130}
-                            height={40}
-                            className="object-contain"
-                            priority
-                        />
-                    </Link>
-
-                    {/* User Actions */}
-                    <div className="flex items-center gap-4">
-                        {user ? (
-                            <UserMenu
-                                userName={user.name || 'User'}
-                                userPicture={user.picture || null}
-                                userRole={userRole}
-                            />
-                        ) : (
-                            <a
-                                href="https://auth.empiriaindia.com/auth/login?returnTo=https://shop.empiriaindia.com"
-                                className="text-sm font-bold bg-black text-white px-5 py-2.5 rounded-full hover:bg-gray-800 transition-colors"
-                            >
-                                Sign In
-                            </a>
-                        )}
-                    </div>
-                </div>
-            </nav>
+            <Navbar />
 
             {/* --- HERO SECTION --- */}
             <div className="bg-slate-50 border-b border-gray-200 relative overflow-hidden">
