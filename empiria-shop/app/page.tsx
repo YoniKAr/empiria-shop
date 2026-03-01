@@ -70,19 +70,30 @@ export default async function ShopHome() {
             <Navbar />
 
             {/* --- HERO SECTION --- */}
-            <div className="bg-slate-50 border-b border-gray-200 relative overflow-hidden">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 py-20 lg:py-28 relative z-10 text-center">
-                    <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight mb-6 text-slate-900">
-                        Discover your next <span className="text-orange-600">experience.</span>
+            <div className="relative overflow-hidden h-[480px] md:h-[560px]">
+                {/* Background: first event cover image */}
+                {displayEvents[0]?.cover_image_url && (
+                    <img
+                        src={displayEvents[0].cover_image_url}
+                        alt="Featured event"
+                        className="absolute inset-0 w-full h-full object-cover"
+                    />
+                )}
+                {/* Dark gradient overlay */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/50 to-black/30" />
+
+                <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 flex flex-col items-center justify-center h-full text-center gap-6">
+                    <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight text-white drop-shadow-lg">
+                        Discover your next <span className="text-orange-400">experience.</span>
                     </h1>
-                    <p className="text-lg text-slate-600 mb-10 max-w-2xl mx-auto">
+                    <p className="text-lg text-white/80 max-w-2xl">
                         From underground music gigs to massive tech conferences, find the events that matter to you.
                     </p>
 
                     {/* Search Bar */}
-                    <div className="bg-white p-2 rounded-full shadow-xl border border-gray-200 max-w-3xl mx-auto flex flex-col sm:flex-row gap-2">
+                    <div className="bg-white p-2 rounded-full shadow-2xl max-w-3xl w-full flex flex-col sm:flex-row gap-2">
                         <div className="flex-1 flex items-center px-4 h-12 bg-gray-50 sm:bg-transparent rounded-full sm:rounded-none">
-                            <Search className="text-gray-400 w-5 h-5 mr-3" />
+                            <Search className="text-gray-400 w-5 h-5 mr-3 flex-shrink-0" />
                             <input
                                 type="text"
                                 placeholder="Search events, artists, categories..."
@@ -91,7 +102,7 @@ export default async function ShopHome() {
                         </div>
                         <div className="hidden sm:block w-px bg-gray-200 h-8 self-center"></div>
                         <div className="flex-1 flex items-center px-4 h-12 bg-gray-50 sm:bg-transparent rounded-full sm:rounded-none">
-                            <MapPin className="text-gray-400 w-5 h-5 mr-3" />
+                            <MapPin className="text-gray-400 w-5 h-5 mr-3 flex-shrink-0" />
                             <input
                                 type="text"
                                 placeholder="City or Location"
@@ -102,12 +113,6 @@ export default async function ShopHome() {
                             Search
                         </button>
                     </div>
-                </div>
-
-                {/* Decorative Background Elements */}
-                <div className="absolute top-0 left-0 w-full h-full opacity-30 pointer-events-none">
-                    <div className="absolute -top-24 -left-24 w-96 h-96 bg-orange-200 rounded-full blur-3xl"></div>
-                    <div className="absolute top-1/2 right-0 w-64 h-64 bg-blue-200 rounded-full blur-3xl"></div>
                 </div>
             </div>
 

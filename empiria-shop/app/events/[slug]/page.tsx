@@ -61,7 +61,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
     const organizer = event.organizer || event.organizer_name || 'Organizer';
 
     return (
-        <div className="min-h-screen bg-background">
+        <div className="min-h-screen bg-white">
             <Navbar />
 
             {/* EventHero banner */}
