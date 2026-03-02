@@ -85,19 +85,11 @@ export default async function ShopHome() {
                             <Search className="text-gray-400 w-5 h-5 mr-3 flex-shrink-0" />
                             <input
                                 type="text"
-                                placeholder="Search events, artists, categories..."
+                                placeholder="Search events, artists, categories, city..."
                                 className="bg-transparent w-full outline-none text-sm font-medium placeholder:text-gray-400"
                             />
                         </div>
-                        <div className="hidden sm:block w-px bg-gray-200 h-8 self-center"></div>
-                        <div className="flex-1 flex items-center px-4 h-12 bg-gray-50 sm:bg-transparent rounded-full sm:rounded-none">
-                            <MapPin className="text-gray-400 w-5 h-5 mr-3 flex-shrink-0" />
-                            <input
-                                type="text"
-                                placeholder="City or Location"
-                                className="bg-transparent w-full outline-none text-sm font-medium placeholder:text-gray-400"
-                            />
-                        </div>
+
                         <button className="bg-orange-600 text-white h-12 px-8 rounded-full font-bold hover:bg-orange-700 transition-colors">
                             Search
                         </button>
