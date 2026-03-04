@@ -46,14 +46,17 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
 
     const organizer = ownerProfile?.full_name || 'Empiria Events';
 
-    // Fetch gallery images — try combinations of organizer_id and event.id
+    // Fetch gallery images — try combinations of safe organizer_id and event.id
+    // Auth0 IDs have a '|' (e.g. google-oauth2|123) but Supabase storage folders use '_' (google-oauth2_123)
+    const safeOrganizerId = event.organizer_id?.replace(/\|/g, '_');
+
     let galleryUrls: string[] = [];
     const possiblePaths = [
         `${String(event.id)}`,
         `${event.slug}`,
-        `${event.organizer_id}/${String(event.id)}`,
-        `${event.organizer_id}/${event.slug}`,
-        `${event.organizer_id}`,
+        safeOrganizerId ? `${safeOrganizerId}/${String(event.id)}` : '',
+        safeOrganizerId ? `${safeOrganizerId}/${event.slug}` : '',
+        safeOrganizerId || '',
         ''
     ].filter(Boolean); // Remove empty if any
 
