@@ -46,28 +46,21 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
 
     const organizer = ownerProfile?.full_name || 'Empiria Events';
 
-    // Fetch gallery images — try by event.id folder first, then event.slug
-    const tryFolders = [String(event.id), event.slug];
+    // Fetch gallery images — folder = organizer's auth0_id (e.g. google-oauth2_xxx)
     let galleryUrls: string[] = [];
-
-    for (const folder of tryFolders) {
+    if (event.organizer_id) {
         const { data: files } = await supabase.storage
             .from('events_gallery')
-            .list(folder, { limit: 50 });
+            .list(event.organizer_id, { limit: 50 });
 
-        const urls = (files ?? [])
+        galleryUrls = (files ?? [])
             .filter((f: any) => f.name && !f.name.startsWith('.') && f.id)
             .map((f: any) => {
                 const { data } = supabase.storage
                     .from('events_gallery')
-                    .getPublicUrl(`${folder}/${f.name}`);
+                    .getPublicUrl(`${event.organizer_id}/${f.name}`);
                 return data.publicUrl;
             });
-
-        if (urls.length > 0) {
-            galleryUrls = urls;
-            break;
-        }
     }
 
     // What to expect from DB
@@ -114,15 +107,19 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                 {/* Left: Event details */}
                 <div className="lg:col-span-2">
                     <EventDetails
-                        description={
-                            event.description
-                                ? typeof event.description === 'string'
-                                    ? event.description
-                                    : typeof event.description === 'object' && (event.description as any)?.text
-                                        ? (event.description as any).text
-                                        : JSON.stringify(event.description)
-                                : 'No description provided.'
-                        }
+                        description={(() => {
+                            if (!event.description) return 'No description provided.';
+                            if (typeof event.description === 'object') {
+                                return (event.description as any)?.text || JSON.stringify(event.description);
+                            }
+                            // It's a string — try parsing it as JSON first
+                            try {
+                                const parsed = JSON.parse(event.description as string);
+                                return parsed?.text || event.description;
+                            } catch {
+                                return event.description as string;
+                            }
+                        })()}
                         startAt={heroStartAt}
                         endAt={heroEndAt}
                         venueName={event.venue_name}
