@@ -34,7 +34,17 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
     const heroStartAt = firstOcc?.starts_at || event.start_at || new Date().toISOString();
     const heroEndAt = firstOcc?.ends_at || event.end_at || heroStartAt;
     const categoryName = (event as any).categories?.name || 'Event';
-    const organizer = event.organizer || event.organizer_name || 'Empiria Events';
+
+    // Look up the event owner's name from the users table
+    const { data: ownerProfile } = event.organizer_id
+        ? await supabase
+            .from('users')
+            .select('full_name')
+            .eq('auth0_id', event.organizer_id)
+            .single()
+        : { data: null };
+
+    const organizer = ownerProfile?.full_name || 'Empiria Events';
 
     // Fetch gallery images from events_gallery bucket (folder = event.id)
     const { data: galleryFiles } = await supabase.storage
