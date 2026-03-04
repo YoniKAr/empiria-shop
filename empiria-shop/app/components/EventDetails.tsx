@@ -133,13 +133,13 @@ export function EventDetails({
                         <div
                             ref={scrollRef}
                             onScroll={handleScroll}
-                            className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide"
+                            className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide gap-4"
                             style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
                         >
                             {galleryUrls.map((url, i) => (
                                 <div
                                     key={i}
-                                    className="relative flex-shrink-0 w-full snap-start"
+                                    className="relative flex-shrink-0 w-full sm:w-[85%] md:w-[75%] snap-center rounded-2xl overflow-hidden"
                                     style={{ aspectRatio: "16/9" }}
                                 >
                                     <Image
@@ -180,8 +180,8 @@ export function EventDetails({
                                             onClick={() => scrollToSlide(i)}
                                             aria-label={`Go to image ${i + 1}`}
                                             className={`rounded-full transition-all duration-200 ${i === activeSlide
-                                                    ? "w-5 h-2 bg-white"
-                                                    : "w-2 h-2 bg-white/50 hover:bg-white/75"
+                                                ? "w-5 h-2 bg-white"
+                                                : "w-2 h-2 bg-white/50 hover:bg-white/75"
                                                 }`}
                                         />
                                     ))}

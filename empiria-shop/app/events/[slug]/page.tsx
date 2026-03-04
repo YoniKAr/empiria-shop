@@ -46,21 +46,37 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
 
     const organizer = ownerProfile?.full_name || 'Empiria Events';
 
-    // Fetch gallery images — folder = organizer's auth0_id (e.g. google-oauth2_xxx)
+    // Fetch gallery images — try combinations of organizer_id and event.id
     let galleryUrls: string[] = [];
-    if (event.organizer_id) {
+    const possiblePaths = [
+        `${String(event.id)}`,
+        `${event.slug}`,
+        `${event.organizer_id}/${String(event.id)}`,
+        `${event.organizer_id}/${event.slug}`,
+        `${event.organizer_id}`,
+        ''
+    ].filter(Boolean); // Remove empty if any
+
+    for (const folder of possiblePaths) {
+        if (!folder) continue;
         const { data: files } = await supabase.storage
             .from('events_gallery')
-            .list(event.organizer_id, { limit: 50 });
+            .list(folder, { limit: 50 });
 
-        galleryUrls = (files ?? [])
+        const urls = (files ?? [])
             .filter((f: any) => f.name && !f.name.startsWith('.') && f.id)
             .map((f: any) => {
+                const path = folder ? `${folder}/${f.name}` : f.name;
                 const { data } = supabase.storage
                     .from('events_gallery')
-                    .getPublicUrl(`${event.organizer_id}/${f.name}`);
+                    .getPublicUrl(path);
                 return data.publicUrl;
             });
+
+        if (urls.length > 0) {
+            galleryUrls = urls;
+            break;
+        }
     }
 
     // What to expect from DB
