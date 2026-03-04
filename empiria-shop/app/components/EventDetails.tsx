@@ -128,25 +128,24 @@ export function EventDetails({
                         Gallery
                     </h3>
 
-                    <div className="relative group rounded-2xl overflow-hidden">
+                    <div className="relative group w-full">
                         {/* Slide track */}
                         <div
                             ref={scrollRef}
                             onScroll={handleScroll}
-                            className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide gap-4"
+                            className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide gap-4 pb-4"
                             style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
                         >
                             {galleryUrls.map((url, i) => (
                                 <div
                                     key={i}
-                                    className="relative flex-shrink-0 w-full sm:w-[85%] md:w-[75%] snap-center rounded-2xl overflow-hidden"
-                                    style={{ aspectRatio: "16/9" }}
+                                    className="relative flex-shrink-0 snap-start rounded-2xl overflow-hidden shadow-sm border border-gray-100 h-[280px] sm:h-[400px] w-[85%] sm:w-[70%]"
                                 >
                                     <Image
                                         src={url}
                                         alt={`Gallery image ${i + 1}`}
                                         fill
-                                        className="object-cover"
+                                        className="object-cover hover:scale-105 transition-transform duration-500 ease-out"
                                         sizes="(max-width: 768px) 100vw, 66vw"
                                         unoptimized
                                     />
@@ -160,16 +159,16 @@ export function EventDetails({
                                 <button
                                     onClick={handlePrev}
                                     aria-label="Previous image"
-                                    className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-white/80 backdrop-blur-sm shadow-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-white"
+                                    className="absolute left-2 sm:-left-4 top-[calc(50%-1rem)] -translate-y-1/2 w-10 h-10 rounded-full bg-white/90 backdrop-blur-md shadow-[0_4px_12px_rgba(0,0,0,0.1)] border border-gray-100 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all hover:bg-white hover:scale-110 z-10"
                                 >
-                                    <ChevronLeft className="w-5 h-5 text-gray-800" />
+                                    <ChevronLeft className="w-5 h-5 text-gray-800 ml-[-2px]" />
                                 </button>
                                 <button
                                     onClick={handleNext}
                                     aria-label="Next image"
-                                    className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-white/80 backdrop-blur-sm shadow-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-white"
+                                    className="absolute right-2 sm:-right-4 top-[calc(50%-1rem)] -translate-y-1/2 w-10 h-10 rounded-full bg-white/90 backdrop-blur-md shadow-[0_4px_12px_rgba(0,0,0,0.1)] border border-gray-100 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all hover:bg-white hover:scale-110 z-10"
                                 >
-                                    <ChevronRight className="w-5 h-5 text-gray-800" />
+                                    <ChevronRight className="w-5 h-5 text-gray-800 ml-[2px]" />
                                 </button>
 
                                 {/* Dot indicators */}
@@ -193,7 +192,7 @@ export function EventDetails({
             )}
 
             {/* About section */}
-            <div>
+            <div className="relative z-20">
                 <div className="flex items-center justify-between mb-6">
                     <h2 className="text-2xl font-bold text-[#F98C1F] font-[family-name:var(--font-space-grotesk)]">
                         About This Event
@@ -215,10 +214,10 @@ export function EventDetails({
                             <>
                                 {/* Backdrop */}
                                 <div
-                                    className="fixed inset-0 z-40"
+                                    className="fixed inset-0 z-[60]"
                                     onClick={() => setShowShare(false)}
                                 />
-                                <div className="absolute right-0 mt-2 w-64 bg-white border border-gray-200 rounded-2xl shadow-xl z-50 overflow-hidden">
+                                <div className="absolute right-0 top-full mt-2 w-64 bg-white border border-gray-200 rounded-2xl shadow-xl z-[70] overflow-hidden">
                                     {/* Header */}
                                     <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
                                         <p className="text-sm font-semibold text-gray-900">Share this event</p>
