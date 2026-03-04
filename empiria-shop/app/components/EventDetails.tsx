@@ -28,7 +28,13 @@ export function EventDetails({
     const [showShare, setShowShare] = useState(false)
     const [copied, setCopied] = useState(false)
     const [activeSlide, setActiveSlide] = useState(0)
+
+    // Modal state for fullscreen gallery
+    const [isModalOpen, setIsModalOpen] = useState(false)
+    const [selectedImageIndex, setSelectedImageIndex] = useState(0)
+
     const scrollRef = useRef<HTMLDivElement>(null)
+    const modalScrollRef = useRef<HTMLDivElement>(null)
 
     const formatDateTime = (date: string) =>
         new Date(date).toLocaleString("en-IN", {
@@ -58,36 +64,91 @@ export function EventDetails({
         alert("Link copied! Open Instagram and paste it in your story or bio.")
     }
 
-    const scrollToSlide = useCallback((index: number) => {
+    // Existing carousel handlers
+    const handleScroll = () => {
         if (!scrollRef.current) return
-        const container = scrollRef.current
-        const slideWidth = container.clientWidth
-        container.scrollTo({ left: slideWidth * index, behavior: "smooth" })
-        setActiveSlide(index)
-    }, [])
-
-    const handlePrev = () => {
-        const prev = (activeSlide - 1 + galleryUrls.length) % galleryUrls.length
-        scrollToSlide(prev)
+        const scrollPosition = scrollRef.current.scrollLeft
+        const slideWidth = scrollRef.current.clientWidth
+        const newSlide = Math.round(scrollPosition / slideWidth)
+        setActiveSlide(newSlide)
     }
 
     const handleNext = () => {
-        const next = (activeSlide + 1) % galleryUrls.length
-        scrollToSlide(next)
+        if (!scrollRef.current) return
+        const slideWidth = scrollRef.current.clientWidth
+        scrollRef.current.scrollBy({ left: slideWidth, behavior: "smooth" })
     }
 
-    // Sync dot indicator on manual scroll
-    const handleScroll = () => {
+    const handlePrev = () => {
         if (!scrollRef.current) return
-        const container = scrollRef.current
-        const index = Math.round(container.scrollLeft / container.clientWidth)
-        setActiveSlide(index)
+        const slideWidth = scrollRef.current.clientWidth
+        scrollRef.current.scrollBy({ left: -slideWidth, behavior: "smooth" })
     }
+
+    // Fullscreen Modal handlers
+    const openModal = (index: number) => {
+        setSelectedImageIndex(index)
+        setIsModalOpen(true)
+        // Prevent body scroll when modal is open
+        document.body.style.overflow = 'hidden'
+
+        // Immediately scroll to the correct image when modal opens
+        setTimeout(() => {
+            if (modalScrollRef.current) {
+                const slideWidth = modalScrollRef.current.clientWidth
+                modalScrollRef.current.scrollTo({ left: slideWidth * index, behavior: "auto" })
+            }
+        }, 10)
+    }
+
+    const closeModal = () => {
+        setIsModalOpen(false)
+        document.body.style.overflow = 'auto'
+    }
+
+    const handleModalScroll = () => {
+        if (!modalScrollRef.current) return
+        const scrollPosition = modalScrollRef.current.scrollLeft
+        const slideWidth = modalScrollRef.current.clientWidth
+        const newIndex = Math.round(scrollPosition / slideWidth)
+        setSelectedImageIndex(newIndex)
+    }
+
+    const nextModalImage = (e?: React.MouseEvent) => {
+        if (e) e.stopPropagation()
+        if (!modalScrollRef.current) return
+        const slideWidth = modalScrollRef.current.clientWidth
+        const nextIndex = Math.min(selectedImageIndex + 1, galleryUrls.length - 1)
+        modalScrollRef.current.scrollTo({ left: slideWidth * nextIndex, behavior: "smooth" })
+    }
+
+    const prevModalImage = (e?: React.MouseEvent) => {
+        if (e) e.stopPropagation()
+        if (!modalScrollRef.current) return
+        const slideWidth = modalScrollRef.current.clientWidth
+        const prevIndex = Math.max(selectedImageIndex - 1, 0)
+        modalScrollRef.current.scrollTo({ left: slideWidth * prevIndex, behavior: "smooth" })
+    }
+
+    // The original scrollToSlide is no longer used by the carousel navigation,
+    // but might be useful for dot indicators or initial modal scroll.
+    const scrollToSlide = useCallback((index: number, ref: React.RefObject<HTMLDivElement | null> = scrollRef) => {
+        if (!ref.current) return
+        const container = ref.current
+        const slideWidth = container.clientWidth
+        container.scrollTo({ left: slideWidth * index, behavior: "smooth" })
+        if (ref === scrollRef) {
+            setActiveSlide(index)
+        } else if (ref === modalScrollRef) {
+            setSelectedImageIndex(index)
+        }
+    }, [])
+
 
     return (
-        <div className="flex flex-col gap-10">
+        <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 md:p-8 flex flex-col gap-10">
             {/* Quick info cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="bg-white border border-gray-200 rounded-xl p-5 flex items-start gap-4">
                     <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-orange-50 flex items-center justify-center">
                         <Clock className="w-5 h-5 text-[#F98C1F]" />
@@ -139,13 +200,14 @@ export function EventDetails({
                             {galleryUrls.map((url, i) => (
                                 <div
                                     key={i}
-                                    className="relative flex-shrink-0 snap-start rounded-2xl overflow-hidden shadow-sm border border-gray-100 h-[280px] sm:h-[400px] w-[85%] sm:w-[70%]"
+                                    onClick={() => openModal(i)}
+                                    className="relative flex-shrink-0 snap-start rounded-2xl overflow-hidden shadow-sm border border-gray-100 h-[280px] sm:h-[400px] w-[85%] sm:w-[70%] cursor-pointer group/item"
                                 >
                                     <Image
                                         src={url}
                                         alt={`Gallery image ${i + 1}`}
                                         fill
-                                        className="object-cover hover:scale-105 transition-transform duration-500 ease-out"
+                                        className="object-cover group-hover/item:scale-105 transition-transform duration-500 ease-out"
                                         sizes="(max-width: 768px) 100vw, 66vw"
                                         unoptimized
                                     />
