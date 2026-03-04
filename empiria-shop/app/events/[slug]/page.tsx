@@ -46,19 +46,29 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
 
     const organizer = ownerProfile?.full_name || 'Empiria Events';
 
-    // Fetch gallery images from events_gallery bucket (folder = event.id)
-    const { data: galleryFiles } = await supabase.storage
-        .from('events_gallery')
-        .list(String(event.id), { limit: 50 });
+    // Fetch gallery images — try by event.id folder first, then event.slug
+    const tryFolders = [String(event.id), event.slug];
+    let galleryUrls: string[] = [];
 
-    const galleryUrls: string[] = (galleryFiles ?? [])
-        .filter((f: any) => f.name && !f.name.startsWith('.'))
-        .map((f: any) => {
-            const { data } = supabase.storage
-                .from('events_gallery')
-                .getPublicUrl(`${event.id}/${f.name}`);
-            return data.publicUrl;
-        });
+    for (const folder of tryFolders) {
+        const { data: files } = await supabase.storage
+            .from('events_gallery')
+            .list(folder, { limit: 50 });
+
+        const urls = (files ?? [])
+            .filter((f: any) => f.name && !f.name.startsWith('.') && f.id)
+            .map((f: any) => {
+                const { data } = supabase.storage
+                    .from('events_gallery')
+                    .getPublicUrl(`${folder}/${f.name}`);
+                return data.publicUrl;
+            });
+
+        if (urls.length > 0) {
+            galleryUrls = urls;
+            break;
+        }
+    }
 
     // What to expect from DB
     const whatToExpect: string[] = Array.isArray(event.what_to_expect)
