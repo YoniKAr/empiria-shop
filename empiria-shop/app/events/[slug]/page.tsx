@@ -36,6 +36,25 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
     const categoryName = (event as any).categories?.name || 'Event';
     const organizer = event.organizer || event.organizer_name || 'Empiria Events';
 
+    // Fetch gallery images from events_gallery bucket (folder = event.id)
+    const { data: galleryFiles } = await supabase.storage
+        .from('events_gallery')
+        .list(String(event.id), { limit: 50 });
+
+    const galleryUrls: string[] = (galleryFiles ?? [])
+        .filter((f: any) => f.name && !f.name.startsWith('.'))
+        .map((f: any) => {
+            const { data } = supabase.storage
+                .from('events_gallery')
+                .getPublicUrl(`${event.id}/${f.name}`);
+            return data.publicUrl;
+        });
+
+    // What to expect from DB
+    const whatToExpect: string[] = Array.isArray(event.what_to_expect)
+        ? event.what_to_expect
+        : [];
+
     // Map ticket_tiers to TicketWidget shape
     const tiers = [...(event.ticket_tiers || [])]
         .sort((a: any, b: any) => a.price - b.price)
@@ -89,6 +108,8 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                         venueName={event.venue_name}
                         city={event.city}
                         organizer={organizer}
+                        galleryUrls={galleryUrls}
+                        whatToExpect={whatToExpect}
                     />
                 </div>
 

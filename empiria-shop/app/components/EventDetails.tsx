@@ -1,7 +1,8 @@
 "use client"
 
-import { useState } from "react"
-import { Clock, MapPin, Info, Share2, X, Copy, Check } from "lucide-react"
+import { useState, useRef, useCallback } from "react"
+import { Clock, MapPin, Info, Share2, X, Copy, Check, ChevronLeft, ChevronRight } from "lucide-react"
+import Image from "next/image"
 
 interface EventDetailsProps {
     description: string
@@ -10,6 +11,8 @@ interface EventDetailsProps {
     venueName: string
     city: string
     organizer: string
+    galleryUrls?: string[]
+    whatToExpect?: string[]
 }
 
 export function EventDetails({
@@ -19,9 +22,13 @@ export function EventDetails({
     venueName,
     city,
     organizer,
+    galleryUrls = [],
+    whatToExpect = [],
 }: EventDetailsProps) {
     const [showShare, setShowShare] = useState(false)
     const [copied, setCopied] = useState(false)
+    const [activeSlide, setActiveSlide] = useState(0)
+    const scrollRef = useRef<HTMLDivElement>(null)
 
     const formatDateTime = (date: string) =>
         new Date(date).toLocaleString("en-IN", {
@@ -45,11 +52,36 @@ export function EventDetails({
     }
 
     const shareInstagram = () => {
-        // Instagram doesn't support direct URL sharing — copy link for user to paste
         navigator.clipboard.writeText(eventUrl)
         setCopied(true)
         setTimeout(() => setCopied(false), 2000)
         alert("Link copied! Open Instagram and paste it in your story or bio.")
+    }
+
+    const scrollToSlide = useCallback((index: number) => {
+        if (!scrollRef.current) return
+        const container = scrollRef.current
+        const slideWidth = container.clientWidth
+        container.scrollTo({ left: slideWidth * index, behavior: "smooth" })
+        setActiveSlide(index)
+    }, [])
+
+    const handlePrev = () => {
+        const prev = (activeSlide - 1 + galleryUrls.length) % galleryUrls.length
+        scrollToSlide(prev)
+    }
+
+    const handleNext = () => {
+        const next = (activeSlide + 1) % galleryUrls.length
+        scrollToSlide(next)
+    }
+
+    // Sync dot indicator on manual scroll
+    const handleScroll = () => {
+        if (!scrollRef.current) return
+        const container = scrollRef.current
+        const index = Math.round(container.scrollLeft / container.clientWidth)
+        setActiveSlide(index)
     }
 
     return (
@@ -88,6 +120,77 @@ export function EventDetails({
                     </div>
                 </div>
             </div>
+
+            {/* Gallery Carousel */}
+            {galleryUrls.length > 0 && (
+                <div>
+                    <h3 className="text-lg font-semibold text-[#F98C1F] mb-4 font-[family-name:var(--font-space-grotesk)]">
+                        Gallery
+                    </h3>
+
+                    <div className="relative group rounded-2xl overflow-hidden">
+                        {/* Slide track */}
+                        <div
+                            ref={scrollRef}
+                            onScroll={handleScroll}
+                            className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide"
+                            style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+                        >
+                            {galleryUrls.map((url, i) => (
+                                <div
+                                    key={i}
+                                    className="relative flex-shrink-0 w-full snap-start"
+                                    style={{ aspectRatio: "16/9" }}
+                                >
+                                    <Image
+                                        src={url}
+                                        alt={`Gallery image ${i + 1}`}
+                                        fill
+                                        className="object-cover"
+                                        sizes="(max-width: 768px) 100vw, 66vw"
+                                        unoptimized
+                                    />
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Prev / Next arrows — only when more than 1 image */}
+                        {galleryUrls.length > 1 && (
+                            <>
+                                <button
+                                    onClick={handlePrev}
+                                    aria-label="Previous image"
+                                    className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-white/80 backdrop-blur-sm shadow-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-white"
+                                >
+                                    <ChevronLeft className="w-5 h-5 text-gray-800" />
+                                </button>
+                                <button
+                                    onClick={handleNext}
+                                    aria-label="Next image"
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-white/80 backdrop-blur-sm shadow-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-white"
+                                >
+                                    <ChevronRight className="w-5 h-5 text-gray-800" />
+                                </button>
+
+                                {/* Dot indicators */}
+                                <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
+                                    {galleryUrls.map((_, i) => (
+                                        <button
+                                            key={i}
+                                            onClick={() => scrollToSlide(i)}
+                                            aria-label={`Go to image ${i + 1}`}
+                                            className={`rounded-full transition-all duration-200 ${i === activeSlide
+                                                    ? "w-5 h-2 bg-white"
+                                                    : "w-2 h-2 bg-white/50 hover:bg-white/75"
+                                                }`}
+                                        />
+                                    ))}
+                                </div>
+                            </>
+                        )}
+                    </div>
+                </div>
+            )}
 
             {/* About section */}
             <div>
@@ -192,28 +295,25 @@ export function EventDetails({
                 </div>
             </div>
 
-            {/* Highlights */}
-            <div>
-                <h3 className="text-lg font-semibold text-[#F98C1F] mb-4 font-[family-name:var(--font-space-grotesk)]">
-                    What to Expect
-                </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {[
-                        "Live performances from world-class artists",
-                        "Immersive audio-visual experience",
-                        "Food & beverage options available",
-                        "Safe and secure venue with easy access",
-                    ].map((highlight) => (
-                        <div
-                            key={highlight}
-                            className="flex items-center gap-3 text-sm text-gray-600"
-                        >
-                            <span className="w-1.5 h-1.5 rounded-full bg-[#F98C1F] flex-shrink-0" />
-                            {highlight}
-                        </div>
-                    ))}
+            {/* What to Expect */}
+            {whatToExpect.length > 0 && (
+                <div>
+                    <h3 className="text-lg font-semibold text-[#F98C1F] mb-4 font-[family-name:var(--font-space-grotesk)]">
+                        What to Expect
+                    </h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {whatToExpect.map((highlight) => (
+                            <div
+                                key={highlight}
+                                className="flex items-center gap-3 text-sm text-gray-600"
+                            >
+                                <span className="w-1.5 h-1.5 rounded-full bg-[#F98C1F] flex-shrink-0" />
+                                {highlight}
+                            </div>
+                        ))}
+                    </div>
                 </div>
-            </div>
+            )}
         </div>
     )
 }
