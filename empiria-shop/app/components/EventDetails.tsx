@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useRef, useCallback } from "react"
-import { Clock, MapPin, Info, Share2, X, Copy, Check, ChevronLeft, ChevronRight } from "lucide-react"
+import { useState, useRef, useCallback, useEffect } from "react"
+import { Clock, MapPin, Info, Share2, X, Copy, Check, ChevronLeft, ChevronRight, ZoomIn } from "lucide-react"
 import Image from "next/image"
 
 interface EventDetailsProps {
@@ -27,14 +27,19 @@ export function EventDetails({
 }: EventDetailsProps) {
     const [showShare, setShowShare] = useState(false)
     const [copied, setCopied] = useState(false)
-    const [activeSlide, setActiveSlide] = useState(0)
 
-    // Modal state for fullscreen gallery
-    const [isModalOpen, setIsModalOpen] = useState(false)
-    const [selectedImageIndex, setSelectedImageIndex] = useState(0)
-
+    // Lightbox and Gallery State
+    const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
     const scrollRef = useRef<HTMLDivElement>(null)
-    const modalScrollRef = useRef<HTMLDivElement>(null)
+    const [canScrollLeft, setCanScrollLeft] = useState(false)
+    const [canScrollRight, setCanScrollRight] = useState(true)
+
+    const checkScroll = useCallback(() => {
+        const el = scrollRef.current
+        if (!el) return
+        setCanScrollLeft(el.scrollLeft > 4)
+        setCanScrollRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 4)
+    }, [])
 
     const formatDateTime = (date: string) =>
         new Date(date).toLocaleString("en-IN", {
@@ -64,85 +69,56 @@ export function EventDetails({
         alert("Link copied! Open Instagram and paste it in your story or bio.")
     }
 
-    // Existing carousel handlers
-    const handleScroll = () => {
-        if (!scrollRef.current) return
-        const scrollPosition = scrollRef.current.scrollLeft
-        const slideWidth = scrollRef.current.clientWidth
-        const newSlide = Math.round(scrollPosition / slideWidth)
-        setActiveSlide(newSlide)
-    }
-
-    const handleNext = () => {
-        if (!scrollRef.current) return
-        const slideWidth = scrollRef.current.clientWidth
-        scrollRef.current.scrollBy({ left: slideWidth, behavior: "smooth" })
-    }
-
-    const handlePrev = () => {
-        if (!scrollRef.current) return
-        const slideWidth = scrollRef.current.clientWidth
-        scrollRef.current.scrollBy({ left: -slideWidth, behavior: "smooth" })
-    }
-
-    // Fullscreen Modal handlers
-    const openModal = (index: number) => {
-        setSelectedImageIndex(index)
-        setIsModalOpen(true)
-        // Prevent body scroll when modal is open
-        document.body.style.overflow = 'hidden'
-
-        // Immediately scroll to the correct image when modal opens
-        setTimeout(() => {
-            if (modalScrollRef.current) {
-                const slideWidth = modalScrollRef.current.clientWidth
-                modalScrollRef.current.scrollTo({ left: slideWidth * index, behavior: "auto" })
-            }
-        }, 10)
-    }
-
-    const closeModal = () => {
-        setIsModalOpen(false)
-        document.body.style.overflow = 'auto'
-    }
-
-    const handleModalScroll = () => {
-        if (!modalScrollRef.current) return
-        const scrollPosition = modalScrollRef.current.scrollLeft
-        const slideWidth = modalScrollRef.current.clientWidth
-        const newIndex = Math.round(scrollPosition / slideWidth)
-        setSelectedImageIndex(newIndex)
-    }
-
-    const nextModalImage = (e?: React.MouseEvent) => {
-        if (e) e.stopPropagation()
-        if (!modalScrollRef.current) return
-        const slideWidth = modalScrollRef.current.clientWidth
-        const nextIndex = Math.min(selectedImageIndex + 1, galleryUrls.length - 1)
-        modalScrollRef.current.scrollTo({ left: slideWidth * nextIndex, behavior: "smooth" })
-    }
-
-    const prevModalImage = (e?: React.MouseEvent) => {
-        if (e) e.stopPropagation()
-        if (!modalScrollRef.current) return
-        const slideWidth = modalScrollRef.current.clientWidth
-        const prevIndex = Math.max(selectedImageIndex - 1, 0)
-        modalScrollRef.current.scrollTo({ left: slideWidth * prevIndex, behavior: "smooth" })
-    }
-
-    // The original scrollToSlide is no longer used by the carousel navigation,
-    // but might be useful for dot indicators or initial modal scroll.
-    const scrollToSlide = useCallback((index: number, ref: React.RefObject<HTMLDivElement | null> = scrollRef) => {
-        if (!ref.current) return
-        const container = ref.current
-        const slideWidth = container.clientWidth
-        container.scrollTo({ left: slideWidth * index, behavior: "smooth" })
-        if (ref === scrollRef) {
-            setActiveSlide(index)
-        } else if (ref === modalScrollRef) {
-            setSelectedImageIndex(index)
+    useEffect(() => {
+        const el = scrollRef.current
+        if (!el) return
+        checkScroll()
+        el.addEventListener("scroll", checkScroll, { passive: true })
+        window.addEventListener("resize", checkScroll)
+        return () => {
+            el.removeEventListener("scroll", checkScroll)
+            window.removeEventListener("resize", checkScroll)
         }
-    }, [])
+    }, [checkScroll])
+
+    const scroll = (direction: "left" | "right") => {
+        const el = scrollRef.current
+        if (!el) return
+        const amount = el.clientWidth * 0.7
+        el.scrollBy({ left: direction === "left" ? -amount : amount, behavior: "smooth" })
+    }
+
+    const openLightbox = (index: number) => {
+        setLightboxIndex(index)
+        document.body.style.overflow = "hidden"
+    }
+
+    const closeLightbox = () => {
+        setLightboxIndex(null)
+        document.body.style.overflow = ""
+    }
+
+    const goLightbox = (direction: "prev" | "next") => {
+        if (lightboxIndex === null) return
+        if (direction === "prev") {
+            setLightboxIndex(lightboxIndex === 0 ? galleryUrls.length - 1 : lightboxIndex - 1)
+        } else {
+            setLightboxIndex(lightboxIndex === galleryUrls.length - 1 ? 0 : lightboxIndex + 1)
+        }
+    }
+
+    // Keyboard navigation for lightbox
+    useEffect(() => {
+        if (lightboxIndex === null) return
+        const handleKey = (e: KeyboardEvent) => {
+            if (e.key === "Escape") closeLightbox()
+            if (e.key === "ArrowLeft") goLightbox("prev")
+            if (e.key === "ArrowRight") goLightbox("next")
+        }
+        window.addEventListener("keydown", handleKey)
+        return () => window.removeEventListener("keydown", handleKey)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [lightboxIndex])
 
 
     return (
@@ -184,71 +160,60 @@ export function EventDetails({
 
             {/* Gallery Carousel */}
             {galleryUrls.length > 0 && (
-                <div>
-                    <h3 className="text-lg font-semibold text-[#F98C1F] mb-4 font-[family-name:var(--font-space-grotesk)]">
-                        Gallery
-                    </h3>
-
-                    <div className="relative group w-full">
-                        {/* Slide track */}
-                        <div
-                            ref={scrollRef}
-                            onScroll={handleScroll}
-                            className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide gap-4 pb-4"
-                            style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
-                        >
-                            {galleryUrls.map((url, i) => (
-                                <div
-                                    key={i}
-                                    onClick={() => openModal(i)}
-                                    className="relative flex-shrink-0 snap-start rounded-2xl overflow-hidden shadow-sm border border-gray-100 h-[280px] sm:h-[400px] w-[85%] sm:w-[70%] cursor-pointer group/item"
-                                >
-                                    <Image
-                                        src={url}
-                                        alt={`Gallery image ${i + 1}`}
-                                        fill
-                                        className="object-cover group-hover/item:scale-105 transition-transform duration-500 ease-out"
-                                        sizes="(max-width: 768px) 100vw, 66vw"
-                                        unoptimized
-                                    />
-                                </div>
-                            ))}
+                <div className="flex flex-col gap-5">
+                    <div className="flex items-center justify-between">
+                        <h2 className="text-2xl font-bold text-[#F98C1F] font-[family-name:var(--font-space-grotesk)]">
+                            Event Gallery
+                        </h2>
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => scroll("left")}
+                                disabled={!canScrollLeft}
+                                className="w-9 h-9 rounded-full border border-gray-200 flex items-center justify-center text-gray-700 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                                aria-label="Scroll gallery left"
+                            >
+                                <ChevronLeft className="w-4 h-4 ml-[-2px]" />
+                            </button>
+                            <button
+                                onClick={() => scroll("right")}
+                                disabled={!canScrollRight}
+                                className="w-9 h-9 rounded-full border border-gray-200 flex items-center justify-center text-gray-700 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                                aria-label="Scroll gallery right"
+                            >
+                                <ChevronRight className="w-4 h-4 ml-[2px]" />
+                            </button>
                         </div>
+                    </div>
 
-                        {/* Prev / Next arrows — only when more than 1 image */}
-                        {galleryUrls.length > 1 && (
-                            <>
-                                <button
-                                    onClick={handlePrev}
-                                    aria-label="Previous image"
-                                    className="absolute left-2 sm:-left-4 top-[calc(50%-1rem)] -translate-y-1/2 w-10 h-10 rounded-full bg-white/90 backdrop-blur-md shadow-[0_4px_12px_rgba(0,0,0,0.1)] border border-gray-100 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all hover:bg-white hover:scale-110 z-10"
-                                >
-                                    <ChevronLeft className="w-5 h-5 text-gray-800 ml-[-2px]" />
-                                </button>
-                                <button
-                                    onClick={handleNext}
-                                    aria-label="Next image"
-                                    className="absolute right-2 sm:-right-4 top-[calc(50%-1rem)] -translate-y-1/2 w-10 h-10 rounded-full bg-white/90 backdrop-blur-md shadow-[0_4px_12px_rgba(0,0,0,0.1)] border border-gray-100 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all hover:bg-white hover:scale-110 z-10"
-                                >
-                                    <ChevronRight className="w-5 h-5 text-gray-800 ml-[2px]" />
-                                </button>
-
-                                {/* Dot indicators */}
-                                <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
-                                    {galleryUrls.map((_, i) => (
-                                        <button
-                                            key={i}
-                                            onClick={() => scrollToSlide(i)}
-                                            aria-label={`Go to image ${i + 1}`}
-                                            className={`rounded-full transition-all duration-200 ${i === activeSlide
-                                                ? "w-5 h-2 bg-white"
-                                                : "w-2 h-2 bg-white/50 hover:bg-white/75"
-                                                }`}
-                                        />
-                                    ))}
+                    {/* Carousel Track */}
+                    <div
+                        ref={scrollRef}
+                        className="flex gap-4 overflow-x-auto scrollbar-hide snap-x snap-mandatory pb-2"
+                        style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+                    >
+                        {galleryUrls.map((url, index) => (
+                            <button
+                                key={index}
+                                onClick={() => openLightbox(index)}
+                                className="group relative flex-shrink-0 w-64 md:w-72 aspect-[4/3] rounded-xl overflow-hidden cursor-pointer snap-start focus:outline-none focus-visible:ring-2 focus-visible:ring-[#F98C1F] focus-visible:ring-offset-2 shadow-sm border border-gray-100"
+                                aria-label={`View Gallery Image ${index + 1} in full size`}
+                            >
+                                <Image
+                                    src={url}
+                                    alt={`Gallery Image ${index + 1}`}
+                                    fill
+                                    className="object-cover transition-transform duration-500 group-hover:scale-110"
+                                    sizes="(max-width: 768px) 256px, 288px"
+                                    unoptimized
+                                />
+                                {/* Hover overlay */}
+                                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all duration-300 flex items-center justify-center">
+                                    <div className="w-10 h-10 rounded-full bg-white/90 flex items-center justify-center opacity-0 group-hover:opacity-100 scale-75 group-hover:scale-100 transition-all duration-300">
+                                        <ZoomIn className="w-5 h-5 text-[#171717]" />
+                                    </div>
                                 </div>
-                            </>
-                        )}
+                            </button>
+                        ))}
                     </div>
                 </div>
             )}
@@ -371,6 +336,91 @@ export function EventDetails({
                                 <span className="w-1.5 h-1.5 rounded-full bg-[#F98C1F] flex-shrink-0" />
                                 {highlight}
                             </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Fullscreen Lightbox Modal */}
+            {lightboxIndex !== null && galleryUrls.length > 0 && (
+                <div
+                    className="fixed inset-0 z-[100] flex items-center justify-center"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label="Image lightbox"
+                >
+                    {/* Backdrop */}
+                    <div
+                        className="absolute inset-0 bg-black/90 backdrop-blur-sm animate-in fade-in duration-200"
+                        onClick={closeLightbox}
+                    />
+
+                    {/* Close button */}
+                    <button
+                        onClick={closeLightbox}
+                        className="absolute top-4 right-4 z-[110] w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors"
+                        aria-label="Close lightbox"
+                    >
+                        <X className="w-5 h-5" />
+                    </button>
+
+                    {/* Image counter */}
+                    <div className="absolute top-5 left-1/2 -translate-x-1/2 z-[110] text-white/70 text-sm font-medium">
+                        {lightboxIndex + 1} / {galleryUrls.length}
+                    </div>
+
+                    {/* Previous button */}
+                    <button
+                        onClick={() => goLightbox("prev")}
+                        className="absolute left-4 z-[110] w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors"
+                        aria-label="Previous image"
+                    >
+                        <ChevronLeft className="w-6 h-6 ml-[-2px]" />
+                    </button>
+
+                    {/* Next button */}
+                    <button
+                        onClick={() => goLightbox("next")}
+                        className="absolute right-4 z-[110] w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors"
+                        aria-label="Next image"
+                    >
+                        <ChevronRight className="w-6 h-6 ml-[2px]" />
+                    </button>
+
+                    {/* Lightbox image */}
+                    <div className="relative w-[90vw] h-[80vh] max-w-5xl animate-in zoom-in-95 fade-in duration-300 z-[105]">
+                        <Image
+                            src={galleryUrls[lightboxIndex]}
+                            alt={`Gallery image ${lightboxIndex + 1}`}
+                            fill
+                            className="object-contain"
+                            sizes="90vw"
+                            priority
+                            unoptimized
+                        />
+                    </div>
+
+                    {/* Thumbnail strip */}
+                    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2 z-[110]">
+                        {galleryUrls.map((url, index) => (
+                            <button
+                                key={index}
+                                onClick={() => setLightboxIndex(index)}
+                                className={`relative w-14 h-10 rounded-md overflow-hidden transition-all duration-200 ${index === lightboxIndex
+                                    ? "ring-2 ring-[#F98C1F] opacity-100 scale-105"
+                                    : "opacity-50 hover:opacity-80"
+                                    }`}
+                                aria-label={`Go to image ${index + 1}`}
+                            >
+                                <Image
+                                    src={url}
+                                    alt=""
+                                    fill
+                                    className="object-cover"
+                                    sizes="56px"
+                                    unoptimized
+                                />
+                            </button>
                         ))}
                     </div>
                 </div>
