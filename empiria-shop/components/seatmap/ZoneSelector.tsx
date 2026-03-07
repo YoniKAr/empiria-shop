@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Minus, Plus, Loader2, AlertCircle } from "lucide-react";
 import SeatmapViewer from "./SeatmapViewer";
 import type { SeatingConfig, ZoneDefinition } from "@/lib/seatmap-types";
+import { migrateSeatingConfig } from "@/lib/migrate-seating-config";
 
 interface TicketTier {
   id: string;
@@ -52,6 +53,8 @@ export default function ZoneSelector({
   userName,
   occurrences = [],
 }: ZoneSelectorProps) {
+  const migratedConfig = migrateSeatingConfig(config);
+
   const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
   const [selections, setSelections] = useState<ZoneSelection[]>([]);
   const [loading, setLoading] = useState(false);
@@ -63,7 +66,7 @@ export default function ZoneSelector({
   const [guestName, setGuestName] = useState("");
 
   const tierMap = new Map(tiers.map((t) => [t.id, t]));
-  const zones = config.zones || [];
+  const zones = migratedConfig.zones || [];
 
   // Build availability map: tier_id -> remaining_quantity
   const availability: Record<string, number> = {};
@@ -192,7 +195,7 @@ export default function ZoneSelector({
         {/* Seatmap canvas */}
         <div className="p-4">
           <SeatmapViewer
-            config={config}
+            config={migratedConfig}
             mode="zone"
             availability={availability}
             onZoneClick={handleZoneClick}

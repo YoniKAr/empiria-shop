@@ -99,6 +99,10 @@ async function handleCheckoutCompleted(session: any) {
     metadata.seat_selections ? JSON.parse(metadata.seat_selections) : null;
   const seatSessionId = metadata.seat_session_id || null;
 
+  // Assigned seats for reserved_seating_list mode
+  const assignedSeats: string[] | null =
+    metadata.assigned_seats ? JSON.parse(metadata.assigned_seats) : null;
+
   // Determine user_id for order/tickets
   // If user is logged in, use auth0_id. Otherwise, null (guest checkout).
   const userId = userAuth0Id || null;
@@ -178,7 +182,7 @@ async function handleCheckoutCompleted(session: any) {
     // Build a queue of seat labels for distributing across tickets
     const seatLabelQueue: string[] = seatSelections
       ? seatSelections.map((s) => s.label)
-      : [];
+      : assignedSeats || [];
 
     for (const selection of tierSelections) {
       // Create order item

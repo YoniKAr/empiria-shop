@@ -3,6 +3,7 @@
 import { useRef, useEffect, useCallback } from "react";
 import { Canvas, Polygon, Circle, FabricImage, FabricText } from "fabric";
 import type { SeatingConfig, ZoneDefinition, SectionDefinition } from "@/lib/seatmap-types";
+import { migrateSeatingConfig } from "@/lib/migrate-seating-config";
 
 interface SeatmapViewerProps {
   config: SeatingConfig;
@@ -70,11 +71,13 @@ export default function SeatmapViewer({
 
     fabricRef.current = canvas;
 
+    const migratedConfig = migrateSeatingConfig(config);
+
     const renderContent = async () => {
       // Load background image
-      if (config.image_url) {
+      if (migratedConfig.image_url) {
         try {
-          const img = await FabricImage.fromURL(config.image_url, {
+          const img = await FabricImage.fromURL(migratedConfig.image_url, {
             crossOrigin: "anonymous",
           });
           const scale = Math.min(
@@ -95,10 +98,10 @@ export default function SeatmapViewer({
         }
       }
 
-      if (mode === "zone" && config.zones) {
-        renderZones(canvas, config.zones);
-      } else if (mode === "seat" && config.sections) {
-        renderSections(canvas, config.sections);
+      if (mode === "zone" && migratedConfig.zones) {
+        renderZones(canvas, migratedConfig.zones);
+      } else if (mode === "seat" && migratedConfig.sections) {
+        renderSections(canvas, migratedConfig.sections);
       }
 
       canvas.renderAll();
@@ -117,16 +120,18 @@ export default function SeatmapViewer({
     const canvas = fabricRef.current;
     if (!canvas) return;
 
+    const migratedConfig = migrateSeatingConfig(config);
+
     // Remove all non-background objects
     const objects = canvas.getObjects();
     for (const obj of objects) {
       canvas.remove(obj);
     }
 
-    if (mode === "zone" && config.zones) {
-      renderZones(canvas, config.zones);
-    } else if (mode === "seat" && config.sections) {
-      renderSections(canvas, config.sections);
+    if (mode === "zone" && migratedConfig.zones) {
+      renderZones(canvas, migratedConfig.zones);
+    } else if (mode === "seat" && migratedConfig.sections) {
+      renderSections(canvas, migratedConfig.sections);
     }
 
     canvas.renderAll();
@@ -143,6 +148,9 @@ export default function SeatmapViewer({
   ]);
 
   function renderZones(canvas: Canvas, zones: ZoneDefinition[]) {
+    // Track all polygon objects for hover group highlighting
+    const zonePolygonMap = new Map<string, Polygon[]>();
+
     for (const zone of zones) {
       const remaining = availability[zone.tier_id] ?? -1;
       const isSoldOut = remaining === 0;
@@ -155,36 +163,44 @@ export default function SeatmapViewer({
         : zone.color + "40";
       const strokeColor = isSoldOut ? "#6b7280" : zone.color;
 
-      const polygon = new Polygon(
-        zone.points.map(([x, y]) => ({ x, y })),
-        {
-          fill: fillColor,
-          stroke: strokeColor,
-          strokeWidth: isSelected ? 3 : 2,
+      const zonePolygons: Polygon[] = [];
+
+      for (const poly of zone.polygons) {
+        const polygon = new Polygon(
+          poly.points.map(([x, y]) => ({ x, y })),
+          {
+            fill: fillColor,
+            stroke: strokeColor,
+            strokeWidth: isSelected ? 3 : 2,
+            selectable: false,
+            evented: !isSoldOut,
+            hoverCursor: isSoldOut ? "not-allowed" : "pointer",
+          }
+        );
+        setObjData(polygon, { zoneId: zone.id, tierId: zone.tier_id });
+        canvas.add(polygon);
+        zonePolygons.push(polygon);
+      }
+
+      zonePolygonMap.set(zone.id, zonePolygons);
+
+      // Add zone label at center of first polygon
+      if (zone.polygons.length > 0) {
+        const center = getPolygonCenter(zone.polygons[0].points);
+        const label = new FabricText(zone.name, {
+          left: center.x,
+          top: center.y,
+          fontSize: 13,
+          fontFamily: "system-ui, sans-serif",
+          fontWeight: "bold",
+          fill: isSoldOut ? "#9ca3af" : "#1f2937",
+          originX: "center",
+          originY: "center",
           selectable: false,
-          evented: !isSoldOut,
-          hoverCursor: isSoldOut ? "not-allowed" : "pointer",
-        }
-      );
-      setObjData(polygon, { zoneId: zone.id, tierId: zone.tier_id });
-
-      canvas.add(polygon);
-
-      // Add zone label
-      const center = getPolygonCenter(zone.points);
-      const label = new FabricText(zone.name, {
-        left: center.x,
-        top: center.y,
-        fontSize: 13,
-        fontFamily: "system-ui, sans-serif",
-        fontWeight: "bold",
-        fill: isSoldOut ? "#9ca3af" : "#1f2937",
-        originX: "center",
-        originY: "center",
-        selectable: false,
-        evented: false,
-      });
-      canvas.add(label);
+          evented: false,
+        });
+        canvas.add(label);
+      }
     }
 
     // Zone click handler
@@ -195,15 +211,18 @@ export default function SeatmapViewer({
       }
     });
 
-    // Hover effects
+    // Hover effects — highlight all polygons in the same zone
     canvas.on("mouse:over", (e) => {
       const obj = e.target;
       const data = getObjData(obj);
-      if (data?.zoneId && obj instanceof Polygon) {
+      if (data?.zoneId) {
         const zone = zones.find((z) => z.id === data.zoneId);
         const remaining = zone ? (availability[zone.tier_id] ?? -1) : -1;
         if (remaining !== 0) {
-          obj.set({ strokeWidth: 3, opacity: 0.9 });
+          const siblings = zonePolygonMap.get(data.zoneId) || [];
+          for (const sibling of siblings) {
+            sibling.set({ strokeWidth: 3, opacity: 0.9 });
+          }
           canvas.renderAll();
         }
       }
@@ -212,9 +231,12 @@ export default function SeatmapViewer({
     canvas.on("mouse:out", (e) => {
       const obj = e.target;
       const data = getObjData(obj);
-      if (data?.zoneId && obj instanceof Polygon) {
+      if (data?.zoneId) {
         const isSelected = selectedZoneId === data.zoneId;
-        obj.set({ strokeWidth: isSelected ? 3 : 2, opacity: 1 });
+        const siblings = zonePolygonMap.get(data.zoneId) || [];
+        for (const sibling of siblings) {
+          sibling.set({ strokeWidth: isSelected ? 3 : 2, opacity: 1 });
+        }
         canvas.renderAll();
       }
     });
@@ -276,6 +298,20 @@ export default function SeatmapViewer({
         });
 
         canvas.add(circle);
+
+        // Seat label on the dot
+        const seatLabel = new FabricText(seat.label, {
+          left: seat.x,
+          top: seat.y,
+          fontSize: 7,
+          fontFamily: "system-ui, sans-serif",
+          fill: "#ffffff",
+          originX: "center",
+          originY: "center",
+          selectable: false,
+          evented: false,
+        });
+        canvas.add(seatLabel);
       }
     }
 

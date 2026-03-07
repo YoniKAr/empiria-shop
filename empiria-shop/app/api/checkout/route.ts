@@ -20,11 +20,16 @@ interface SeatSelection {
   label: string;
 }
 
+interface AssignedSeatSelection {
+  label: string;
+  tierId: string;
+}
+
 export async function POST(request: NextRequest) {
   try {
     // 1. Parse request body
     const body = await request.json();
-    const { eventId, tiers, contactEmail, contactName, occurrenceId, seatSelections, sessionId } = body as {
+    const { eventId, tiers, contactEmail, contactName, occurrenceId, seatSelections, sessionId, assignedSeats } = body as {
       eventId: string;
       tiers: TierSelection[];
       contactEmail?: string;
@@ -32,6 +37,7 @@ export async function POST(request: NextRequest) {
       occurrenceId?: string;
       seatSelections?: SeatSelection[];
       sessionId?: string;
+      assignedSeats?: AssignedSeatSelection[];
     };
 
     if (!eventId || !tiers || tiers.length === 0) {
@@ -50,7 +56,7 @@ export async function POST(request: NextRequest) {
 
     const { data: event, error: eventError } = await supabase
       .from('events')
-      .select('id, title, slug, organizer_id, platform_fee_percent, platform_fee_fixed, currency, status, total_capacity, total_tickets_sold')
+      .select('id, title, slug, organizer_id, platform_fee_percent, platform_fee_fixed, currency, status, total_capacity, total_tickets_sold, seating_type, seating_config')
       .eq('id', eventId)
       .single();
 
@@ -209,6 +215,113 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // 6c. Handle assigned seating (reserved_seating_list with seat_ranges)
+    let resolvedAssignedSeats: AssignedSeatSelection[] | null = null;
+
+    if (event.seating_type === 'reserved_seating_list') {
+      const seatingConfig = event.seating_config as { seat_ranges?: Array<{ id: string; prefix: string; start: number; end: number; tier_id: string }>; allow_seat_choice?: boolean } | null;
+      const seatRanges = seatingConfig?.seat_ranges || [];
+
+      if (seatRanges.length > 0) {
+        if (assignedSeats && assignedSeats.length > 0) {
+          // User chose specific seats — validate they aren't sold or held
+          const seatLabelsToCheck = assignedSeats.map((s) => s.label);
+
+          const { data: soldTickets } = await supabase
+            .from('tickets')
+            .select('seat_label')
+            .eq('event_id', eventId)
+            .not('seat_label', 'is', null)
+            .in('status', ['valid', 'checked_in']);
+
+          const soldLabels = new Set(
+            (soldTickets || []).map((t: any) => t.seat_label).filter(Boolean)
+          );
+
+          const { data: activeHolds } = await supabase
+            .from('seat_holds')
+            .select('seat_id')
+            .eq('event_id', eventId)
+            .gt('expires_at', new Date().toISOString());
+
+          const heldLabels = new Set(
+            (activeHolds || []).map((h: any) => h.seat_id)
+          );
+
+          for (const seat of seatLabelsToCheck) {
+            if (soldLabels.has(seat)) {
+              return NextResponse.json(
+                { error: `Seat ${seat} is already sold.` },
+                { status: 409 }
+              );
+            }
+            if (heldLabels.has(seat)) {
+              return NextResponse.json(
+                { error: `Seat ${seat} is currently held by another customer.` },
+                { status: 409 }
+              );
+            }
+          }
+
+          resolvedAssignedSeats = assignedSeats;
+        } else {
+          // Auto-assign: pick next available seats from ranges for each tier
+          const autoAssigned: AssignedSeatSelection[] = [];
+
+          // Get all sold/held labels
+          const { data: soldTickets } = await supabase
+            .from('tickets')
+            .select('seat_label')
+            .eq('event_id', eventId)
+            .not('seat_label', 'is', null)
+            .in('status', ['valid', 'checked_in']);
+
+          const soldLabels = new Set(
+            (soldTickets || []).map((t: any) => t.seat_label).filter(Boolean)
+          );
+
+          const { data: activeHolds } = await supabase
+            .from('seat_holds')
+            .select('seat_id')
+            .eq('event_id', eventId)
+            .gt('expires_at', new Date().toISOString());
+
+          const heldLabels = new Set(
+            (activeHolds || []).map((h: any) => h.seat_id)
+          );
+
+          for (const selection of validatedSelections) {
+            const tierRanges = seatRanges.filter((r) => r.tier_id === selection.tierId);
+            const availableLabels: string[] = [];
+
+            for (const range of tierRanges) {
+              for (let i = range.start; i <= range.end; i++) {
+                const label = `${range.prefix}${i}`;
+                if (!soldLabels.has(label) && !heldLabels.has(label)) {
+                  availableLabels.push(label);
+                }
+              }
+            }
+
+            if (availableLabels.length < selection.quantity) {
+              return NextResponse.json(
+                { error: `Not enough seats available for ${selection.tierName}. Only ${availableLabels.length} remaining.` },
+                { status: 409 }
+              );
+            }
+
+            for (let i = 0; i < selection.quantity; i++) {
+              autoAssigned.push({ label: availableLabels[i], tierId: selection.tierId });
+              // Mark as taken so next tier iteration won't pick same seat
+              soldLabels.add(availableLabels[i]);
+            }
+          }
+
+          resolvedAssignedSeats = autoAssigned;
+        }
+      }
+    }
+
     // 7. Calculate platform fee
     const feePercent = Number(event.platform_fee_percent) || 5;
     const feeFixed = Number(event.platform_fee_fixed) || 0;
@@ -240,6 +353,11 @@ export async function POST(request: NextRequest) {
     if (seatSelections && seatSelections.length > 0) {
       metadata.seat_selections = JSON.stringify(seatSelections);
       metadata.seat_session_id = sessionId || '';
+    }
+
+    // Include assigned seats for reserved_seating_list mode
+    if (resolvedAssignedSeats && resolvedAssignedSeats.length > 0) {
+      metadata.assigned_seats = JSON.stringify(resolvedAssignedSeats.map((s) => s.label));
     }
 
     // 10. Create Stripe Checkout Session

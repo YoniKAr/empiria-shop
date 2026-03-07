@@ -7,6 +7,7 @@ import { EventDetails } from '@/app/components/EventDetails';
 import { TicketWidget } from '@/app/components/TicketWidget';
 import ZoneSelector from '@/components/seatmap/ZoneSelector';
 import SeatSelector from '@/components/seatmap/SeatSelector';
+import AssignedSeatPicker from '@/components/seatmap/AssignedSeatPicker';
 import type { SeatingConfig } from '@/lib/seatmap-types';
 
 export default async function EventPage({ params }: { params: Promise<{ slug: string }> }) {
@@ -110,11 +111,12 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
 
     // Seating type and config
     const seatingType = (event as any).seating_type || 'general_admission';
+    const rawSeatingConfig = (event as any).seating_config;
     const seatingConfig: SeatingConfig | null =
-        (event as any).seating_config &&
-        typeof (event as any).seating_config === 'object' &&
-        (event as any).seating_config.image_url !== undefined
-            ? (event as any).seating_config as SeatingConfig
+        rawSeatingConfig &&
+        typeof rawSeatingConfig === 'object' &&
+        (rawSeatingConfig.image_url !== undefined || rawSeatingConfig.seat_ranges !== undefined)
+            ? rawSeatingConfig as SeatingConfig
             : null;
 
     // Sorted tiers for seatmap selectors (same data, different shape)
@@ -175,6 +177,23 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                         <div className="border border-gray-200 rounded-xl p-6 bg-gray-50 text-center">
                             <p className="text-gray-500 font-medium">This event has ended</p>
                         </div>
+                    ) : seatingType === 'reserved_seating_list' && seatingConfig && seatingConfig.seat_ranges && seatingConfig.seat_ranges.length > 0 ? (
+                        <AssignedSeatPicker
+                            seatRanges={seatingConfig.seat_ranges}
+                            tiers={sortedTiers}
+                            eventId={event.id}
+                            eventCurrency={currency}
+                            currencySymbol={currencySymbol}
+                            userEmail={user?.email}
+                            userName={user?.name}
+                            allowSeatChoice={seatingConfig.allow_seat_choice ?? false}
+                            occurrences={futureOccurrences.map((o: any) => ({
+                                id: o.id,
+                                starts_at: o.starts_at,
+                                ends_at: o.ends_at,
+                                label: o.label || '',
+                            }))}
+                        />
                     ) : seatingType === 'reserved_seating_list' && seatingConfig ? (
                         <ZoneSelector
                             config={seatingConfig}
