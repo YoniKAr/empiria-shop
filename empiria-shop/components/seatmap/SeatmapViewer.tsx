@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useEffect, useCallback } from "react";
-import { Canvas, Polygon, FabricImage, FabricText } from "fabric";
+import { Canvas, Polygon, Circle, FabricImage, FabricText } from "fabric";
 import type { SeatingConfig, ZoneDefinition, SectionDefinition } from "@/lib/seatmap-types";
 
 interface SeatmapViewerProps {
@@ -25,6 +25,14 @@ interface SeatmapViewerProps {
 
 const CANVAS_WIDTH = 700;
 const CANVAS_HEIGHT = 500;
+
+// Helper to get/set custom data on fabric objects (not in TS types but works at runtime)
+function setObjData(obj: any, data: Record<string, any>) {
+  obj.data = data;
+}
+function getObjData(obj: any): Record<string, any> | undefined {
+  return obj?.data;
+}
 
 export default function SeatmapViewer({
   config,
@@ -155,10 +163,10 @@ export default function SeatmapViewer({
           strokeWidth: isSelected ? 3 : 2,
           selectable: false,
           evented: !isSoldOut,
-          data: { zoneId: zone.id, tierId: zone.tier_id },
           hoverCursor: isSoldOut ? "not-allowed" : "pointer",
         }
       );
+      setObjData(polygon, { zoneId: zone.id, tierId: zone.tier_id });
 
       canvas.add(polygon);
 
@@ -181,17 +189,18 @@ export default function SeatmapViewer({
 
     // Zone click handler
     canvas.on("mouse:down", (e) => {
-      const obj = e.target;
-      if (obj?.data?.zoneId && onZoneClick) {
-        onZoneClick(obj.data.zoneId, obj.data.tierId);
+      const data = getObjData(e.target);
+      if (data?.zoneId && onZoneClick) {
+        onZoneClick(data.zoneId, data.tierId);
       }
     });
 
     // Hover effects
     canvas.on("mouse:over", (e) => {
       const obj = e.target;
-      if (obj?.data?.zoneId && obj instanceof Polygon) {
-        const zone = zones.find((z) => z.id === obj.data.zoneId);
+      const data = getObjData(obj);
+      if (data?.zoneId && obj instanceof Polygon) {
+        const zone = zones.find((z) => z.id === data.zoneId);
         const remaining = zone ? (availability[zone.tier_id] ?? -1) : -1;
         if (remaining !== 0) {
           obj.set({ strokeWidth: 3, opacity: 0.9 });
@@ -202,8 +211,9 @@ export default function SeatmapViewer({
 
     canvas.on("mouse:out", (e) => {
       const obj = e.target;
-      if (obj?.data?.zoneId && obj instanceof Polygon) {
-        const isSelected = selectedZoneId === obj.data.zoneId;
+      const data = getObjData(obj);
+      if (data?.zoneId && obj instanceof Polygon) {
+        const isSelected = selectedZoneId === data.zoneId;
         obj.set({ strokeWidth: isSelected ? 3 : 2, opacity: 1 });
         canvas.renderAll();
       }
@@ -242,7 +252,6 @@ export default function SeatmapViewer({
       canvas.add(sectionLabel);
 
       // Draw individual seats
-      const { Circle } = require("fabric");
       for (const seat of section.seats) {
         const colors = getSeatColor(seat.id);
         const isSold = soldSeats.has(seat.id);
@@ -258,12 +267,12 @@ export default function SeatmapViewer({
           strokeWidth: 1.5,
           selectable: false,
           evented: isClickable,
-          data: {
-            seatId: seat.id,
-            sectionId: section.id,
-            label: seat.label,
-          },
           hoverCursor: isClickable ? "pointer" : "not-allowed",
+        });
+        setObjData(circle, {
+          seatId: seat.id,
+          sectionId: section.id,
+          label: seat.label,
         });
 
         canvas.add(circle);
@@ -272,25 +281,25 @@ export default function SeatmapViewer({
 
     // Seat click handler
     canvas.on("mouse:down", (e) => {
-      const obj = e.target;
-      if (obj?.data?.seatId && onSeatClick) {
-        onSeatClick(obj.data.seatId, obj.data.sectionId, obj.data.label);
+      const data = getObjData(e.target);
+      if (data?.seatId && onSeatClick) {
+        onSeatClick(data.seatId, data.sectionId, data.label);
       }
     });
 
     // Seat hover
     canvas.on("mouse:over", (e) => {
-      const obj = e.target;
-      if (obj?.data?.seatId) {
-        obj.set({ strokeWidth: 2.5, scaleX: 1.15, scaleY: 1.15 });
+      const data = getObjData(e.target);
+      if (data?.seatId && e.target) {
+        e.target.set({ strokeWidth: 2.5, scaleX: 1.15, scaleY: 1.15 });
         canvas.renderAll();
       }
     });
 
     canvas.on("mouse:out", (e) => {
-      const obj = e.target;
-      if (obj?.data?.seatId) {
-        obj.set({ strokeWidth: 1.5, scaleX: 1, scaleY: 1 });
+      const data = getObjData(e.target);
+      if (data?.seatId && e.target) {
+        e.target.set({ strokeWidth: 1.5, scaleX: 1, scaleY: 1 });
         canvas.renderAll();
       }
     });
