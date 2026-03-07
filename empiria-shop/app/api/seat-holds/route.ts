@@ -17,13 +17,14 @@ export async function POST(request: NextRequest) {
     const supabase = getSupabaseAdmin();
 
     // Clean up expired holds first
-    await supabase.rpc("cleanup_expired_holds").catch(() => {
+    const { error: rpcError } = await supabase.rpc("cleanup_expired_holds");
+    if (rpcError) {
       // If the RPC doesn't exist yet, do manual cleanup
-      return supabase
+      await supabase
         .from("seat_holds")
         .delete()
         .lt("expires_at", new Date().toISOString());
-    });
+    }
 
     // Check if seat is already sold (ticket with this seat_label exists)
     const { data: existingTicket } = await supabase
