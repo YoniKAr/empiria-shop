@@ -94,6 +94,11 @@ async function handleCheckoutCompleted(session: any) {
   const platformFee = parseFloat(metadata.platform_fee);
   const organizerPayout = parseFloat(metadata.organizer_payout);
 
+  // Seat selections for seatmap_pro mode
+  const seatSelections: Array<{ seatId: string; sectionId: string; label: string }> | null =
+    metadata.seat_selections ? JSON.parse(metadata.seat_selections) : null;
+  const seatSessionId = metadata.seat_session_id || null;
+
   // Determine user_id for order/tickets
   // If user is logged in, use auth0_id. Otherwise, null (guest checkout).
   const userId = userAuth0Id || null;
@@ -168,7 +173,12 @@ async function handleCheckoutCompleted(session: any) {
     }
 
     // 3. Create order_items and tickets for each tier selection
-    const allTickets: Array<{ id: string; qr_code_secret: string; tierName: string }> = [];
+    const allTickets: Array<{ id: string; qr_code_secret: string; tierName: string; seatLabel?: string }> = [];
+
+    // Build a queue of seat labels for distributing across tickets
+    const seatLabelQueue: string[] = seatSelections
+      ? seatSelections.map((s) => s.label)
+      : [];
 
     for (const selection of tierSelections) {
       // Create order item
@@ -190,7 +200,14 @@ async function handleCheckoutCompleted(session: any) {
       //   - Decrement remaining_quantity on ticket_tiers
       //   - Increment total_tickets_sold on events
       //   - Auto-generate qr_code_secret via default gen_random_uuid()
-      const ticketInserts = Array.from({ length: selection.quantity }, () => ({
+
+      // For seatmap_pro mode, pop seat labels from the queue (ordered to match tiers)
+      const labelsForThisTier: string[] = [];
+      for (let i = 0; i < selection.quantity && seatLabelQueue.length > 0; i++) {
+        labelsForThisTier.push(seatLabelQueue.shift()!);
+      }
+
+      const ticketInserts = Array.from({ length: selection.quantity }, (_, i) => ({
         event_id: eventId,
         tier_id: selection.tierId,
         order_id: order.id,
@@ -199,6 +216,7 @@ async function handleCheckoutCompleted(session: any) {
         attendee_email: userEmail,
         status: 'valid' as const,
         occurrence_id: occurrenceId,
+        ...(labelsForThisTier[i] ? { seat_label: labelsForThisTier[i] } : {}),
       }));
 
       const { data: tickets, error: ticketError } = await supabase
@@ -210,12 +228,33 @@ async function handleCheckoutCompleted(session: any) {
         console.error('[Webhook] Failed to create tickets:', ticketError);
       } else {
         console.log(`[Webhook] Created ${tickets?.length} tickets for tier ${selection.tierName}`);
-        // Accumulate tickets with tier name for email
         if (tickets) {
-          for (const t of tickets) {
-            allTickets.push({ id: t.id, qr_code_secret: t.qr_code_secret, tierName: selection.tierName });
+          for (let ti = 0; ti < tickets.length; ti++) {
+            const t = tickets[ti];
+            allTickets.push({
+              id: t.id,
+              qr_code_secret: t.qr_code_secret,
+              tierName: selection.tierName,
+              seatLabel: labelsForThisTier[ti] || undefined,
+            });
           }
         }
+      }
+    }
+
+    // 3b. Clean up seat holds after successful ticket creation
+    if (seatSelections && seatSelections.length > 0) {
+      const seatIds = seatSelections.map((s) => s.seatId);
+      const { error: holdDeleteError } = await supabase
+        .from('seat_holds')
+        .delete()
+        .eq('event_id', eventId)
+        .in('seat_id', seatIds);
+
+      if (holdDeleteError) {
+        console.error('[Webhook] Failed to clean up seat holds:', holdDeleteError);
+      } else {
+        console.log(`[Webhook] Cleaned up ${seatIds.length} seat holds`);
       }
     }
 

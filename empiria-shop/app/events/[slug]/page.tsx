@@ -5,6 +5,9 @@ import Navbar from '@/components/Navbar';
 import { EventHero } from '@/app/components/EventHero';
 import { EventDetails } from '@/app/components/EventDetails';
 import { TicketWidget } from '@/app/components/TicketWidget';
+import ZoneSelector from '@/components/seatmap/ZoneSelector';
+import SeatSelector from '@/components/seatmap/SeatSelector';
+import type { SeatingConfig } from '@/lib/seatmap-types';
 
 export default async function EventPage({ params }: { params: Promise<{ slug: string }> }) {
     const { slug } = await params;
@@ -46,8 +49,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
 
     const organizer = ownerProfile?.full_name || 'Empiria Events';
 
-    // Fetch gallery images — try combinations of safe organizer_id and event.id
-    // Auth0 IDs have a '|' (e.g. google-oauth2|123) but Supabase storage folders use '_' (google-oauth2_123)
+    // Fetch gallery images
     const safeOrganizerId = event.organizer_id?.replace(/\|/g, '_');
 
     let galleryUrls: string[] = [];
@@ -58,7 +60,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
         safeOrganizerId ? `${safeOrganizerId}/${event.slug}` : '',
         safeOrganizerId || '',
         ''
-    ].filter(Boolean); // Remove empty if any
+    ].filter(Boolean);
 
     for (const folder of possiblePaths) {
         if (!folder) continue;
@@ -99,13 +101,32 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
         }));
 
     // Resolve cover image to a full URL
-    // Supabase may store it as a full URL or just a storage path like "events/xxx.jpg"
     const rawCoverUrl = event.cover_image_url ?? '';
     const coverImageUrl = rawCoverUrl.startsWith('http')
         ? rawCoverUrl
         : rawCoverUrl
             ? `${process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL}/storage/v1/object/public/${rawCoverUrl}`
             : '';
+
+    // Seating type and config
+    const seatingType = (event as any).seating_type || 'general_admission';
+    const seatingConfig: SeatingConfig | null =
+        (event as any).seating_config &&
+        typeof (event as any).seating_config === 'object' &&
+        (event as any).seating_config.image_url !== undefined
+            ? (event as any).seating_config as SeatingConfig
+            : null;
+
+    // Sorted tiers for seatmap selectors (same data, different shape)
+    const sortedTiers = [...(event.ticket_tiers || [])]
+        .sort((a: any, b: any) => a.price - b.price);
+
+    const currency = event.currency || 'cad';
+    const currencySymbol = currency === 'inr' ? '\u20B9' : currency === 'usd' ? '$' : 'CA$';
+
+    // Get user session
+    const session = await getSafeSession();
+    const user = session?.user;
 
     return (
         <div className="min-h-screen bg-white">
@@ -131,7 +152,6 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                             if (typeof event.description === 'object') {
                                 return (event.description as any)?.text || JSON.stringify(event.description);
                             }
-                            // It's a string — try parsing it as JSON first
                             try {
                                 const parsed = JSON.parse(event.description as string);
                                 return parsed?.text || event.description;
@@ -149,12 +169,44 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                     />
                 </div>
 
-                {/* Right: Ticket widget */}
+                {/* Right: Ticket / Seat selection widget */}
                 <div>
                     {isPast ? (
                         <div className="border border-gray-200 rounded-xl p-6 bg-gray-50 text-center">
                             <p className="text-gray-500 font-medium">This event has ended</p>
                         </div>
+                    ) : seatingType === 'reserved_seating_list' && seatingConfig ? (
+                        <ZoneSelector
+                            config={seatingConfig}
+                            tiers={sortedTiers}
+                            eventId={event.id}
+                            eventCurrency={currency}
+                            currencySymbol={currencySymbol}
+                            userEmail={user?.email}
+                            userName={user?.name}
+                            occurrences={futureOccurrences.map((o: any) => ({
+                                id: o.id,
+                                starts_at: o.starts_at,
+                                ends_at: o.ends_at,
+                                label: o.label || '',
+                            }))}
+                        />
+                    ) : seatingType === 'seatmap_pro' && seatingConfig ? (
+                        <SeatSelector
+                            config={seatingConfig}
+                            tiers={sortedTiers}
+                            eventId={event.id}
+                            eventCurrency={currency}
+                            currencySymbol={currencySymbol}
+                            userEmail={user?.email}
+                            userName={user?.name}
+                            occurrences={futureOccurrences.map((o: any) => ({
+                                id: o.id,
+                                starts_at: o.starts_at,
+                                ends_at: o.ends_at,
+                                label: o.label || '',
+                            }))}
+                        />
                     ) : (
                         <TicketWidget
                             tiers={tiers}

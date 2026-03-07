@@ -14,16 +14,24 @@ interface TierSelection {
   quantity: number;
 }
 
+interface SeatSelection {
+  seatId: string;
+  sectionId: string;
+  label: string;
+}
+
 export async function POST(request: NextRequest) {
   try {
     // 1. Parse request body
     const body = await request.json();
-    const { eventId, tiers, contactEmail, contactName, occurrenceId } = body as {
+    const { eventId, tiers, contactEmail, contactName, occurrenceId, seatSelections, sessionId } = body as {
       eventId: string;
       tiers: TierSelection[];
       contactEmail?: string;
       contactName?: string;
       occurrenceId?: string;
+      seatSelections?: SeatSelection[];
+      sessionId?: string;
     };
 
     if (!eventId || !tiers || tiers.length === 0) {
@@ -169,6 +177,38 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // 6b. If seatmap_pro mode, verify each seat has a valid hold for this session
+    if (seatSelections && seatSelections.length > 0 && sessionId) {
+      const { data: activeHolds, error: holdsError } = await supabase
+        .from('seat_holds')
+        .select('seat_id, session_id')
+        .eq('event_id', eventId)
+        .in('seat_id', seatSelections.map((s) => s.seatId))
+        .gt('expires_at', new Date().toISOString());
+
+      if (holdsError) {
+        return NextResponse.json({ error: 'Failed to verify seat holds' }, { status: 500 });
+      }
+
+      const holdMap = new Map((activeHolds || []).map((h) => [h.seat_id, h.session_id]));
+
+      for (const seat of seatSelections) {
+        const holdSession = holdMap.get(seat.seatId);
+        if (!holdSession) {
+          return NextResponse.json(
+            { error: `Your hold on seat ${seat.label} has expired. Please select it again.` },
+            { status: 409 }
+          );
+        }
+        if (holdSession !== sessionId) {
+          return NextResponse.json(
+            { error: `Seat ${seat.label} is held by another customer.` },
+            { status: 409 }
+          );
+        }
+      }
+    }
+
     // 7. Calculate platform fee
     const feePercent = Number(event.platform_fee_percent) || 5;
     const feeFixed = Number(event.platform_fee_fixed) || 0;
@@ -181,7 +221,7 @@ export async function POST(request: NextRequest) {
     const userId = user?.sub || `guest_${Date.now()}`;
 
     // 9. Build metadata for webhook processing
-    const metadata = {
+    const metadata: Record<string, string> = {
       event_id: eventId,
       user_auth0_id: user?.sub || '',
       user_email: customerEmail || '',
@@ -195,6 +235,12 @@ export async function POST(request: NextRequest) {
       source_app: 'shop',
       occurrence_id: occurrenceId || '',
     };
+
+    // Include seat selections for seatmap_pro mode
+    if (seatSelections && seatSelections.length > 0) {
+      metadata.seat_selections = JSON.stringify(seatSelections);
+      metadata.seat_session_id = sessionId || '';
+    }
 
     // 10. Create Stripe Checkout Session
     const appBaseUrl = process.env.APP_BASE_URL || 'https://shop.empiriaindia.com';

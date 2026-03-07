@@ -6,6 +6,7 @@ interface TicketInfo {
   id: string;
   qr_code_secret: string;
   tierName: string;
+  seatLabel?: string;
 }
 
 interface LineItem {
@@ -138,6 +139,7 @@ function buildEmailHtml(data: OrderEmailData): string {
               </td>
               <td style="padding: 16px; vertical-align: middle;">
                 <p style="margin: 0 0 4px; font-size: 14px; font-weight: 600; color: #111827;">${ticket.tierName}</p>
+                ${ticket.seatLabel ? `<p style="margin: 0 0 4px; font-size: 13px; color: #374151;">Seat: ${ticket.seatLabel}</p>` : ''}
                 <p style="margin: 0; font-size: 12px; color: #6b7280;">Ticket #${ticket.id.slice(0, 8)}</p>
               </td>
             </tr>
