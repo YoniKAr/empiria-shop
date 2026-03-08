@@ -13,7 +13,8 @@ const MOCK_EVENTS = [
         venue_name: 'Mahalaxmi Race Course',
         city: 'Mumbai',
         currency: 'inr',
-        ticket_tiers: [{ price: 1500 }, { price: 3000 }]
+        ticket_tiers: [{ price: 1500 }, { price: 3000 }],
+        organizer_name: 'Empiria Events',
     },
     {
         id: 'mock-2',
@@ -24,7 +25,8 @@ const MOCK_EVENTS = [
         venue_name: 'Taj Yeshwantpur',
         city: 'Bengaluru',
         currency: 'inr',
-        ticket_tiers: [{ price: 4999 }]
+        ticket_tiers: [{ price: 4999 }],
+        organizer_name: 'TechSparks',
     },
     {
         id: 'mock-3',
@@ -35,7 +37,8 @@ const MOCK_EVENTS = [
         venue_name: 'Jawaharlal Nehru Stadium',
         city: 'Delhi',
         currency: 'inr',
-        ticket_tiers: [{ price: 999 }, { price: 1999 }]
+        ticket_tiers: [{ price: 999 }, { price: 1999 }],
+        organizer_name: 'Zomato Events',
     }
 ];
 
@@ -46,7 +49,7 @@ export default async function ShopHome() {
         .from('events')
         .select(`
       id, title, slug, cover_image_url,
-      venue_name, city, currency,
+      venue_name, city, currency, organizer_id,
       categories (name),
       ticket_tiers (price),
       event_occurrences (starts_at)
@@ -55,7 +58,27 @@ export default async function ShopHome() {
         .order('created_at', { ascending: false })
         .limit(12);
 
-    const displayEvents = realEvents && realEvents.length > 0 ? realEvents : MOCK_EVENTS;
+    // Batch-fetch organizer names for all events
+    let eventsWithOrganizers: any[] = [];
+    if (realEvents && realEvents.length > 0) {
+        const organizerIds = [...new Set(realEvents.map((e: any) => e.organizer_id).filter(Boolean))];
+        const { data: profiles } = organizerIds.length > 0
+            ? await supabase
+                .from('users')
+                .select('auth0_id, full_name')
+                .in('auth0_id', organizerIds)
+            : { data: [] };
+
+        const profileMap: Record<string, string> = {};
+        (profiles || []).forEach((p: any) => { profileMap[p.auth0_id] = p.full_name; });
+
+        eventsWithOrganizers = realEvents.map((e: any) => ({
+            ...e,
+            organizer_name: profileMap[e.organizer_id] || 'Empiria Events',
+        }));
+    }
+
+    const displayEvents = eventsWithOrganizers.length > 0 ? eventsWithOrganizers : MOCK_EVENTS;
     const isMock = !realEvents || realEvents.length === 0;
 
     return (

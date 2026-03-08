@@ -15,6 +15,7 @@ export interface EventCardProps {
     currencySymbol: string;
     attendeesCount?: number;
     attendeeAvatars?: string[];
+    organizerName?: string;
 }
 
 export function EventCard({
@@ -29,8 +30,7 @@ export function EventCard({
     startAt,
     minPrice,
     currencySymbol,
-    attendeesCount = 0,
-    attendeeAvatars = [],
+    organizerName,
 }: EventCardProps) {
     const eventDate = startAt ? new Date(startAt) : null;
     const month = eventDate?.toLocaleDateString('en-US', { month: 'short' }).toUpperCase();
@@ -127,35 +127,17 @@ export function EventCard({
 
                     {/* Footer */}
                     <div className="flex items-center justify-between mt-auto">
-                        {/* Attendee Avatars */}
-                        <div className="flex items-center">
-                            <div className="flex -space-x-1.5">
-                                {attendeeAvatars.length > 0 ? (
-                                    attendeeAvatars.slice(0, 2).map((avatar, idx) => (
-                                        <div
-                                            key={idx}
-                                            className="w-7 h-7 rounded-full border-[1.5px] border-white overflow-hidden bg-gray-100"
-                                        >
-                                            <img src={avatar} alt="" className="w-full h-full object-cover" />
-                                        </div>
-                                    ))
-                                ) : (
-                                    <>
-                                        <div className="w-7 h-7 rounded-full border-[1.5px] border-white bg-emerald-500 shadow-sm" />
-                                        <div className="w-7 h-7 rounded-full border-[1.5px] border-white bg-blue-500 shadow-sm" />
-                                        <div className="w-7 h-7 rounded-full border-[1.5px] border-white bg-amber-500 shadow-sm" />
-                                    </>
-                                )}
+                        {/* Organizer Info */}
+                        <div className="flex items-center gap-2">
+                            {/* Initials Avatar */}
+                            <div className="w-7 h-7 rounded-full bg-[#F98C1F] flex items-center justify-center flex-shrink-0">
+                                <span className="text-white text-[10px] font-bold uppercase leading-none">
+                                    {(organizerName || 'E').split(' ').map((w: string) => w[0]).slice(0, 2).join('')}
+                                </span>
                             </div>
-                            {attendeesCount > 0 ? (
-                                <span className="ml-[10px] text-[12px] text-gray-500 font-medium">
-                                    +{attendeesCount}
-                                </span>
-                            ) : (
-                                <span className="ml-[10px] text-[12px] text-gray-500 font-medium">
-                                    +42
-                                </span>
-                            )}
+                            <span className="text-[12px] text-gray-600 font-medium line-clamp-1">
+                                {organizerName || 'Empiria Events'}
+                            </span>
                         </div>
 
                         {/* View Details Link */}

@@ -17,6 +17,7 @@ interface Event {
     ticket_tiers?: { price: number }[];
     event_occurrences?: { starts_at: string }[];
     start_at?: string;
+    organizer_name?: string;
 }
 
 interface EventsGridProps {
@@ -112,6 +113,7 @@ export default function EventsGrid({ events, isMock }: EventsGridProps) {
                                     startAt={startAt}
                                     minPrice={minPrice}
                                     currencySymbol={symbol}
+                                    organizerName={event.organizer_name}
                                 />
                             );
                         })}
