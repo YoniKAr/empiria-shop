@@ -14,6 +14,12 @@ export interface ZoneDefinition {
   name: string;
   color: string;
   polygons: ZonePolygon[]; // multi-polygon support
+  // Zone-based pricing (seatmap_pro)
+  price?: number;
+  initial_quantity?: number;
+  max_per_order?: number;
+  description?: string;
+  currency?: string;
 }
 
 export interface SeatDefinition {
