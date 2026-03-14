@@ -14,12 +14,24 @@ export interface ZoneDefinition {
   name: string;
   color: string;
   polygons: ZonePolygon[]; // multi-polygon support
-  // Zone-based pricing (seatmap_pro)
+  tiers?: ZoneTier[]; // multiple pricing tiers per zone
+  // Legacy single-tier fields (used when tiers array is empty/absent)
   price?: number;
   initial_quantity?: number;
   max_per_order?: number;
   description?: string;
   currency?: string;
+}
+
+// Tiers within a zone (e.g. Adult, Child, VIP for the same physical area)
+export interface ZoneTier {
+  id: string;
+  name: string;
+  price: number;
+  initial_quantity: number;
+  max_per_order: number;
+  description: string;
+  currency: string;
 }
 
 export interface SeatDefinition {
@@ -47,11 +59,14 @@ export interface SeatRange {
   tier_id: string;       // which ticket tier this range belongs to
 }
 
+export type MapSubMode = "zone_only" | "individual_seating";
+
 export interface SeatingConfig {
   image_url: string | null;
   image_width: number;
   image_height: number;
   view_mode: ViewMode;
+  map_sub_mode?: MapSubMode;
   zones?: ZoneDefinition[];
   sections?: SectionDefinition[];
   // For assigned seating (no map):
