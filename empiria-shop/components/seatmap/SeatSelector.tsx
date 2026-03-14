@@ -5,13 +5,14 @@ import { X, Loader2, AlertCircle, Clock } from "lucide-react";
 import SeatmapViewer from "./SeatmapViewer";
 import SchematicViewer from "./SchematicViewer";
 import { useSeatHolds } from "./useSeatHolds";
-import type { SeatingConfig, SectionDefinition } from "@/lib/seatmap-types";
+import type { SeatingConfig, SectionDefinition, ZoneTier } from "@/lib/seatmap-types";
 
 interface TicketTier {
   id: string;
   name: string;
   price: number;
   remaining_quantity: number;
+  max_per_order: number;
 }
 
 interface OccurrenceOption {
@@ -39,6 +40,17 @@ interface SelectedSeat {
   tierId: string;
   price: number;
   sectionName: string;
+  tierName: string;
+}
+
+/** Get the zone-tier label, stripping zone prefix from ticket tier name if present */
+function getTierLabel(zoneTier: ZoneTier | undefined, ticketTier: TicketTier | undefined): string {
+  if (zoneTier?.name) return zoneTier.name;
+  if (!ticketTier) return "General";
+  if (ticketTier.name.includes(" — ")) {
+    return ticketTier.name.split(" — ").slice(1).join(" — ");
+  }
+  return ticketTier.name;
 }
 
 export default function SeatSelector({
@@ -77,24 +89,59 @@ export default function SeatSelector({
   );
   const [guestEmail, setGuestEmail] = useState("");
   const [guestName, setGuestName] = useState("");
+  // Pending seat waiting for tier selection (multi-tier zones)
+  const [pendingSeat, setPendingSeat] = useState<{
+    seatId: string;
+    sectionId: string;
+    label: string;
+  } | null>(null);
 
   const tierMap = new Map(tiers.map((t) => [t.id, t]));
   const sections = config.sections || [];
 
-  // Build a lookup: sectionId -> tier
-  const sectionTierMap = useMemo(() => {
-    const map = new Map<string, TicketTier>();
+  // Build lookup: sectionId (= zoneId) → zone tiers
+  const sectionZoneTiers = useMemo(() => {
+    const map = new Map<string, { zoneTier: ZoneTier; ticketTier: TicketTier }[]>();
+    if (config.zones) {
+      for (const zone of config.zones) {
+        const tierEntries: { zoneTier: ZoneTier; ticketTier: TicketTier }[] = [];
+        if (zone.tiers && zone.tiers.length > 0) {
+          for (const zt of zone.tiers) {
+            const tt = tierMap.get(zt.id);
+            if (tt) tierEntries.push({ zoneTier: zt, ticketTier: tt });
+          }
+        } else {
+          // Legacy: single tier via tier_id
+          const tt = tierMap.get(zone.tier_id);
+          if (tt) {
+            tierEntries.push({
+              zoneTier: { id: zone.tier_id, name: zone.name, price: tt.price, initial_quantity: tt.remaining_quantity, max_per_order: tt.max_per_order || 10, description: "", currency: "" },
+              ticketTier: tt,
+            });
+          }
+        }
+        map.set(zone.id, tierEntries);
+      }
+    }
+    // Fallback: use sections' tier_id for non-zone configs
     for (const section of sections) {
-      const tier = tierMap.get(section.tier_id);
-      if (tier) map.set(section.id, tier);
+      if (!map.has(section.id)) {
+        const tt = tierMap.get(section.tier_id);
+        if (tt) {
+          map.set(section.id, [{
+            zoneTier: { id: section.tier_id, name: section.name, price: tt.price, initial_quantity: tt.remaining_quantity, max_per_order: tt.max_per_order || 10, description: "", currency: "" },
+            ticketTier: tt,
+          }]);
+        }
+      }
     }
     return map;
-  }, [sections, tierMap]);
+  }, [config.zones, sections, tierMap]);
 
-  // Compute sold seats by checking tickets with seat_label
+  // Compute sold seats
   const soldSeats = useMemo(() => new Set<string>(), []);
 
-  // Compute hold expiry timer (earliest expiry among my holds)
+  // Hold expiry timer
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
 
   useEffect(() => {
@@ -109,7 +156,6 @@ export default function SeatSelector({
       return;
     }
 
-    // Find the earliest expiry
     const earliestExpiry = Math.min(
       ...myHolds.map((h) => new Date(h.expires_at).getTime())
     );
@@ -122,7 +168,6 @@ export default function SeatSelector({
       setTimeLeft(remaining);
 
       if (remaining <= 0) {
-        // Holds expired, refresh
         setSelectedSeats([]);
       }
     };
@@ -143,6 +188,7 @@ export default function SeatSelector({
     if (myHeldSeats.has(seatId)) {
       await releaseSeat(seatId);
       setSelectedSeats((prev) => prev.filter((s) => s.seatId !== seatId));
+      setPendingSeat(null);
       return;
     }
 
@@ -153,20 +199,58 @@ export default function SeatSelector({
       return;
     }
 
-    const tier = sectionTierMap.get(sectionId);
-    const section = sections.find((s) => s.id === sectionId);
+    const zoneTiers = sectionZoneTiers.get(sectionId) || [];
 
+    if (zoneTiers.length > 1) {
+      // Multi-tier zone: show tier picker
+      setPendingSeat({ seatId, sectionId, label });
+    } else if (zoneTiers.length === 1) {
+      // Single tier: add directly
+      const { zoneTier, ticketTier } = zoneTiers[0];
+      const section = sections.find((s) => s.id === sectionId);
+      setSelectedSeats((prev) => [
+        ...prev,
+        {
+          seatId,
+          sectionId,
+          label,
+          tierId: ticketTier.id,
+          price: ticketTier.price,
+          sectionName: section?.name || "",
+          tierName: getTierLabel(zoneTier, ticketTier),
+        },
+      ]);
+    }
+  }
+
+  function handlePickTier(tierId: string) {
+    if (!pendingSeat) return;
+    const { seatId, sectionId, label } = pendingSeat;
+    const zoneTiers = sectionZoneTiers.get(sectionId) || [];
+    const match = zoneTiers.find((zt) => zt.ticketTier.id === tierId);
+    if (!match) return;
+
+    const section = sections.find((s) => s.id === sectionId);
     setSelectedSeats((prev) => [
       ...prev,
       {
         seatId,
         sectionId,
         label,
-        tierId: tier?.id || "",
-        price: tier?.price || 0,
+        tierId: match.ticketTier.id,
+        price: match.ticketTier.price,
         sectionName: section?.name || "",
+        tierName: getTierLabel(match.zoneTier, match.ticketTier),
       },
     ]);
+    setPendingSeat(null);
+  }
+
+  async function handleCancelPending() {
+    if (pendingSeat) {
+      await releaseSeat(pendingSeat.seatId);
+      setPendingSeat(null);
+    }
   }
 
   async function handleRemoveSeat(seatId: string) {
@@ -368,9 +452,60 @@ export default function SeatSelector({
           </div>
         )}
 
+        {/* Tier picker for pending seat (multi-tier zone) */}
+        {pendingSeat && (
+          <div className="mb-4 p-4 border-2 border-orange-300 bg-orange-50 rounded-xl">
+            <p className="text-sm font-semibold text-gray-900 mb-1">
+              Seat {pendingSeat.label}
+            </p>
+            <p className="text-xs text-gray-500 mb-3">
+              Choose a ticket type for this seat:
+            </p>
+            <div className="space-y-2">
+              {(sectionZoneTiers.get(pendingSeat.sectionId) || []).map(
+                ({ zoneTier, ticketTier }) => {
+                  const isSoldOut = ticketTier.remaining_quantity === 0;
+                  const tierLabel = getTierLabel(zoneTier, ticketTier);
+                  return (
+                    <button
+                      key={ticketTier.id}
+                      type="button"
+                      disabled={isSoldOut}
+                      onClick={() => handlePickTier(ticketTier.id)}
+                      className={`w-full flex items-center justify-between p-3 border rounded-lg text-left transition-colors ${
+                        isSoldOut
+                          ? "border-gray-100 bg-gray-50 opacity-50 cursor-not-allowed"
+                          : "border-gray-200 hover:border-orange-300 hover:bg-orange-50"
+                      }`}
+                    >
+                      <span className="text-sm font-medium">
+                        {tierLabel}
+                      </span>
+                      <span className="text-sm font-bold">
+                        {isSoldOut
+                          ? "Sold out"
+                          : ticketTier.price === 0
+                            ? "Free"
+                            : `${currencySymbol}${ticketTier.price}`}
+                      </span>
+                    </button>
+                  );
+                }
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={handleCancelPending}
+              className="mt-2 w-full text-xs text-gray-500 hover:text-red-500 py-1"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+
         {/* Selected seats list */}
         <div className="space-y-2 mb-5">
-          {selectedSeats.length === 0 ? (
+          {selectedSeats.length === 0 && !pendingSeat ? (
             <p className="text-sm text-gray-400 py-4 text-center">
               Click on seats in the map to select them
             </p>
@@ -384,6 +519,11 @@ export default function SeatSelector({
                   <div className="font-semibold text-sm">{seat.label}</div>
                   <div className="text-xs text-gray-500">
                     {seat.sectionName}
+                    {seat.tierName && (
+                      <span className="ml-1 text-gray-400">
+                        &middot; {seat.tierName}
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
