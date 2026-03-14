@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Minus, Plus, Loader2, AlertCircle } from "lucide-react";
 import SeatmapViewer from "./SeatmapViewer";
-import type { SeatingConfig, ZoneDefinition } from "@/lib/seatmap-types";
+import type { SeatingConfig, ZoneDefinition, ZoneTier } from "@/lib/seatmap-types";
 import { migrateSeatingConfig } from "@/lib/migrate-seating-config";
 
 interface TicketTier {
@@ -35,12 +35,33 @@ interface ZoneSelectorProps {
   occurrences?: OccurrenceOption[];
 }
 
-interface ZoneSelection {
-  zoneId: string;
+interface TierSelection {
   tierId: string;
+  tierName: string;
+  zoneId: string;
   zoneName: string;
+  zoneColor: string;
   quantity: number;
   unitPrice: number;
+}
+
+/** Get the ticket tier IDs that belong to a zone */
+function getZoneTierIds(zone: ZoneDefinition): string[] {
+  if (zone.tiers && zone.tiers.length > 0) {
+    return zone.tiers.map((t) => t.id);
+  }
+  // Legacy single-tier zone
+  return [zone.tier_id];
+}
+
+/** Get zone-tier display name (strip zone prefix if present) */
+function getZoneTierLabel(zoneTier: ZoneTier | undefined, ticketTier: TicketTier, zoneName: string): string {
+  if (zoneTier?.name) return zoneTier.name;
+  // Ticket tier name might be "Zone — Adult", strip the zone prefix
+  if (ticketTier.name.includes(" — ")) {
+    return ticketTier.name.split(" — ").slice(1).join(" — ");
+  }
+  return ticketTier.name;
 }
 
 export default function ZoneSelector({
@@ -56,7 +77,7 @@ export default function ZoneSelector({
   const migratedConfig = migrateSeatingConfig(config);
 
   const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
-  const [selections, setSelections] = useState<ZoneSelection[]>([]);
+  const [selections, setSelections] = useState<TierSelection[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedOccurrenceId, setSelectedOccurrenceId] = useState<string>(
@@ -68,52 +89,65 @@ export default function ZoneSelector({
   const tierMap = new Map(tiers.map((t) => [t.id, t]));
   const zones = migratedConfig.zones || [];
 
-  // Build availability map: tier_id -> remaining_quantity
-  const availability: Record<string, number> = {};
-  for (const tier of tiers) {
-    availability[tier.id] = tier.remaining_quantity;
+  // Build zone-level availability: zone.id → total remaining across all zone tiers
+  const zoneAvailability: Record<string, number> = {};
+  for (const zone of zones) {
+    const tierIds = getZoneTierIds(zone);
+    let total = 0;
+    for (const tid of tierIds) {
+      const t = tierMap.get(tid);
+      if (t) total += t.remaining_quantity;
+    }
+    zoneAvailability[zone.id] = total;
   }
 
-  function handleZoneClick(zoneId: string, tierId: string) {
+  function handleZoneClick(zoneId: string) {
     setSelectedZoneId(zoneId);
     setError(null);
-
-    // If zone doesn't already have a selection, add one with quantity 0
-    const existing = selections.find((s) => s.zoneId === zoneId);
-    if (!existing) {
-      const zone = zones.find((z) => z.id === zoneId);
-      const tier = tierMap.get(tierId);
-      if (zone && tier) {
-        setSelections((prev) => [
-          ...prev,
-          {
-            zoneId,
-            tierId,
-            zoneName: zone.name,
-            quantity: 0,
-            unitPrice: tier.price,
-          },
-        ]);
-      }
-    }
   }
 
-  function updateQuantity(zoneId: string, delta: number) {
+  function addTierSelection(tierId: string, zone: ZoneDefinition) {
+    const existing = selections.find((s) => s.tierId === tierId);
+    if (existing) return; // already added
+
+    const tier = tierMap.get(tierId);
+    if (!tier) return;
+
+    const zoneTier = zone.tiers?.find((zt) => zt.id === tierId);
+    const tierLabel = getZoneTierLabel(zoneTier, tier, zone.name);
+
+    setSelections((prev) => [
+      ...prev,
+      {
+        tierId,
+        tierName: tierLabel,
+        zoneId: zone.id,
+        zoneName: zone.name,
+        zoneColor: zone.color,
+        quantity: 1,
+        unitPrice: tier.price,
+      },
+    ]);
+  }
+
+  function updateQuantity(tierId: string, delta: number) {
     setSelections((prev) =>
       prev.map((s) => {
-        if (s.zoneId !== zoneId) return s;
+        if (s.tierId !== tierId) return s;
         const tier = tierMap.get(s.tierId);
         if (!tier) return s;
-        const next = Math.max(0, Math.min(tier.max_per_order, Math.min(tier.remaining_quantity, s.quantity + delta)));
+        const next = Math.max(
+          0,
+          Math.min(tier.max_per_order, Math.min(tier.remaining_quantity, s.quantity + delta))
+        );
         return { ...s, quantity: next };
       })
     );
     setError(null);
   }
 
-  function removeSelection(zoneId: string) {
-    setSelections((prev) => prev.filter((s) => s.zoneId !== zoneId));
-    if (selectedZoneId === zoneId) setSelectedZoneId(null);
+  function removeSelection(tierId: string) {
+    setSelections((prev) => prev.filter((s) => s.tierId !== tierId));
   }
 
   const totalItems = selections.reduce((sum, s) => sum + s.quantity, 0);
@@ -145,7 +179,6 @@ export default function ZoneSelector({
     setError(null);
 
     try {
-      // Group by tier for the checkout API
       const tierSelections = activeSelections.map((s) => ({
         tierId: s.tierId,
         quantity: s.quantity,
@@ -180,7 +213,34 @@ export default function ZoneSelector({
   }
 
   const selectedZone = zones.find((z) => z.id === selectedZoneId);
-  const selectedTier = selectedZone ? tierMap.get(selectedZone.tier_id) : null;
+
+  // Get tiers available for the selected zone
+  const selectedZoneTiers: { zoneTier: ZoneTier | undefined; ticketTier: TicketTier }[] = [];
+  if (selectedZone) {
+    const tierIds = getZoneTierIds(selectedZone);
+    for (const tid of tierIds) {
+      const tt = tierMap.get(tid);
+      if (tt) {
+        const zt = selectedZone.tiers?.find((z) => z.id === tid);
+        selectedZoneTiers.push({ zoneTier: zt, ticketTier: tt });
+      }
+    }
+  }
+
+  // Price range for zone legend
+  function getZonePriceLabel(zone: ZoneDefinition): string {
+    const tierIds = getZoneTierIds(zone);
+    const prices = tierIds
+      .map((tid) => tierMap.get(tid)?.price)
+      .filter((p): p is number => p !== undefined);
+    if (prices.length === 0) return "";
+    const min = Math.min(...prices);
+    const max = Math.max(...prices);
+    if (min === max) {
+      return min === 0 ? "Free" : `${currencySymbol}${min}`;
+    }
+    return `${currencySymbol}${min}–${currencySymbol}${max}`;
+  }
 
   return (
     <div className="space-y-4">
@@ -197,7 +257,7 @@ export default function ZoneSelector({
           <SeatmapViewer
             config={migratedConfig}
             mode="zone"
-            availability={availability}
+            availability={zoneAvailability}
             onZoneClick={handleZoneClick}
             selectedZoneId={selectedZoneId}
           />
@@ -207,13 +267,12 @@ export default function ZoneSelector({
         <div className="px-4 pb-3">
           <div className="flex flex-wrap gap-3 text-xs">
             {zones.map((zone) => {
-              const tier = tierMap.get(zone.tier_id);
-              const isSoldOut = tier ? tier.remaining_quantity === 0 : false;
+              const isSoldOut = zoneAvailability[zone.id] === 0;
               return (
                 <button
                   key={zone.id}
                   type="button"
-                  onClick={() => handleZoneClick(zone.id, zone.tier_id)}
+                  onClick={() => handleZoneClick(zone.id)}
                   className={`flex items-center gap-1.5 px-2 py-1 rounded transition-colors ${
                     selectedZoneId === zone.id
                       ? "bg-gray-100 ring-1 ring-gray-300"
@@ -229,13 +288,9 @@ export default function ZoneSelector({
                   <span className={isSoldOut ? "text-gray-400 line-through" : "text-gray-700"}>
                     {zone.name}
                   </span>
-                  {tier && (
-                    <span className="text-gray-400">
-                      {isSoldOut
-                        ? "Sold out"
-                        : `${currencySymbol}${tier.price}`}
-                    </span>
-                  )}
+                  <span className="text-gray-400">
+                    {isSoldOut ? "Sold out" : getZonePriceLabel(zone)}
+                  </span>
                 </button>
               );
             })}
@@ -243,7 +298,7 @@ export default function ZoneSelector({
         </div>
       </div>
 
-      {/* Side panel: selected zone details + quantity + checkout */}
+      {/* Side panel: selected zone tiers + quantity + checkout */}
       <div className="border border-gray-200 rounded-xl shadow-lg p-6 sticky top-24 bg-white">
         <h3 className="font-bold text-xl mb-1">Get Tickets</h3>
 
@@ -295,100 +350,150 @@ export default function ZoneSelector({
           </div>
         )}
 
-        {/* Selected zone info */}
-        {selectedZone && selectedTier && (
-          <div className="mb-4 p-3 border border-orange-200 bg-orange-50 rounded-lg">
-            <div className="flex items-center gap-2 mb-1">
+        {/* Selected zone: tier picker */}
+        {selectedZone && selectedZoneTiers.length > 0 && (
+          <div className="mb-5">
+            <div className="flex items-center gap-2 mb-3">
               <span
                 className="w-3 h-3 rounded-full shrink-0"
                 style={{ backgroundColor: selectedZone.color }}
               />
-              <span className="font-semibold text-sm">
-                {selectedZone.name}
-              </span>
+              <span className="font-semibold text-sm">{selectedZone.name}</span>
             </div>
-            <div className="text-sm text-gray-600">
-              {currencySymbol}
-              {selectedTier.price} per ticket &middot;{" "}
-              {selectedTier.remaining_quantity} available
+            <div className="space-y-2">
+              {selectedZoneTiers.map(({ zoneTier, ticketTier }) => {
+                const isSoldOut = ticketTier.remaining_quantity === 0;
+                const isAdded = selections.some((s) => s.tierId === ticketTier.id);
+                const tierLabel = getZoneTierLabel(zoneTier, ticketTier, selectedZone.name);
+
+                return (
+                  <div
+                    key={ticketTier.id}
+                    className={`p-3 border rounded-lg transition-colors ${
+                      isAdded
+                        ? "border-orange-300 bg-orange-50"
+                        : isSoldOut
+                          ? "border-gray-100 bg-gray-50"
+                          : "border-gray-200 hover:border-gray-300"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className={`text-sm font-medium ${isSoldOut ? "text-gray-400" : "text-gray-900"}`}>
+                          {tierLabel}
+                        </span>
+                        {ticketTier.description && (
+                          <p className="text-xs text-gray-500 mt-0.5">{ticketTier.description}</p>
+                        )}
+                      </div>
+                      <div className="text-right">
+                        <span className={`text-sm font-bold ${isSoldOut ? "text-gray-400" : "text-gray-900"}`}>
+                          {ticketTier.price === 0 ? "Free" : `${currencySymbol}${ticketTier.price}`}
+                        </span>
+                        <p className="text-[10px] text-gray-400">
+                          {isSoldOut ? "Sold out" : `${ticketTier.remaining_quantity} left`}
+                        </p>
+                      </div>
+                    </div>
+                    {!isSoldOut && !isAdded && (
+                      <button
+                        type="button"
+                        onClick={() => addTierSelection(ticketTier.id, selectedZone)}
+                        className="mt-2 w-full text-xs font-medium py-1.5 rounded-md border border-orange-300 text-orange-600 hover:bg-orange-50 transition-colors"
+                      >
+                        + Add to cart
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
 
-        {/* Zone quantity selections */}
+        {/* Cart: tier quantity selections */}
         <div className="space-y-3 mb-5">
           {selections.length === 0 ? (
             <p className="text-sm text-gray-400 py-4 text-center">
               Click on a zone in the map to add tickets
             </p>
           ) : (
-            selections.map((sel) => {
-              const tier = tierMap.get(sel.tierId);
-              const zone = zones.find((z) => z.id === sel.zoneId);
-              if (!tier || !zone) return null;
+            <>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                Your Tickets
+              </p>
+              {selections.map((sel) => {
+                const tier = tierMap.get(sel.tierId);
+                if (!tier) return null;
 
-              return (
-                <div
-                  key={sel.zoneId}
-                  className={`p-3 border rounded-lg ${
-                    sel.quantity > 0
-                      ? "border-orange-300 bg-orange-50"
-                      : "border-gray-200"
-                  }`}
-                >
-                  <div className="flex justify-between items-start mb-2">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span
-                        className="w-2.5 h-2.5 rounded-full shrink-0"
-                        style={{ backgroundColor: zone.color }}
-                      />
-                      <span className="font-semibold text-sm truncate">
-                        {sel.zoneName}
-                      </span>
+                return (
+                  <div
+                    key={sel.tierId}
+                    className={`p-3 border rounded-lg ${
+                      sel.quantity > 0
+                        ? "border-orange-300 bg-orange-50"
+                        : "border-gray-200"
+                    }`}
+                  >
+                    <div className="flex justify-between items-start mb-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span
+                          className="w-2.5 h-2.5 rounded-full shrink-0"
+                          style={{ backgroundColor: sel.zoneColor }}
+                        />
+                        <div className="min-w-0">
+                          <span className="font-semibold text-sm truncate block">
+                            {sel.tierName}
+                          </span>
+                          <span className="text-[10px] text-gray-400">
+                            {sel.zoneName}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-sm">
+                          {tier.price === 0
+                            ? "Free"
+                            : `${currencySymbol}${tier.price}`}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => removeSelection(sel.tierId)}
+                          className="text-gray-400 hover:text-red-500 text-xs"
+                          title="Remove"
+                        >
+                          &times;
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-sm">
-                        {tier.price === 0
-                          ? "Free"
-                          : `${currencySymbol}${tier.price}`}
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => updateQuantity(sel.tierId, -1)}
+                        disabled={sel.quantity === 0}
+                        className="w-8 h-8 rounded-full border border-gray-300 flex items-center justify-center hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                      >
+                        <Minus size={14} />
+                      </button>
+                      <span className="w-6 text-center font-medium text-sm tabular-nums">
+                        {sel.quantity}
                       </span>
                       <button
                         type="button"
-                        onClick={() => removeSelection(sel.zoneId)}
-                        className="text-gray-400 hover:text-red-500 text-xs"
-                        title="Remove"
+                        onClick={() => updateQuantity(sel.tierId, 1)}
+                        disabled={
+                          sel.quantity >= tier.max_per_order ||
+                          sel.quantity >= tier.remaining_quantity
+                        }
+                        className="w-8 h-8 rounded-full border border-gray-300 flex items-center justify-center hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                       >
-                        &times;
+                        <Plus size={14} />
                       </button>
                     </div>
                   </div>
-                  <div className="flex items-center justify-end gap-2">
-                    <button
-                      type="button"
-                      onClick={() => updateQuantity(sel.zoneId, -1)}
-                      disabled={sel.quantity === 0}
-                      className="w-8 h-8 rounded-full border border-gray-300 flex items-center justify-center hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                    >
-                      <Minus size={14} />
-                    </button>
-                    <span className="w-6 text-center font-medium text-sm tabular-nums">
-                      {sel.quantity}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => updateQuantity(sel.zoneId, 1)}
-                      disabled={
-                        sel.quantity >= tier.max_per_order ||
-                        sel.quantity >= tier.remaining_quantity
-                      }
-                      className="w-8 h-8 rounded-full border border-gray-300 flex items-center justify-center hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                    >
-                      <Plus size={14} />
-                    </button>
-                  </div>
-                </div>
-              );
-            })
+                );
+              })}
+            </>
           )}
         </div>
 

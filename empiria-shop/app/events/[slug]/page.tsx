@@ -210,8 +210,24 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                                 label: o.label || '',
                             }))}
                         />
-                    ) : seatingType === 'seatmap_pro' && seatingConfig ? (
+                    ) : seatingType === 'seatmap_pro' && seatingConfig && seatingConfig.map_sub_mode === 'individual_seating' ? (
                         <SeatSelector
+                            config={seatingConfig}
+                            tiers={sortedTiers}
+                            eventId={event.id}
+                            eventCurrency={currency}
+                            currencySymbol={currencySymbol}
+                            userEmail={user?.email}
+                            userName={user?.name}
+                            occurrences={futureOccurrences.map((o: any) => ({
+                                id: o.id,
+                                starts_at: o.starts_at,
+                                ends_at: o.ends_at,
+                                label: o.label || '',
+                            }))}
+                        />
+                    ) : seatingType === 'seatmap_pro' && seatingConfig ? (
+                        <ZoneSelector
                             config={seatingConfig}
                             tiers={sortedTiers}
                             eventId={event.id}

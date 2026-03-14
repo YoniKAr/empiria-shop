@@ -8,10 +8,10 @@ import { migrateSeatingConfig } from "@/lib/migrate-seating-config";
 interface SeatmapViewerProps {
   config: SeatingConfig;
   mode: "zone" | "seat";
-  /** Map of zone/section tier_id to remaining_quantity */
+  /** Map of zone ID (or tier ID) to remaining_quantity */
   availability?: Record<string, number>;
   /** Called when a zone is clicked (zone mode) */
-  onZoneClick?: (zoneId: string, tierId: string) => void;
+  onZoneClick?: (zoneId: string) => void;
   /** Set of sold seat IDs (seat mode) */
   soldSeats?: Set<string>;
   /** Set of seat IDs held by current session */
@@ -152,7 +152,8 @@ export default function SeatmapViewer({
     const zonePolygonMap = new Map<string, Polygon[]>();
 
     for (const zone of zones) {
-      const remaining = availability[zone.tier_id] ?? -1;
+      // Check availability by zone.id first, fall back to zone.tier_id
+      const remaining = availability[zone.id] ?? availability[zone.tier_id] ?? -1;
       const isSoldOut = remaining === 0;
       const isSelected = selectedZoneId === zone.id;
 
@@ -177,7 +178,7 @@ export default function SeatmapViewer({
             hoverCursor: isSoldOut ? "not-allowed" : "pointer",
           }
         );
-        setObjData(polygon, { zoneId: zone.id, tierId: zone.tier_id });
+        setObjData(polygon, { zoneId: zone.id });
         canvas.add(polygon);
         zonePolygons.push(polygon);
       }
@@ -207,7 +208,7 @@ export default function SeatmapViewer({
     canvas.on("mouse:down", (e) => {
       const data = getObjData(e.target);
       if (data?.zoneId && onZoneClick) {
-        onZoneClick(data.zoneId, data.tierId);
+        onZoneClick(data.zoneId);
       }
     });
 
@@ -217,7 +218,7 @@ export default function SeatmapViewer({
       const data = getObjData(obj);
       if (data?.zoneId) {
         const zone = zones.find((z) => z.id === data.zoneId);
-        const remaining = zone ? (availability[zone.tier_id] ?? -1) : -1;
+        const remaining = zone ? (availability[zone.id] ?? availability[zone.tier_id] ?? -1) : -1;
         if (remaining !== 0) {
           const siblings = zonePolygonMap.get(data.zoneId) || [];
           for (const sibling of siblings) {
