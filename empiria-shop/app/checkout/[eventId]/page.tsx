@@ -1,12 +1,12 @@
 import { getSafeSession } from '@/lib/auth0';
-import { createClient } from '@supabase/supabase-js';
+import { getSupabaseAdmin } from '@/lib/supabase';
 
 export default async function CheckoutPage({ params }: { params: { eventId: string } }) {
   const session = await getSafeSession();
   const user = session?.user;
 
   // Fetch Event Info
-  const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_KEY!);
+  const supabase = getSupabaseAdmin();
   const { data: event } = await supabase.from('events').select('title, start_at').eq('id', params.eventId).single();
 
   return (
