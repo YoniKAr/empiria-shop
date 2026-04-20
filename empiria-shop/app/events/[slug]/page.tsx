@@ -106,7 +106,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
     const coverImageUrl = rawCoverUrl.startsWith('http')
         ? rawCoverUrl
         : rawCoverUrl
-            ? `${process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL}/storage/v1/object/public/${rawCoverUrl}`
+            ? `${process.env.SUPABASE_URL}/storage/v1/object/public/${rawCoverUrl}`
             : '';
 
     // Seating type and config

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { createClient, RealtimeChannel } from "@supabase/supabase-js";
 import type { SeatHold } from "@/lib/seatmap-types";
 
 interface UseSeatHoldsOptions {
@@ -32,7 +31,12 @@ export function useSeatHolds({
 }: UseSeatHoldsOptions): UseSeatHoldsReturn {
   const [holds, setHolds] = useState<SeatHold[]>([]);
   const [loading, setLoading] = useState(true);
-  const channelRef = useRef<RealtimeChannel | null>(null);
+  const holdsRef = useRef<SeatHold[]>([]);
+
+  // Keep ref in sync for unmount cleanup
+  useEffect(() => {
+    holdsRef.current = holds;
+  }, [holds]);
 
   // Fetch existing holds on mount
   useEffect(() => {
@@ -54,61 +58,36 @@ export function useSeatHolds({
     fetchHolds();
   }, [eventId]);
 
-  // Subscribe to Realtime changes on seat_holds
+  // Subscribe to SSE stream for realtime updates
   useEffect(() => {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    const es = new EventSource(
+      `/api/seat-holds/stream?eventId=${encodeURIComponent(eventId)}`
+    );
 
-    if (!supabaseUrl || !supabaseAnonKey) return;
+    es.addEventListener("INSERT", (e) => {
+      const newHold = JSON.parse(e.data) as SeatHold;
+      setHolds((prev) => {
+        if (prev.some((h) => h.id === newHold.id)) return prev;
+        return [...prev, newHold];
+      });
+    });
 
-    const supabase = createClient(supabaseUrl, supabaseAnonKey);
-
-    const channel = supabase
-      .channel(`seat-holds-${eventId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "seat_holds",
-          filter: `event_id=eq.${eventId}`,
-        },
-        (payload) => {
-          const newHold = payload.new as SeatHold;
-          setHolds((prev) => {
-            // Don't add duplicates
-            if (prev.some((h) => h.id === newHold.id)) return prev;
-            return [...prev, newHold];
-          });
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "DELETE",
-          schema: "public",
-          table: "seat_holds",
-          filter: `event_id=eq.${eventId}`,
-        },
-        (payload) => {
-          const oldHold = payload.old as { id: string };
-          setHolds((prev) => prev.filter((h) => h.id !== oldHold.id));
-        }
-      )
-      .subscribe();
-
-    channelRef.current = channel;
+    es.addEventListener("DELETE", (e) => {
+      const oldHold = JSON.parse(e.data) as { id: string };
+      setHolds((prev) => prev.filter((h) => h.id !== oldHold.id));
+    });
 
     return () => {
-      supabase.removeChannel(channel);
+      es.close();
     };
   }, [eventId]);
 
   // Release all holds on unmount
   useEffect(() => {
     return () => {
-      // Fire and forget — release all session holds on page leave
-      const myHolds = holds.filter((h) => h.session_id === sessionId);
+      const myHolds = holdsRef.current.filter(
+        (h) => h.session_id === sessionId
+      );
       for (const hold of myHolds) {
         fetch("/api/seat-holds", {
           method: "DELETE",
@@ -140,7 +119,7 @@ export function useSeatHolds({
           return { success: false, error: data.error || "Failed to hold seat" };
         }
 
-        // Optimistic update — Realtime will confirm
+        // Optimistic update — SSE will confirm
         if (data.hold) {
           setHolds((prev) => {
             if (prev.some((h) => h.seat_id === seatId)) return prev;
