@@ -1,67 +1,59 @@
 import { getSafeSession } from '@/lib/auth0';
 import { getSupabaseAdmin } from '@/lib/supabase';
+import { CheckoutForm } from './CheckoutForm';
+import { redirect } from 'next/navigation';
 
-export default async function CheckoutPage({ params }: { params: { eventId: string } }) {
+export default async function CheckoutPage({ params }: { params: Promise<{ eventId: string }> }) {
+  const { eventId } = await params;
   const session = await getSafeSession();
-  const user = session?.user;
+  const user = session?.user ?? null;
 
-  // Fetch Event Info
   const supabase = getSupabaseAdmin();
-  const { data: event } = await supabase.from('events').select('title, start_at').eq('id', params.eventId).single();
+
+  // Fetch event with tiers and occurrences
+  const { data: event, error } = await supabase
+    .from('events')
+    .select(`
+      id, title, slug, currency, status,
+      ticket_tiers (id, name, description, price, currency, remaining_quantity),
+      event_occurrences (id, starts_at, ends_at, label)
+    `)
+    .eq('id', eventId)
+    .eq('status', 'published')
+    .single();
+
+  if (error || !event) {
+    redirect('/');
+  }
+
+  const tiers = (event.ticket_tiers ?? []).map((t: any) => ({
+    id: t.id,
+    name: t.name,
+    description: t.description,
+    price: t.price,
+    remaining_quantity: t.remaining_quantity,
+    currency: t.currency || event.currency || 'cad',
+  }));
+
+  const occurrences = (event.event_occurrences ?? []).map((o: any) => ({
+    id: o.id,
+    starts_at: o.starts_at,
+    ends_at: o.ends_at,
+    label: o.label,
+  }));
 
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4">
-      <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8">
-        
-        {/* Order Summary */}
-        <div className="bg-white p-6 rounded-xl shadow-sm h-fit">
-            <h2 className="text-xl font-bold mb-4">{event?.title}</h2>
-            <div className="border-t border-b py-4 my-4 space-y-2">
-                <div className="flex justify-between"><span>General Admission x 1</span><span>₹500.00</span></div>
-                <div className="flex justify-between text-gray-500 text-sm"><span>Fees</span><span>₹25.00</span></div>
-            </div>
-            <div className="flex justify-between font-bold text-lg"><span>Total</span><span>₹525.00</span></div>
-        </div>
-
-        {/* Contact Info Form */}
-        <div>
-            <h1 className="text-2xl font-bold mb-6">Checkout</h1>
-            
-            {!user && (
-                <div className="bg-blue-50 text-blue-800 p-4 rounded-lg mb-6 text-sm flex justify-between items-center">
-                    <span>Already have an account?</span>
-                    <a href="https://auth.empiriaindia.com/auth/login" className="font-bold hover:underline">Sign In</a>
-                </div>
-            )}
-
-            <form className="bg-white p-6 rounded-xl shadow-sm space-y-4">
-                <h3 className="font-bold border-b pb-2">Contact Information</h3>
-                
-                <div className="grid grid-cols-2 gap-4">
-                    <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">First Name</label>
-                        <input className="w-full border p-3 rounded-lg" defaultValue={user?.given_name} />
-                    </div>
-                    <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Last Name</label>
-                        <input className="w-full border p-3 rounded-lg" defaultValue={user?.family_name} />
-                    </div>
-                </div>
-
-                <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Email Address</label>
-                    <input type="email" className="w-full border p-3 rounded-lg" defaultValue={user?.email} />
-                    <p className="text-xs text-gray-400 mt-1">Your tickets will be sent here.</p>
-                </div>
-
-                <div className="pt-4">
-                    <button type="button" className="w-full bg-black text-white py-4 rounded-xl font-bold">
-                        Continue to Payment
-                    </button>
-                </div>
-            </form>
-        </div>
-
+      <div className="max-w-lg mx-auto">
+        <h1 className="text-2xl font-bold mb-6">Checkout</h1>
+        <CheckoutForm
+          eventId={event.id}
+          eventTitle={event.title}
+          tiers={tiers}
+          occurrences={occurrences}
+          currency={event.currency || 'cad'}
+          user={user}
+        />
       </div>
     </div>
   );
