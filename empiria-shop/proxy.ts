@@ -12,7 +12,14 @@ export async function proxy(request: NextRequest) {
   // the SDK from refreshing/recreating stale host-only cookies on every request.
   // getSession() still reads the shared .empiriaindia.com cookie directly.
   if (request.nextUrl.pathname.startsWith('/auth/')) {
-    return await auth0.middleware(request);
+    try {
+      return await auth0.middleware(request);
+    } catch {
+      // Clear stale session cookie and redirect to login
+      const response = NextResponse.redirect(new URL('/auth/login', request.url));
+      response.cookies.set('appSession', '', { maxAge: 0, path: '/' });
+      return response;
+    }
   }
 
   return NextResponse.next();

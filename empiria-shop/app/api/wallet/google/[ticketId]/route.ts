@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth0 } from '@/lib/auth0';
+import { getSafeSession } from '@/lib/auth0';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { generateGoogleWalletLink } from '@/lib/wallet';
 
@@ -9,7 +9,7 @@ export async function GET(
 ) {
   const { ticketId } = await params;
 
-  const session = await auth0.getSession();
+  const session = await getSafeSession();
   if (!session?.user?.sub) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
