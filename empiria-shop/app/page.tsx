@@ -9,7 +9,7 @@ export default async function ShopHome() {
         .from('events')
         .select(`
       id, title, slug, cover_image_url,
-      venue_name, city, currency, organizer_id,
+      venue_name, city, currency, organizer_id, source_app,
       categories (name),
       ticket_tiers (price),
       event_occurrences (starts_at)
@@ -34,7 +34,9 @@ export default async function ShopHome() {
 
         events = realEvents.map((e: any) => ({
             ...e,
-            organizer_name: profileMap[e.organizer_id] || 'Empiria Events',
+            organizer_name: e.source_app === 'admin'
+                ? 'Empiria Events'
+                : (profileMap[e.organizer_id] || 'Empiria Events'),
         }));
     }
 

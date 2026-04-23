@@ -3,20 +3,23 @@ import { getSupabaseAdmin } from '@/lib/supabase';
 import Link from 'next/link';
 import Image from 'next/image';
 import UserMenu from './UserMenu';
+import CurrencySelector from './CurrencySelector';
 
 export default async function Navbar() {
   const session = await getSafeSession();
   const user = session?.user;
 
   let userRole: string | null = null;
+  let defaultCurrency: string | null = null;
   if (user?.sub) {
     const supabase = getSupabaseAdmin();
     const { data: profile } = await supabase
       .from('users')
-      .select('role')
+      .select('role, default_currency')
       .eq('auth0_id', user.sub)
       .single();
     userRole = profile?.role || null;
+    defaultCurrency = profile?.default_currency || null;
   }
 
   return (
@@ -34,6 +37,7 @@ export default async function Navbar() {
         </Link>
 
         <div className="flex items-center gap-4">
+          <CurrencySelector defaultCurrency={defaultCurrency || undefined} />
           {user ? (
             <UserMenu
               userName={user.name || 'User'}

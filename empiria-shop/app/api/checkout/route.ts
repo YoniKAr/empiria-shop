@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
 
     const { data: event, error: eventError } = await supabase
       .from('events')
-      .select('id, title, slug, organizer_id, platform_fee_percent, platform_fee_fixed, currency, status, total_capacity, total_tickets_sold, seating_type, seating_config')
+      .select('id, title, slug, organizer_id, platform_fee_percent, platform_fee_fixed, currency, status, total_capacity, total_tickets_sold, seating_type, seating_config, source_app')
       .eq('id', eventId)
       .single();
 
@@ -87,18 +87,24 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 4. Fetch organizer's Stripe Connect account
-    const { data: organizer, error: orgError } = await supabase
-      .from('users')
-      .select('stripe_account_id, stripe_onboarding_completed, full_name')
-      .eq('auth0_id', event.organizer_id)
-      .single();
+    // 4. Fetch organizer's Stripe Connect account (skip for platform-owned events)
+    const isPlatformEvent = event.source_app === 'admin';
+    let organizer: { stripe_account_id: string | null; stripe_onboarding_completed: boolean | null; full_name: string | null } | null = null;
 
-    if (orgError || !organizer?.stripe_account_id || !organizer.stripe_onboarding_completed) {
-      return NextResponse.json(
-        { error: 'This event\'s organizer has not completed payment setup. Please contact the organizer.' },
-        { status: 400 }
-      );
+    if (!isPlatformEvent) {
+      const { data: orgData, error: orgError } = await supabase
+        .from('users')
+        .select('stripe_account_id, stripe_onboarding_completed, full_name')
+        .eq('auth0_id', event.organizer_id)
+        .single();
+
+      if (orgError || !orgData?.stripe_account_id || !orgData.stripe_onboarding_completed) {
+        return NextResponse.json(
+          { error: 'This event\'s organizer has not completed payment setup. Please contact the organizer.' },
+          { status: 400 }
+        );
+      }
+      organizer = orgData;
     }
 
     // 5. Fetch selected ticket tiers
@@ -381,40 +387,56 @@ export async function POST(request: NextRequest) {
     // 10. Create Stripe Checkout Session
     const appBaseUrl = process.env.APP_BASE_URL || 'https://shop.empiriaindia.com';
 
-    const checkoutSession = hasMultiSplit
-      ? await stripe.checkout.sessions.create({
-          mode: 'payment',
-          line_items: lineItems,
-          ...(customerEmail && { customer_email: customerEmail }),
-          invoice_creation: { enabled: true },
-          payment_intent_data: {
-            application_fee_amount: platformFeeStripe,
-            transfer_group: transferGroup,
-            metadata,
+    let checkoutSession;
+
+    if (isPlatformEvent) {
+      // Platform-owned event (admin-created) — direct charge, no connected account
+      checkoutSession = await stripe.checkout.sessions.create({
+        mode: 'payment',
+        line_items: lineItems,
+        ...(customerEmail && { customer_email: customerEmail }),
+        invoice_creation: { enabled: true },
+        payment_intent_data: { metadata },
+        metadata,
+        success_url: `${appBaseUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${appBaseUrl}/events/${event.slug}`,
+        expires_at: Math.floor(Date.now() / 1000) + 1800,
+      });
+    } else if (hasMultiSplit) {
+      checkoutSession = await stripe.checkout.sessions.create({
+        mode: 'payment',
+        line_items: lineItems,
+        ...(customerEmail && { customer_email: customerEmail }),
+        invoice_creation: { enabled: true },
+        payment_intent_data: {
+          application_fee_amount: platformFeeStripe,
+          transfer_group: transferGroup,
+          metadata,
+        },
+        metadata,
+        success_url: `${appBaseUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${appBaseUrl}/events/${event.slug}`,
+        expires_at: Math.floor(Date.now() / 1000) + 1800,
+      });
+    } else {
+      checkoutSession = await stripe.checkout.sessions.create({
+        mode: 'payment',
+        line_items: lineItems,
+        ...(customerEmail && { customer_email: customerEmail }),
+        invoice_creation: { enabled: true },
+        payment_intent_data: {
+          application_fee_amount: platformFeeStripe,
+          transfer_data: {
+            destination: organizer!.stripe_account_id!,
           },
           metadata,
-          success_url: `${appBaseUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
-          cancel_url: `${appBaseUrl}/events/${event.slug}`,
-          expires_at: Math.floor(Date.now() / 1000) + 1800,
-        })
-      : await stripe.checkout.sessions.create({
-          mode: 'payment',
-          line_items: lineItems,
-          ...(customerEmail && { customer_email: customerEmail }),
-          invoice_creation: { enabled: true },
-          payment_intent_data: {
-            // Route funds to organizer's connected account
-            application_fee_amount: platformFeeStripe,
-            transfer_data: {
-              destination: organizer.stripe_account_id,
-            },
-            metadata,
-          },
-          metadata,
-          success_url: `${appBaseUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
-          cancel_url: `${appBaseUrl}/events/${event.slug}`,
-          expires_at: Math.floor(Date.now() / 1000) + 1800,
-        });
+        },
+        metadata,
+        success_url: `${appBaseUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${appBaseUrl}/events/${event.slug}`,
+        expires_at: Math.floor(Date.now() / 1000) + 1800,
+      });
+    }
 
     return NextResponse.json({ url: checkoutSession.url });
   } catch (error: unknown) {

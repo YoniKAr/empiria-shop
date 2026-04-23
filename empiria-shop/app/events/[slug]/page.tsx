@@ -48,7 +48,9 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
             .single()
         : { data: null };
 
-    const organizer = ownerProfile?.full_name || 'Empiria Events';
+    const organizer = event.source_app === 'admin'
+        ? 'Empiria Events'
+        : (ownerProfile?.full_name || 'Empiria Events');
 
     // Fetch gallery images
     const safeOrganizerId = event.organizer_id?.replace(/\|/g, '_');
