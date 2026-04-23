@@ -22,10 +22,9 @@ interface Event {
 
 interface EventsGridProps {
     events: Event[];
-    isMock?: boolean;
 }
 
-export default function EventsGrid({ events, isMock }: EventsGridProps) {
+export default function EventsGrid({ events }: EventsGridProps) {
     const [query, setQuery] = useState('');
 
     const filtered = events.filter((event) => {
@@ -120,11 +119,6 @@ export default function EventsGrid({ events, isMock }: EventsGridProps) {
                     </div>
                 )}
 
-                {isMock && (
-                    <div className="mt-8 p-4 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-center text-sm">
-                        <strong>Development Mode:</strong> Showing mock events because no published events were found in Supabase.
-                    </div>
-                )}
             </div>
         </div>
     );

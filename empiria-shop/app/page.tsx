@@ -2,46 +2,6 @@ import { getSupabaseAdmin } from '@/lib/supabase';
 import Navbar from '@/components/Navbar';
 import EventsGrid from '@/app/components/EventsGrid';
 
-// --- MOCK DATA (Fallback if DB is empty) ---
-const MOCK_EVENTS = [
-    {
-        id: 'mock-1',
-        title: 'Sunburn Arena ft. Martin Garrix',
-        slug: 'sunburn-arena',
-        cover_image_url: 'https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?q=80&w=2070&auto=format&fit=crop',
-        start_at: new Date(Date.now() + 86400000 * 5).toISOString(),
-        venue_name: 'Mahalaxmi Race Course',
-        city: 'Mumbai',
-        currency: 'inr',
-        ticket_tiers: [{ price: 1500 }, { price: 3000 }],
-        organizer_name: 'Empiria Events',
-    },
-    {
-        id: 'mock-2',
-        title: 'TechSparks 2026',
-        slug: 'techsparks-2026',
-        cover_image_url: 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?q=80&w=2070&auto=format&fit=crop',
-        start_at: new Date(Date.now() + 86400000 * 12).toISOString(),
-        venue_name: 'Taj Yeshwantpur',
-        city: 'Bengaluru',
-        currency: 'inr',
-        ticket_tiers: [{ price: 4999 }],
-        organizer_name: 'TechSparks',
-    },
-    {
-        id: 'mock-3',
-        title: 'ZomatoLand Food Carnival',
-        slug: 'zomato-land',
-        cover_image_url: 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?q=80&w=1974&auto=format&fit=crop',
-        start_at: new Date(Date.now() + 86400000 * 20).toISOString(),
-        venue_name: 'Jawaharlal Nehru Stadium',
-        city: 'Delhi',
-        currency: 'inr',
-        ticket_tiers: [{ price: 999 }, { price: 1999 }],
-        organizer_name: 'Zomato Events',
-    }
-];
-
 export default async function ShopHome() {
     const supabase = getSupabaseAdmin();
 
@@ -59,7 +19,7 @@ export default async function ShopHome() {
         .limit(12);
 
     // Batch-fetch organizer names for all events
-    let eventsWithOrganizers: any[] = [];
+    let events: any[] = [];
     if (realEvents && realEvents.length > 0) {
         const organizerIds = [...new Set(realEvents.map((e: any) => e.organizer_id).filter(Boolean))];
         const { data: profiles } = organizerIds.length > 0
@@ -72,14 +32,11 @@ export default async function ShopHome() {
         const profileMap: Record<string, string> = {};
         (profiles || []).forEach((p: any) => { profileMap[p.auth0_id] = p.full_name; });
 
-        eventsWithOrganizers = realEvents.map((e: any) => ({
+        events = realEvents.map((e: any) => ({
             ...e,
             organizer_name: profileMap[e.organizer_id] || 'Empiria Events',
         }));
     }
-
-    const displayEvents = eventsWithOrganizers.length > 0 ? eventsWithOrganizers : MOCK_EVENTS;
-    const isMock = !realEvents || realEvents.length === 0;
 
     return (
         <div className="min-h-screen bg-white font-sans text-slate-900">
@@ -96,7 +53,7 @@ export default async function ShopHome() {
                     </p>
 
                     {/* EventsGrid handles both the search bar and the grid */}
-                    <EventsGrid events={displayEvents as any} isMock={isMock} />
+                    <EventsGrid events={events as any} />
                 </div>
 
                 {/* Decorative Background Elements */}

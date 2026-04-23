@@ -15,9 +15,10 @@ interface TicketTier {
 interface TicketWidgetProps {
     tiers: TicketTier[]
     eventId: string
+    currency?: string
 }
 
-export function TicketWidget({ tiers, eventId }: TicketWidgetProps) {
+export function TicketWidget({ tiers, eventId, currency = "cad" }: TicketWidgetProps) {
     const [selectedTier, setSelectedTier] = useState<string | null>(
         tiers[0]?.id ?? null
     )
@@ -25,6 +26,7 @@ export function TicketWidget({ tiers, eventId }: TicketWidgetProps) {
 
     const selected = tiers.find((t) => t.id === selectedTier)
     const total = selected ? selected.price * quantity : 0
+    const sym = currency === "inr" ? "₹" : currency === "usd" ? "$" : "CA$"
 
     return (
         <div className="sticky top-24">
@@ -78,7 +80,7 @@ export function TicketWidget({ tiers, eventId }: TicketWidgetProps) {
                                     </span>
                                     <div className="flex items-center justify-between mt-1">
                                         <span className="text-lg font-bold text-[#F98C1F]">
-                                            {tier.price === 0 ? "FREE" : `₹${tier.price.toLocaleString()}`}
+                                            {tier.price === 0 ? "FREE" : `${sym}${tier.price.toLocaleString()}`}
                                         </span>
                                         {isSoldOut ? (
                                             <span className="text-xs text-red-500 font-medium">
@@ -132,7 +134,7 @@ export function TicketWidget({ tiers, eventId }: TicketWidgetProps) {
                         <div className="flex items-center justify-between mb-4 px-1">
                             <span className="text-sm text-gray-600">Total</span>
                             <span className="text-2xl font-bold text-[#F98C1F] font-[family-name:var(--font-space-grotesk)]">
-                                {total === 0 ? "FREE" : `₹${total.toLocaleString()}`}
+                                {total === 0 ? "FREE" : `${sym}${total.toLocaleString()}`}
                             </span>
                         </div>
                     )}

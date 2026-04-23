@@ -108,6 +108,23 @@ async function handleCheckoutCompleted(session: any) {
   const userId = userAuth0Id || null;
 
   try {
+    // Parse multi-split data from metadata
+    const hasMultiSplit = !!(metadata.transfer_group && metadata.splits);
+    let parsedSplits: Array<{
+      recipient_user_id: string;
+      recipient_stripe_id: string;
+      percentage: number;
+      description: string;
+    }> | null = null;
+    if (hasMultiSplit) {
+      try {
+        parsedSplits = JSON.parse(metadata.splits);
+      } catch (parseError) {
+        console.error('[Webhook] Failed to parse splits metadata:', parseError);
+      }
+    }
+    const netRevenue = subtotal - platformFee;
+
     // 1. Create the order
     const { data: order, error: orderError } = await supabase
       .from('orders')
@@ -128,6 +145,16 @@ async function handleCheckoutCompleted(session: any) {
           subtotal,
           platform_fee: platformFee,
           organizer_payout: organizerPayout,
+          transfer_group: metadata.transfer_group || null,
+          splits: parsedSplits
+            ? parsedSplits.map((s) => ({
+                user_id: s.recipient_user_id,
+                stripe_id: s.recipient_stripe_id,
+                percentage: s.percentage,
+                amount: Math.round(netRevenue * (s.percentage / 100) * 100) / 100,
+                description: s.description,
+              }))
+            : null,
         },
         status: 'completed',
         source_app: metadata.source_app || 'shop',
@@ -141,6 +168,54 @@ async function handleCheckoutCompleted(session: any) {
     }
 
     console.log('[Webhook] Order created:', order.id);
+
+    // 1b. Create multi-split transfers if applicable
+    if (hasMultiSplit && parsedSplits) {
+      const currency = session.currency || 'cad';
+      let totalTransferred = 0;
+
+      const netRevenueCents = Math.round(netRevenue * 100);
+
+      for (let i = 0; i < parsedSplits.length; i++) {
+        const split = parsedSplits[i];
+        let amountCents: number;
+
+        // For the last split, use remainder to avoid rounding drift
+        if (i === parsedSplits.length - 1) {
+          amountCents = netRevenueCents - totalTransferred;
+        } else {
+          amountCents = Math.round((netRevenueCents * split.percentage) / 100);
+        }
+
+        if (amountCents > 0) {
+          try {
+            await stripe.transfers.create({
+              amount: amountCents,
+              currency,
+              destination: split.recipient_stripe_id,
+              transfer_group: metadata.transfer_group,
+              metadata: {
+                event_id: eventId,
+                order_id: order.id,
+                recipient: split.recipient_user_id,
+                percentage: String(split.percentage),
+              },
+            });
+            totalTransferred += amountCents;
+            console.log(
+              `[Webhook] Transfer created: ${amountCents} cents (${split.percentage}%) to ${split.recipient_stripe_id}`
+            );
+          } catch (transferError) {
+            console.error(
+              `[Webhook] Failed to create transfer for ${split.recipient_stripe_id}:`,
+              transferError
+            );
+          }
+        }
+      }
+
+      console.log(`[Webhook] Multi-split transfers completed: ${totalTransferred} cents total`);
+    }
 
     // 2. Fetch event details for confirmation email
     const { data: eventData } = await supabase

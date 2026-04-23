@@ -246,6 +246,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                         <TicketWidget
                             tiers={tiers}
                             eventId={String(event.id)}
+                            currency={currency}
                         />
                     )}
                 </div>

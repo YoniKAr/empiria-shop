@@ -329,6 +329,18 @@ export async function POST(request: NextRequest) {
     const platformFeeStripe = toStripeAmount(platformFee, event.currency || 'cad');
     const organizerPayout = subtotal - platformFee;
 
+    // 7b. Check for multi-organizer revenue splits
+    const { data: splits } = await supabase
+      .from('revenue_splits')
+      .select('recipient_user_id, recipient_stripe_id, percentage, description')
+      .eq('event_id', eventId)
+      .eq('source_type', 'net_revenue');
+
+    const hasMultiSplit = splits && splits.length > 0;
+    const transferGroup = hasMultiSplit
+      ? `evt_${eventId.slice(0, 8)}_${Date.now()}`
+      : undefined;
+
     // 8. Determine user identity
     const customerEmail = contactEmail || user?.email;
     const userId = user?.sub || `guest_${Date.now()}`;
@@ -349,6 +361,12 @@ export async function POST(request: NextRequest) {
       occurrence_id: occurrenceId || '',
     };
 
+    // Include multi-split metadata
+    if (hasMultiSplit && transferGroup) {
+      metadata.transfer_group = transferGroup;
+      metadata.splits = JSON.stringify(splits);
+    }
+
     // Include seat selections for seatmap_pro mode
     if (seatSelections && seatSelections.length > 0) {
       metadata.seat_selections = JSON.stringify(seatSelections);
@@ -363,24 +381,40 @@ export async function POST(request: NextRequest) {
     // 10. Create Stripe Checkout Session
     const appBaseUrl = process.env.APP_BASE_URL || 'https://shop.empiriaindia.com';
 
-    const checkoutSession = await stripe.checkout.sessions.create({
-      mode: 'payment',
-      line_items: lineItems,
-      ...(customerEmail && { customer_email: customerEmail }),
-      invoice_creation: { enabled: true },
-      payment_intent_data: {
-        // Route funds to organizer's connected account
-        application_fee_amount: platformFeeStripe,
-        transfer_data: {
-          destination: organizer.stripe_account_id,
-        },
-        metadata, // Also attach to PaymentIntent for reference
-      },
-      metadata, // Attach to session for webhook access
-      success_url: `${appBaseUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${appBaseUrl}/events/${event.slug}`,
-      expires_at: Math.floor(Date.now() / 1000) + 1800, // 30 minutes from now
-    });
+    const checkoutSession = hasMultiSplit
+      ? await stripe.checkout.sessions.create({
+          mode: 'payment',
+          line_items: lineItems,
+          ...(customerEmail && { customer_email: customerEmail }),
+          invoice_creation: { enabled: true },
+          payment_intent_data: {
+            application_fee_amount: platformFeeStripe,
+            transfer_group: transferGroup,
+            metadata,
+          },
+          metadata,
+          success_url: `${appBaseUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
+          cancel_url: `${appBaseUrl}/events/${event.slug}`,
+          expires_at: Math.floor(Date.now() / 1000) + 1800,
+        })
+      : await stripe.checkout.sessions.create({
+          mode: 'payment',
+          line_items: lineItems,
+          ...(customerEmail && { customer_email: customerEmail }),
+          invoice_creation: { enabled: true },
+          payment_intent_data: {
+            // Route funds to organizer's connected account
+            application_fee_amount: platformFeeStripe,
+            transfer_data: {
+              destination: organizer.stripe_account_id,
+            },
+            metadata,
+          },
+          metadata,
+          success_url: `${appBaseUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
+          cancel_url: `${appBaseUrl}/events/${event.slug}`,
+          expires_at: Math.floor(Date.now() / 1000) + 1800,
+        });
 
     return NextResponse.json({ url: checkoutSession.url });
   } catch (error: unknown) {
