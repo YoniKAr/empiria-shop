@@ -56,13 +56,14 @@ export async function POST(request: NextRequest) {
 
     const { data: event, error: eventError } = await supabase
       .from('events')
-      .select('id, title, slug, organizer_id, platform_fee_percent, platform_fee_fixed, currency, status, total_capacity, total_tickets_sold, seating_type, seating_config, source_app')
+      .select('id, title, slug, organizer_id, platform_fee_percent, platform_fee_fixed, pass_processing_fee, currency, status, total_capacity, total_tickets_sold, seating_type, seating_config, source_app')
       .eq('id', eventId)
       .single();
 
     if (eventError || !event) {
       return NextResponse.json({ error: 'Event not found' }, { status: 404 });
     }
+
 
     if (event.status !== 'published') {
       return NextResponse.json({ error: 'Event is not available for purchase' }, { status: 400 });
@@ -328,12 +329,52 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 7. Calculate platform fee
-    const feePercent = Number(event.platform_fee_percent) || 5;
-    const feeFixed = Number(event.platform_fee_fixed) || 0;
-    const platformFee = subtotal * (feePercent / 100) + feeFixed;
-    const platformFeeStripe = toStripeAmount(platformFee, event.currency || 'cad');
-    const organizerPayout = subtotal - platformFee;
+    // 7. Calculate fees
+    const currency = event.currency || 'cad';
+    const feePercent = Number(event.platform_fee_percent) || 3.5;
+    const feeFixedPerTicket = event.platform_fee_fixed != null ? Number(event.platform_fee_fixed) : 1.50;
+    const passProcessingFee = event.pass_processing_fee === true;
+
+    // Total ticket count for per-ticket fixed fee
+    const totalTickets = validatedSelections.reduce((sum: number, s: { quantity: number }) => sum + s.quantity, 0);
+
+    // Platform fee: always on base subtotal, fixed fee is per-ticket
+    const platformFee = subtotal * (feePercent / 100) + (feeFixedPerTicket * totalTickets);
+
+    // Stripe processing fee estimate (Stripe Canada: 2.9% + $0.30)
+    const STRIPE_PERCENT = 0.029;
+    const STRIPE_FIXED = 0.30;
+
+    let customerTotal: number;
+    let processingFeeAmount: number;
+    let organizerPayout: number;
+
+    if (passProcessingFee) {
+      // Pass processing fees to attendee: inflate total using reverse formula
+      customerTotal = Math.round(((subtotal + STRIPE_FIXED) / (1 - STRIPE_PERCENT)) * 100) / 100;
+      processingFeeAmount = Math.round((customerTotal - subtotal) * 100) / 100;
+      organizerPayout = subtotal - platformFee;
+    } else {
+      // Organizer absorbs: customer pays just the subtotal
+      customerTotal = subtotal;
+      processingFeeAmount = 0;
+      organizerPayout = subtotal - platformFee;
+    }
+
+    // Add processing fee as a separate line item when passed to attendee
+    if (passProcessingFee && processingFeeAmount > 0) {
+      lineItems.push({
+        price_data: {
+          currency,
+          product_data: {
+            name: 'Processing Fee',
+            description: 'Payment processing fee',
+          },
+          unit_amount: toStripeAmount(processingFeeAmount, currency),
+        },
+        quantity: 1,
+      });
+    }
 
     // 7b. Check for multi-organizer revenue splits
     const { data: splits } = await supabase
@@ -358,9 +399,13 @@ export async function POST(request: NextRequest) {
       tier_selections: JSON.stringify(validatedSelections),
       platform_fee: platformFee.toFixed(2),
       platform_fee_percent: feePercent.toString(),
-      platform_fee_fixed: feeFixed.toString(),
+      platform_fee_fixed: feeFixedPerTicket.toString(),
       organizer_payout: organizerPayout.toFixed(2),
       subtotal: subtotal.toFixed(2),
+      customer_total: customerTotal.toFixed(2),
+      processing_fee_amount: processingFeeAmount.toFixed(2),
+      pass_processing_fee: passProcessingFee.toString(),
+      total_tickets: totalTickets.toString(),
       source_app: 'shop',
       occurrence_id: occurrenceId || '',
     };

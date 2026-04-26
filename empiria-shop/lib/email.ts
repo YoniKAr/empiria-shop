@@ -27,6 +27,7 @@ interface OrderEmailData {
   city: string;
   lineItems: LineItem[];
   total: number;
+  processingFee?: number;
   currency: string;
   tickets: TicketInfo[];
   receiptUrl?: string;
@@ -256,6 +257,15 @@ function buildEmailHtml(data: OrderEmailData, walletResults: Array<{ticketId: st
                   <th style="padding: 8px 12px; font-size: 12px; font-weight: 600; color: #6b7280; text-align: right; text-transform: uppercase;">Total</th>
                 </tr>
                 ${lineItemRows}
+                ${data.processingFee && data.processingFee > 0 ? `
+                <tr>
+                  <td colspan="3" style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 13px; color: #6b7280; text-align: right;">
+                    Processing fee
+                  </td>
+                  <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 13px; color: #6b7280; text-align: right;">
+                    ${formatCurrency(data.processingFee, data.currency)}
+                  </td>
+                </tr>` : ''}
                 <tr style="background: #f9fafb;">
                   <td colspan="3" style="padding: 10px 12px; font-size: 14px; font-weight: 700; color: #111827; text-align: right;">
                     Total

@@ -95,6 +95,10 @@ async function handleCheckoutCompleted(session: any) {
   const feePercent = parseFloat(metadata.platform_fee_percent) || 0;
   const feeFixed = parseFloat(metadata.platform_fee_fixed) || 0;
   const organizerPayout = parseFloat(metadata.organizer_payout);
+  const customerTotal = parseFloat(metadata.customer_total || metadata.subtotal);
+  const processingFeeAmount = parseFloat(metadata.processing_fee_amount || '0');
+  const passProcessingFee = metadata.pass_processing_fee === 'true';
+  const totalTickets = parseInt(metadata.total_tickets || '0', 10);
 
   // Seat selections for seat_map mode
   const seatSelections: Array<{ seatId: string; sectionId: string; label: string }> | null =
@@ -128,8 +132,6 @@ async function handleCheckoutCompleted(session: any) {
         console.error('[Webhook] Failed to parse splits metadata:', parseError);
       }
     }
-    const netRevenue = subtotal - platformFee;
-
     // ── Retrieve charge details early (Stripe fee + receipt URL) ──
     let stripeFee = 0;
     let receiptUrl: string | undefined;
@@ -153,8 +155,25 @@ async function handleCheckoutCompleted(session: any) {
       }
     }
 
+    // Fallback: estimate Stripe fee if balance_transaction not yet available
+    if (stripeFee === 0 && customerTotal > 0) {
+      stripeFee = Math.round((customerTotal * 0.029 + 0.30) * 100) / 100;
+      console.log(`[Webhook] Using estimated Stripe fee: $${stripeFee}`);
+    }
+
     // ── Get tax amount from session ──
     const taxAmount = (session.total_details?.amount_tax || 0) / 100; // cents → dollars
+
+    // Calculate actual organizer payout based on fee absorption model
+    let actualOrganizerPayout: number;
+    if (passProcessingFee) {
+      // Attendee paid the processing fee — organizer gets full (subtotal - platformFee)
+      actualOrganizerPayout = subtotal - platformFee;
+    } else {
+      // Organizer absorbs Stripe fee
+      actualOrganizerPayout = subtotal - platformFee - stripeFee;
+    }
+    actualOrganizerPayout = Math.max(0, actualOrganizerPayout);
 
     // 1. Create the order (initial payout_breakdown — transfer IDs added after transfers)
     const { data: order, error: orderError } = await supabase
@@ -164,28 +183,35 @@ async function handleCheckoutCompleted(session: any) {
         event_id: eventId,
         stripe_payment_intent_id: session.payment_intent,
         stripe_checkout_session_id: session.id,
-        total_amount: subtotal,
+        total_amount: customerTotal,
         platform_fee_amount: platformFee,
-        organizer_payout_amount: organizerPayout,
+        organizer_payout_amount: actualOrganizerPayout,
+        processing_fee_amount: processingFeeAmount,
+        total_tickets: totalTickets,
         currency: session.currency || 'cad',
         buyer_email: userEmail || null,
         buyer_name: userName || null,
         payout_breakdown: {
-          version: 2,
+          version: 3,
           subtotal,
+          customer_total: customerTotal,
+          processing_fee: processingFeeAmount,
+          pass_processing_fee: passProcessingFee,
+          total_tickets: totalTickets,
+          platform_fee_fixed_semantics: 'per_ticket',
           tax_amount: taxAmount,
           stripe_fee: stripeFee,
           platform_fee_percent: feePercent,
           platform_fee_fixed: feeFixed,
           platform_fee: platformFee,
-          organizer_payout: organizerPayout,
+          organizer_payout: actualOrganizerPayout,
           transfer_group: metadata.transfer_group || null,
           splits: parsedSplits
             ? parsedSplits.map((s) => ({
                 user_id: s.recipient_user_id,
                 stripe_id: s.recipient_stripe_id,
                 percentage: s.percentage,
-                amount: Math.round(netRevenue * (s.percentage / 100) * 100) / 100,
+                amount: Math.round(actualOrganizerPayout * (s.percentage / 100) * 100) / 100,
                 description: s.description,
               }))
             : null,
@@ -206,12 +232,12 @@ async function handleCheckoutCompleted(session: any) {
     // ── Create organizer transfer (replaces destination charge behavior) ──
     let organizerTransferId: string | null = null;
 
-    if (!isPlatformEvent && organizerStripeId && organizerPayout > 0) {
+    if (!isPlatformEvent && organizerStripeId && actualOrganizerPayout > 0) {
       if (hasMultiSplit && parsedSplits) {
         // Multi-split: transfers handled below (each partner gets their share)
       } else {
         // Single organizer: transfer full net to organizer
-        const orgPayoutCents = Math.round(organizerPayout * 100);
+        const orgPayoutCents = Math.round(actualOrganizerPayout * 100);
         try {
           const transfer = await stripe.transfers.create({
             amount: orgPayoutCents,
@@ -241,7 +267,7 @@ async function handleCheckoutCompleted(session: any) {
     if (hasMultiSplit && parsedSplits) {
       const currency = session.currency || 'cad';
       let totalTransferred = 0;
-      const netRevenueCents = Math.round(netRevenue * 100);
+      const splitBaseCents = Math.round(actualOrganizerPayout * 100);
 
       for (let i = 0; i < parsedSplits.length; i++) {
         const split = parsedSplits[i];
@@ -249,9 +275,9 @@ async function handleCheckoutCompleted(session: any) {
 
         // For the last split, use remainder to avoid rounding drift
         if (i === parsedSplits.length - 1) {
-          amountCents = netRevenueCents - totalTransferred;
+          amountCents = splitBaseCents - totalTransferred;
         } else {
-          amountCents = Math.round((netRevenueCents * split.percentage) / 100);
+          amountCents = Math.round((splitBaseCents * split.percentage) / 100);
         }
 
         let transferId: string | null = null;
@@ -286,7 +312,7 @@ async function handleCheckoutCompleted(session: any) {
           user_id: split.recipient_user_id,
           stripe_id: split.recipient_stripe_id,
           percentage: split.percentage,
-          amount: Math.round(netRevenue * (split.percentage / 100) * 100) / 100,
+          amount: Math.round(actualOrganizerPayout * (split.percentage / 100) * 100) / 100,
           description: split.description,
           stripe_transfer_id: transferId,
         });
@@ -301,13 +327,17 @@ async function handleCheckoutCompleted(session: any) {
     let elevsoftTransferData: { id: string; amount: number } | null = null;
 
     if (elevsoftStripeId && elevsoftPercent > 0) {
-      // Platform gross = revenue base excluding tax (tax is a pass-through)
-      //   Organizer events: platformFee (5% of subtotal)
-      //   Platform events: full subtotal
-      const platformGross = isPlatformEvent ? subtotal : platformFee;
-      // Deduct Stripe processing fee
-      const platformNet = platformGross - stripeFee;
-      const elevsoftAmount = Math.max(0, platformNet * (elevsoftPercent / 100));
+      let elevsoftAmount: number;
+
+      if (isPlatformEvent) {
+        // Platform events: Elevsoft gets 100% of (revenue - Stripe fees)
+        elevsoftAmount = passProcessingFee ? subtotal : Math.max(0, subtotal - stripeFee);
+      } else {
+        // Organizer events: Elevsoft gets elevsoftPercent% of GROSS platform fee
+        elevsoftAmount = platformFee * (elevsoftPercent / 100);
+      }
+
+      elevsoftAmount = Math.max(0, elevsoftAmount);
       const elevsoftCents = Math.round(elevsoftAmount * 100);
 
       if (elevsoftCents > 0) {
@@ -320,14 +350,13 @@ async function handleCheckoutCompleted(session: any) {
             metadata: {
               event_id: eventId,
               order_id: order.id,
-              type: 'elevsoft_revenue_share',
-              platform_gross: platformGross.toFixed(2),
+              type: isPlatformEvent ? 'platform_event_revenue' : 'elevsoft_revenue_share',
+              platform_fee_gross: platformFee.toFixed(2),
               stripe_fee: stripeFee.toFixed(2),
-              platform_net: platformNet.toFixed(2),
             },
           });
           elevsoftTransferData = { id: transfer.id, amount: elevsoftAmount };
-          console.log(`[Webhook] Elevsoft transfer created: ${elevsoftCents} cents (${elevsoftPercent}% of ${platformNet.toFixed(2)} platform net)`);
+          console.log(`[Webhook] Elevsoft transfer: ${elevsoftCents} cents`);
         } catch (err) {
           console.error('[Webhook] Elevsoft transfer failed:', err);
         }
@@ -339,14 +368,19 @@ async function handleCheckoutCompleted(session: any) {
       .from('orders')
       .update({
         payout_breakdown: {
-          version: 2,
+          version: 3,
           subtotal,
+          customer_total: customerTotal,
+          processing_fee: processingFeeAmount,
+          pass_processing_fee: passProcessingFee,
+          total_tickets: totalTickets,
+          platform_fee_fixed_semantics: 'per_ticket',
           tax_amount: taxAmount,
           stripe_fee: stripeFee,
           platform_fee_percent: feePercent,
           platform_fee_fixed: feeFixed,
           platform_fee: platformFee,
-          organizer_payout: organizerPayout,
+          organizer_payout: actualOrganizerPayout,
           organizer_transfer_id: organizerTransferId,
           transfer_group: metadata.transfer_group || null,
           splits: splitTransferDetails.length > 0 ? splitTransferDetails : null,
@@ -496,7 +530,8 @@ async function handleCheckoutCompleted(session: any) {
             quantity: s.quantity,
             unitPrice: s.unitPrice,
           })),
-          total: subtotal,
+          total: customerTotal,
+          processingFee: processingFeeAmount,
           currency: session.currency || 'cad',
           tickets: allTickets,
           receiptUrl,

@@ -25,6 +25,7 @@ interface CheckoutFormProps {
   tiers: Tier[];
   occurrences: Occurrence[];
   currency: string;
+  passProcessingFee: boolean;
   user: {
     email?: string;
     given_name?: string;
@@ -40,6 +41,7 @@ export function CheckoutForm({
   tiers,
   occurrences,
   currency,
+  passProcessingFee,
   user,
 }: CheckoutFormProps) {
   const [quantities, setQuantities] = useState<Record<string, number>>(() => {
@@ -60,6 +62,17 @@ export function CheckoutForm({
     (s, t) => s + t.price * (quantities[t.id] ?? 0),
     0
   );
+
+  const STRIPE_PERCENT = 0.029;
+  const STRIPE_FIXED = 0.30;
+
+  let processingFee = 0;
+  let customerTotal = subtotal;
+
+  if (passProcessingFee && subtotal > 0) {
+    customerTotal = Math.round(((subtotal + STRIPE_FIXED) / (1 - STRIPE_PERCENT)) * 100) / 100;
+    processingFee = Math.round((customerTotal - subtotal) * 100) / 100;
+  }
 
   const formatPrice = (amount: number) => {
     if (amount === 0) return "FREE";
@@ -232,13 +245,27 @@ export function CheckoutForm({
               </span>
               <span>{formatPrice(subtotal)}</span>
             </div>
+            {passProcessingFee && processingFee > 0 && (
+              <div
+                className="flex justify-between text-sm text-gray-500 mb-1"
+                data-testid="checkout-processing-fee"
+              >
+                <span>Processing fee</span>
+                <span>{formatPrice(processingFee)}</span>
+              </div>
+            )}
             <div
               className="flex justify-between font-bold text-lg"
               data-testid="checkout-total"
             >
               <span>Total</span>
-              <span>{formatPrice(subtotal)}</span>
+              <span>{formatPrice(customerTotal)}</span>
             </div>
+            {passProcessingFee && processingFee > 0 && (
+              <p className="text-xs text-gray-400 mt-1">
+                Includes payment processing fee
+              </p>
+            )}
           </div>
         )}
       </div>
