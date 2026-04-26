@@ -1,11 +1,11 @@
-export type SeatingMode = "general_admission" | "reserved_seating_list" | "seatmap_pro";
+export type SeatingMode = "general_admission" | "assigned_seating" | "zone_admission" | "zone_map" | "seat_map";
 export type ViewMode = "image_overlay" | "schematic";
 
 // Multi-polygon support for zones
 export interface ZonePolygon {
   id: string;
   points: [number, number][];
-  seats?: SeatDefinition[]; // only for seatmap_pro seat mode
+  seats?: SeatDefinition[]; // only for seat_map mode
 }
 
 export interface ZoneDefinition {
@@ -59,14 +59,11 @@ export interface SeatRange {
   tier_id: string;       // which ticket tier this range belongs to
 }
 
-export type MapSubMode = "zone_only" | "individual_seating";
-
 export interface SeatingConfig {
   image_url: string | null;
   image_width: number;
   image_height: number;
   view_mode: ViewMode;
-  map_sub_mode?: MapSubMode;
   zones?: ZoneDefinition[];
   sections?: SectionDefinition[];
   // For assigned seating (no map):

@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────────
-// 📁 app/api/webhooks/stripe/route.ts — NEW FILE (create this)
+// app/api/webhooks/stripe/route.ts
 // Handles Stripe webhook events — creates orders + tickets on successful payment
 //
 // ⚠️  STRIPE_WEBHOOK_SECRET is REQUIRED for this file.
@@ -92,20 +92,25 @@ async function handleCheckoutCompleted(session: any) {
   }>;
   const subtotal = parseFloat(metadata.subtotal);
   const platformFee = parseFloat(metadata.platform_fee);
+  const feePercent = parseFloat(metadata.platform_fee_percent) || 0;
+  const feeFixed = parseFloat(metadata.platform_fee_fixed) || 0;
   const organizerPayout = parseFloat(metadata.organizer_payout);
 
-  // Seat selections for seatmap_pro mode
+  // Seat selections for seat_map mode
   const seatSelections: Array<{ seatId: string; sectionId: string; label: string }> | null =
     metadata.seat_selections ? JSON.parse(metadata.seat_selections) : null;
   const seatSessionId = metadata.seat_session_id || null;
 
-  // Assigned seats for reserved_seating_list mode
+  // Assigned seats for assigned_seating mode
   const assignedSeats: string[] | null =
     metadata.assigned_seats ? JSON.parse(metadata.assigned_seats) : null;
 
   // Determine user_id for order/tickets
-  // If user is logged in, use auth0_id. Otherwise, null (guest checkout).
   const userId = userAuth0Id || null;
+
+  // Parse new metadata fields
+  const isPlatformEvent = metadata.is_platform_event === 'true';
+  const organizerStripeId = metadata.organizer_stripe_id || '';
 
   try {
     // Parse multi-split data from metadata
@@ -125,7 +130,33 @@ async function handleCheckoutCompleted(session: any) {
     }
     const netRevenue = subtotal - platformFee;
 
-    // 1. Create the order
+    // ── Retrieve charge details early (Stripe fee + receipt URL) ──
+    let stripeFee = 0;
+    let receiptUrl: string | undefined;
+
+    if (session.payment_intent) {
+      try {
+        const paymentIntent = await stripe.paymentIntents.retrieve(
+          session.payment_intent,
+          { expand: ['latest_charge.balance_transaction'] }
+        );
+        const charge = paymentIntent.latest_charge;
+        if (charge && typeof charge === 'object') {
+          if (charge.receipt_url) receiptUrl = charge.receipt_url;
+          const bt = (charge as any).balance_transaction;
+          if (bt && typeof bt === 'object') {
+            stripeFee = bt.fee / 100; // cents → dollars
+          }
+        }
+      } catch (err) {
+        console.error('[Webhook] Failed to fetch charge details:', err);
+      }
+    }
+
+    // ── Get tax amount from session ──
+    const taxAmount = (session.total_details?.amount_tax || 0) / 100; // cents → dollars
+
+    // 1. Create the order (initial payout_breakdown — transfer IDs added after transfers)
     const { data: order, error: orderError } = await supabase
       .from('orders')
       .insert({
@@ -140,9 +171,12 @@ async function handleCheckoutCompleted(session: any) {
         buyer_email: userEmail || null,
         buyer_name: userName || null,
         payout_breakdown: {
-          platform_fee_percent: parseFloat(metadata.platform_fee_percent) || 0,
-          platform_fee_fixed: parseFloat(metadata.platform_fee_fixed) || 0,
+          version: 2,
           subtotal,
+          tax_amount: taxAmount,
+          stripe_fee: stripeFee,
+          platform_fee_percent: feePercent,
+          platform_fee_fixed: feeFixed,
           platform_fee: platformFee,
           organizer_payout: organizerPayout,
           transfer_group: metadata.transfer_group || null,
@@ -169,11 +203,44 @@ async function handleCheckoutCompleted(session: any) {
 
     console.log('[Webhook] Order created:', order.id);
 
-    // 1b. Create multi-split transfers if applicable
+    // ── Create organizer transfer (replaces destination charge behavior) ──
+    let organizerTransferId: string | null = null;
+
+    if (!isPlatformEvent && organizerStripeId && organizerPayout > 0) {
+      if (hasMultiSplit && parsedSplits) {
+        // Multi-split: transfers handled below (each partner gets their share)
+      } else {
+        // Single organizer: transfer full net to organizer
+        const orgPayoutCents = Math.round(organizerPayout * 100);
+        try {
+          const transfer = await stripe.transfers.create({
+            amount: orgPayoutCents,
+            currency: session.currency || 'cad',
+            destination: organizerStripeId,
+            transfer_group: metadata.transfer_group,
+            metadata: { event_id: eventId, order_id: order.id, type: 'organizer_payout' },
+          });
+          organizerTransferId = transfer.id;
+          console.log(`[Webhook] Organizer transfer created: ${orgPayoutCents} cents to ${organizerStripeId}`);
+        } catch (err) {
+          console.error('[Webhook] Organizer transfer failed:', err);
+        }
+      }
+    }
+
+    // ── Multi-split transfers ──
+    const splitTransferDetails: Array<{
+      user_id: string;
+      stripe_id: string;
+      percentage: number;
+      amount: number;
+      description: string;
+      stripe_transfer_id: string | null;
+    }> = [];
+
     if (hasMultiSplit && parsedSplits) {
       const currency = session.currency || 'cad';
       let totalTransferred = 0;
-
       const netRevenueCents = Math.round(netRevenue * 100);
 
       for (let i = 0; i < parsedSplits.length; i++) {
@@ -187,9 +254,10 @@ async function handleCheckoutCompleted(session: any) {
           amountCents = Math.round((netRevenueCents * split.percentage) / 100);
         }
 
+        let transferId: string | null = null;
         if (amountCents > 0) {
           try {
-            await stripe.transfers.create({
+            const transfer = await stripe.transfers.create({
               amount: amountCents,
               currency,
               destination: split.recipient_stripe_id,
@@ -201,6 +269,7 @@ async function handleCheckoutCompleted(session: any) {
                 percentage: String(split.percentage),
               },
             });
+            transferId = transfer.id;
             totalTransferred += amountCents;
             console.log(
               `[Webhook] Transfer created: ${amountCents} cents (${split.percentage}%) to ${split.recipient_stripe_id}`
@@ -212,10 +281,83 @@ async function handleCheckoutCompleted(session: any) {
             );
           }
         }
+
+        splitTransferDetails.push({
+          user_id: split.recipient_user_id,
+          stripe_id: split.recipient_stripe_id,
+          percentage: split.percentage,
+          amount: Math.round(netRevenue * (split.percentage / 100) * 100) / 100,
+          description: split.description,
+          stripe_transfer_id: transferId,
+        });
       }
 
       console.log(`[Webhook] Multi-split transfers completed: ${totalTransferred} cents total`);
     }
+
+    // ── Elevsoft revenue share transfer ──
+    const elevsoftStripeId = process.env.ELEVSOFT_STRIPE_ACCOUNT_ID;
+    const elevsoftPercent = parseFloat(process.env.ELEVSOFT_REVENUE_PERCENT || '0');
+    let elevsoftTransferData: { id: string; amount: number } | null = null;
+
+    if (elevsoftStripeId && elevsoftPercent > 0) {
+      // Platform gross = revenue base excluding tax (tax is a pass-through)
+      //   Organizer events: platformFee (5% of subtotal)
+      //   Platform events: full subtotal
+      const platformGross = isPlatformEvent ? subtotal : platformFee;
+      // Deduct Stripe processing fee
+      const platformNet = platformGross - stripeFee;
+      const elevsoftAmount = Math.max(0, platformNet * (elevsoftPercent / 100));
+      const elevsoftCents = Math.round(elevsoftAmount * 100);
+
+      if (elevsoftCents > 0) {
+        try {
+          const transfer = await stripe.transfers.create({
+            amount: elevsoftCents,
+            currency: session.currency || 'cad',
+            destination: elevsoftStripeId,
+            transfer_group: metadata.transfer_group,
+            metadata: {
+              event_id: eventId,
+              order_id: order.id,
+              type: 'elevsoft_revenue_share',
+              platform_gross: platformGross.toFixed(2),
+              stripe_fee: stripeFee.toFixed(2),
+              platform_net: platformNet.toFixed(2),
+            },
+          });
+          elevsoftTransferData = { id: transfer.id, amount: elevsoftAmount };
+          console.log(`[Webhook] Elevsoft transfer created: ${elevsoftCents} cents (${elevsoftPercent}% of ${platformNet.toFixed(2)} platform net)`);
+        } catch (err) {
+          console.error('[Webhook] Elevsoft transfer failed:', err);
+        }
+      }
+    }
+
+    // ── Update order with full payout_breakdown including transfer IDs ──
+    await supabase
+      .from('orders')
+      .update({
+        payout_breakdown: {
+          version: 2,
+          subtotal,
+          tax_amount: taxAmount,
+          stripe_fee: stripeFee,
+          platform_fee_percent: feePercent,
+          platform_fee_fixed: feeFixed,
+          platform_fee: platformFee,
+          organizer_payout: organizerPayout,
+          organizer_transfer_id: organizerTransferId,
+          transfer_group: metadata.transfer_group || null,
+          splits: splitTransferDetails.length > 0 ? splitTransferDetails : null,
+          elevsoft_transfer: elevsoftTransferData ? {
+            stripe_transfer_id: elevsoftTransferData.id,
+            amount: elevsoftTransferData.amount,
+            percent: elevsoftPercent,
+          } : null,
+        },
+      })
+      .eq('id', order.id);
 
     // 2. Fetch event details for confirmation email
     const { data: eventData } = await supabase
@@ -280,7 +422,7 @@ async function handleCheckoutCompleted(session: any) {
       //   - Increment total_tickets_sold on events
       //   - Auto-generate qr_code_secret via default gen_random_uuid()
 
-      // For seatmap_pro mode, pop seat labels from the queue (ordered to match tiers)
+      // For seat_map / assigned_seating mode, pop seat labels from the queue (ordered to match tiers)
       const labelsForThisTier: string[] = [];
       for (let i = 0; i < selection.quantity && seatLabelQueue.length > 0; i++) {
         labelsForThisTier.push(seatLabelQueue.shift()!);
@@ -337,34 +479,7 @@ async function handleCheckoutCompleted(session: any) {
       }
     }
 
-    // 4. Fetch Stripe receipt URL + invoice URLs
-    let receiptUrl: string | undefined;
-    let invoiceUrl: string | undefined;
-    let invoicePdf: string | undefined;
-    if (session.payment_intent) {
-      try {
-        const paymentIntent = await stripe.paymentIntents.retrieve(session.payment_intent, {
-          expand: ['latest_charge'],
-        });
-        const charge = paymentIntent.latest_charge;
-        if (charge && typeof charge === 'object' && charge.receipt_url) {
-          receiptUrl = charge.receipt_url;
-        }
-      } catch (err) {
-        console.error('[Webhook] Failed to fetch receipt URL:', err);
-      }
-    }
-    if (session.invoice) {
-      try {
-        const invoice = await stripe.invoices.retrieve(session.invoice);
-        if (invoice.hosted_invoice_url) invoiceUrl = invoice.hosted_invoice_url;
-        if (invoice.invoice_pdf) invoicePdf = invoice.invoice_pdf;
-      } catch (err) {
-        console.error('[Webhook] Failed to fetch invoice URLs:', err);
-      }
-    }
-
-    // 5. Send confirmation email (non-blocking — failures must not break the webhook)
+    // 4. Send confirmation email (non-blocking — failures must not break the webhook)
     if (userEmail && eventData && allTickets.length > 0) {
       try {
         await sendOrderConfirmationEmail({
@@ -385,8 +500,6 @@ async function handleCheckoutCompleted(session: any) {
           currency: session.currency || 'cad',
           tickets: allTickets,
           receiptUrl,
-          invoiceUrl,
-          invoicePdf,
         });
         console.log('[Webhook] Confirmation email sent to:', userEmail);
       } catch (emailError) {
@@ -394,7 +507,7 @@ async function handleCheckoutCompleted(session: any) {
       }
     }
 
-    console.log('[Webhook] ✅ Checkout fully processed for session:', session.id);
+    console.log('[Webhook] Checkout fully processed for session:', session.id);
   } catch (error) {
     console.error('[Webhook] Critical error processing checkout:', error);
   }

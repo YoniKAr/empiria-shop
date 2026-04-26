@@ -189,7 +189,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // 6b. If seatmap_pro mode, verify each seat has a valid hold for this session
+    // 6b. If seat_map mode, verify each seat has a valid hold for this session
     if (seatSelections && seatSelections.length > 0 && sessionId) {
       const { data: activeHolds, error: holdsError } = await supabase
         .from('seat_holds')
@@ -221,10 +221,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 6c. Handle assigned seating (reserved_seating_list with seat_ranges)
+    // 6c. Handle assigned seating (assigned_seating with seat_ranges)
     let resolvedAssignedSeats: AssignedSeatSelection[] | null = null;
 
-    if (event.seating_type === 'reserved_seating_list') {
+    if (event.seating_type === 'assigned_seating') {
       const seatingConfig = event.seating_config as { seat_ranges?: Array<{ id: string; prefix: string; start: number; end: number; tier_id: string }>; allow_seat_choice?: boolean } | null;
       const seatRanges = seatingConfig?.seat_ranges || [];
 
@@ -343,9 +343,7 @@ export async function POST(request: NextRequest) {
       .eq('source_type', 'net_revenue');
 
     const hasMultiSplit = splits && splits.length > 0;
-    const transferGroup = hasMultiSplit
-      ? `evt_${eventId.slice(0, 8)}_${Date.now()}`
-      : undefined;
+    const transferGroup = `evt_${eventId.slice(0, 8)}_${Date.now()}`;
 
     // 8. Determine user identity
     const customerEmail = contactEmail || user?.email;
@@ -367,19 +365,21 @@ export async function POST(request: NextRequest) {
       occurrence_id: occurrenceId || '',
     };
 
-    // Include multi-split metadata
-    if (hasMultiSplit && transferGroup) {
-      metadata.transfer_group = transferGroup;
+    // Include transfer_group and organizer metadata for webhook processing
+    metadata.transfer_group = transferGroup;
+    metadata.is_platform_event = isPlatformEvent ? 'true' : 'false';
+    metadata.organizer_stripe_id = organizer?.stripe_account_id || '';
+    if (hasMultiSplit) {
       metadata.splits = JSON.stringify(splits);
     }
 
-    // Include seat selections for seatmap_pro mode
+    // Include seat selections for seat_map mode
     if (seatSelections && seatSelections.length > 0) {
       metadata.seat_selections = JSON.stringify(seatSelections);
       metadata.seat_session_id = sessionId || '';
     }
 
-    // Include assigned seats for reserved_seating_list mode
+    // Include assigned seats for assigned_seating mode
     if (resolvedAssignedSeats && resolvedAssignedSeats.length > 0) {
       metadata.assigned_seats = JSON.stringify(resolvedAssignedSeats.map((s) => s.label));
     }
@@ -389,54 +389,23 @@ export async function POST(request: NextRequest) {
 
     let checkoutSession;
 
-    if (isPlatformEvent) {
-      // Platform-owned event (admin-created) — direct charge, no connected account
-      checkoutSession = await stripe.checkout.sessions.create({
-        mode: 'payment',
-        line_items: lineItems,
-        ...(customerEmail && { customer_email: customerEmail }),
-        invoice_creation: { enabled: true },
-        payment_intent_data: { metadata },
+    // Unified checkout: all charges land on platform account.
+    // Transfers to organizer/partners happen in the webhook.
+    // Tax stays on platform for remittance.
+    checkoutSession = await stripe.checkout.sessions.create({
+      mode: 'payment',
+      line_items: lineItems,
+      automatic_tax: { enabled: true },
+      ...(customerEmail && { customer_email: customerEmail }),
+      payment_intent_data: {
+        transfer_group: transferGroup,
         metadata,
-        success_url: `${appBaseUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${appBaseUrl}/events/${event.slug}`,
-        expires_at: Math.floor(Date.now() / 1000) + 1800,
-      });
-    } else if (hasMultiSplit) {
-      checkoutSession = await stripe.checkout.sessions.create({
-        mode: 'payment',
-        line_items: lineItems,
-        ...(customerEmail && { customer_email: customerEmail }),
-        invoice_creation: { enabled: true },
-        payment_intent_data: {
-          application_fee_amount: platformFeeStripe,
-          transfer_group: transferGroup,
-          metadata,
-        },
-        metadata,
-        success_url: `${appBaseUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${appBaseUrl}/events/${event.slug}`,
-        expires_at: Math.floor(Date.now() / 1000) + 1800,
-      });
-    } else {
-      checkoutSession = await stripe.checkout.sessions.create({
-        mode: 'payment',
-        line_items: lineItems,
-        ...(customerEmail && { customer_email: customerEmail }),
-        invoice_creation: { enabled: true },
-        payment_intent_data: {
-          application_fee_amount: platformFeeStripe,
-          transfer_data: {
-            destination: organizer!.stripe_account_id!,
-          },
-          metadata,
-        },
-        metadata,
-        success_url: `${appBaseUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${appBaseUrl}/events/${event.slug}`,
-        expires_at: Math.floor(Date.now() / 1000) + 1800,
-      });
-    }
+      },
+      metadata,
+      success_url: `${appBaseUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${appBaseUrl}/events/${event.slug}`,
+      expires_at: Math.floor(Date.now() / 1000) + 1800,
+    });
 
     return NextResponse.json({ url: checkoutSession.url });
   } catch (error: unknown) {

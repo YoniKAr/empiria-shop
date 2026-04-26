@@ -179,9 +179,9 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                         <div className="border border-gray-200 rounded-xl p-6 bg-gray-50 text-center">
                             <p className="text-gray-500 font-medium">This event has ended</p>
                         </div>
-                    ) : seatingType === 'reserved_seating_list' && seatingConfig && seatingConfig.seat_ranges && seatingConfig.seat_ranges.length > 0 ? (
+                    ) : seatingType === 'assigned_seating' && seatingConfig ? (
                         <AssignedSeatPicker
-                            seatRanges={seatingConfig.seat_ranges}
+                            seatRanges={seatingConfig.seat_ranges || []}
                             tiers={sortedTiers}
                             eventId={event.id}
                             eventCurrency={currency}
@@ -196,7 +196,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                                 label: o.label || '',
                             }))}
                         />
-                    ) : seatingType === 'reserved_seating_list' && seatingConfig ? (
+                    ) : seatingType === 'zone_admission' && seatingConfig ? (
                         <ZoneSelector
                             config={seatingConfig}
                             tiers={sortedTiers}
@@ -212,24 +212,24 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                                 label: o.label || '',
                             }))}
                         />
-                    ) : seatingType === 'seatmap_pro' && seatingConfig && seatingConfig.map_sub_mode === 'individual_seating' ? (
+                    ) : seatingType === 'zone_map' && seatingConfig ? (
+                        <ZoneSelector
+                            config={seatingConfig}
+                            tiers={sortedTiers}
+                            eventId={event.id}
+                            eventCurrency={currency}
+                            currencySymbol={currencySymbol}
+                            userEmail={user?.email}
+                            userName={user?.name}
+                            occurrences={futureOccurrences.map((o: any) => ({
+                                id: o.id,
+                                starts_at: o.starts_at,
+                                ends_at: o.ends_at,
+                                label: o.label || '',
+                            }))}
+                        />
+                    ) : seatingType === 'seat_map' && seatingConfig ? (
                         <SeatSelector
-                            config={seatingConfig}
-                            tiers={sortedTiers}
-                            eventId={event.id}
-                            eventCurrency={currency}
-                            currencySymbol={currencySymbol}
-                            userEmail={user?.email}
-                            userName={user?.name}
-                            occurrences={futureOccurrences.map((o: any) => ({
-                                id: o.id,
-                                starts_at: o.starts_at,
-                                ends_at: o.ends_at,
-                                label: o.label || '',
-                            }))}
-                        />
-                    ) : seatingType === 'seatmap_pro' && seatingConfig ? (
-                        <ZoneSelector
                             config={seatingConfig}
                             tiers={sortedTiers}
                             eventId={event.id}
