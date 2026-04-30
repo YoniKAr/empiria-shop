@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
 
     const { data: event, error: eventError } = await supabase
       .from('events')
-      .select('id, title, slug, organizer_id, platform_fee_percent, platform_fee_fixed, pass_processing_fee, currency, status, total_capacity, total_tickets_sold, seating_type, seating_config, source_app')
+      .select('id, title, slug, organizer_id, platform_fee_percent, platform_fee_fixed, pass_processing_fee, currency, status, total_capacity, total_tickets_sold, seating_type, seating_config, source_app, charge_ticket_tax')
       .eq('id', eventId)
       .single();
 
@@ -334,43 +334,92 @@ export async function POST(request: NextRequest) {
     const feePercent = Number(event.platform_fee_percent) || 3.5;
     const feeFixedPerTicket = event.platform_fee_fixed != null ? Number(event.platform_fee_fixed) : 1.50;
     const passProcessingFee = event.pass_processing_fee === true;
+    const chargeTicketTax = event.charge_ticket_tax === true;
 
-    // Total ticket count for per-ticket fixed fee
     const totalTickets = validatedSelections.reduce((sum: number, s: { quantity: number }) => sum + s.quantity, 0);
 
-    // Platform fee: always on base subtotal, fixed fee is per-ticket
-    const platformFee = subtotal * (feePercent / 100) + (feeFixedPerTicket * totalTickets);
+    // Platform fee (convenience fee) - includes Stripe fees within it
+    const platformFee = Math.round((subtotal * (feePercent / 100) + (feeFixedPerTicket * totalTickets)) * 100) / 100;
 
-    // Stripe processing fee estimate (Stripe Canada: 2.9% + $0.30)
+    // Tax rates
     const STRIPE_PERCENT = 0.029;
     const STRIPE_FIXED = 0.30;
+    const PLATFORM_HST_RATE = 0.13;
+    const TICKET_TAX_RATE = 0.13;
+
+    // Ticket tax (organizer collects and remits)
+    const ticketTaxRate = chargeTicketTax ? TICKET_TAX_RATE : 0;
+    const ticketTax = Math.round(subtotal * ticketTaxRate * 100) / 100;
 
     let customerTotal: number;
-    let processingFeeAmount: number;
+    let stripeFeeEstimate: number;
+    let netPlatform: number;
+    let platformHST: number;
     let organizerPayout: number;
 
     if (passProcessingFee) {
-      // Pass processing fees to attendee: inflate total using reverse formula
-      customerTotal = Math.round(((subtotal + STRIPE_FIXED) / (1 - STRIPE_PERCENT)) * 100) / 100;
-      processingFeeAmount = Math.round((customerTotal - subtotal) * 100) / 100;
-      organizerPayout = subtotal - platformFee;
+      // PASS MODE: customer pays ticket price + convenience fee + HST on fee + ticket tax
+      // Algebraic solution for circular dependency (Stripe fee depends on total, HST depends on Stripe fee)
+      // Total = [S(1 + R_t) + 1.13P - STRIPE_FIXED * PLATFORM_HST_RATE] / (1 + STRIPE_PERCENT * PLATFORM_HST_RATE)
+      const rawTotal = (subtotal * (1 + ticketTaxRate) + (1 + PLATFORM_HST_RATE) * platformFee - STRIPE_FIXED * PLATFORM_HST_RATE) / (1 + STRIPE_PERCENT * PLATFORM_HST_RATE);
+      customerTotal = Math.round(rawTotal * 100) / 100;
+      stripeFeeEstimate = Math.round((STRIPE_PERCENT * customerTotal + STRIPE_FIXED) * 100) / 100;
+      netPlatform = Math.round((platformFee - stripeFeeEstimate) * 100) / 100;
+      platformHST = Math.round(netPlatform * PLATFORM_HST_RATE * 100) / 100;
+      organizerPayout = Math.round((subtotal + ticketTax) * 100) / 100;
     } else {
-      // Organizer absorbs: customer pays just the subtotal
-      customerTotal = subtotal;
-      processingFeeAmount = 0;
-      organizerPayout = subtotal - platformFee;
+      // ABSORB MODE: customer pays only ticket price + ticket tax
+      customerTotal = Math.round((subtotal + ticketTax) * 100) / 100;
+      stripeFeeEstimate = Math.round((STRIPE_PERCENT * customerTotal + STRIPE_FIXED) * 100) / 100;
+      netPlatform = Math.round((platformFee - stripeFeeEstimate) * 100) / 100;
+      platformHST = Math.round(netPlatform * PLATFORM_HST_RATE * 100) / 100;
+      organizerPayout = Math.round((subtotal + ticketTax - platformFee - platformHST) * 100) / 100;
     }
 
-    // Add processing fee as a separate line item when passed to attendee
-    if (passProcessingFee && processingFeeAmount > 0) {
+    // Ensure non-negative
+    organizerPayout = Math.max(0, organizerPayout);
+    netPlatform = Math.max(0, netPlatform);
+    platformHST = Math.max(0, platformHST);
+
+    // Add convenience fee line items (only in pass mode)
+    if (passProcessingFee && platformFee > 0) {
       lineItems.push({
         price_data: {
           currency,
           product_data: {
-            name: 'Processing Fee',
-            description: 'Payment processing fee',
+            name: 'Convenience Fee',
+            description: 'Platform service fee (includes payment processing)',
           },
-          unit_amount: toStripeAmount(processingFeeAmount, currency),
+          unit_amount: toStripeAmount(platformFee, currency),
+        },
+        quantity: 1,
+      });
+
+      if (platformHST > 0) {
+        lineItems.push({
+          price_data: {
+            currency,
+            product_data: {
+              name: 'HST on Convenience Fee',
+              description: 'Harmonized Sales Tax (13%) on convenience fee',
+            },
+            unit_amount: toStripeAmount(platformHST, currency),
+          },
+          quantity: 1,
+        });
+      }
+    }
+
+    // Add ticket tax line item (both modes, if organizer enabled it)
+    if (ticketTax > 0) {
+      lineItems.push({
+        price_data: {
+          currency,
+          product_data: {
+            name: 'Sales Tax (HST 13%)',
+            description: 'Harmonized Sales Tax on ticket price',
+          },
+          unit_amount: toStripeAmount(ticketTax, currency),
         },
         quantity: 1,
       });
@@ -403,11 +452,16 @@ export async function POST(request: NextRequest) {
       organizer_payout: organizerPayout.toFixed(2),
       subtotal: subtotal.toFixed(2),
       customer_total: customerTotal.toFixed(2),
-      processing_fee_amount: processingFeeAmount.toFixed(2),
+      processing_fee_amount: '0',
       pass_processing_fee: passProcessingFee.toString(),
       total_tickets: totalTickets.toString(),
       source_app: 'shop',
       occurrence_id: occurrenceId || '',
+      ticket_tax: ticketTax.toFixed(2),
+      platform_hst: platformHST.toFixed(2),
+      stripe_fee_estimate: stripeFeeEstimate.toFixed(2),
+      net_platform: netPlatform.toFixed(2),
+      charge_ticket_tax: chargeTicketTax.toString(),
     };
 
     // Include transfer_group and organizer metadata for webhook processing
@@ -440,7 +494,6 @@ export async function POST(request: NextRequest) {
     checkoutSession = await stripe.checkout.sessions.create({
       mode: 'payment',
       line_items: lineItems,
-      automatic_tax: { enabled: true },
       ...(customerEmail && { customer_email: customerEmail }),
       payment_intent_data: {
         transfer_group: transferGroup,

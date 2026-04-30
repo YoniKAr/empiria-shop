@@ -28,6 +28,9 @@ interface OrderEmailData {
   lineItems: LineItem[];
   total: number;
   processingFee?: number;
+  convenienceFee?: number;
+  convenienceFeeHST?: number;
+  ticketTax?: number;
   currency: string;
   tickets: TicketInfo[];
   receiptUrl?: string;
@@ -257,13 +260,31 @@ function buildEmailHtml(data: OrderEmailData, walletResults: Array<{ticketId: st
                   <th style="padding: 8px 12px; font-size: 12px; font-weight: 600; color: #6b7280; text-align: right; text-transform: uppercase;">Total</th>
                 </tr>
                 ${lineItemRows}
-                ${data.processingFee && data.processingFee > 0 ? `
+                ${data.convenienceFee && data.convenienceFee > 0 ? `
                 <tr>
                   <td colspan="3" style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 13px; color: #6b7280; text-align: right;">
-                    Processing fee
+                    Convenience Fee
                   </td>
                   <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 13px; color: #6b7280; text-align: right;">
-                    ${formatCurrency(data.processingFee, data.currency)}
+                    ${formatCurrency(data.convenienceFee, data.currency)}
+                  </td>
+                </tr>` : ''}
+                ${data.convenienceFeeHST && data.convenienceFeeHST > 0 ? `
+                <tr>
+                  <td colspan="3" style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 13px; color: #6b7280; text-align: right;">
+                    HST on Convenience Fee
+                  </td>
+                  <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 13px; color: #6b7280; text-align: right;">
+                    ${formatCurrency(data.convenienceFeeHST, data.currency)}
+                  </td>
+                </tr>` : ''}
+                ${data.ticketTax && data.ticketTax > 0 ? `
+                <tr>
+                  <td colspan="3" style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 13px; color: #6b7280; text-align: right;">
+                    Sales Tax (HST 13%)
+                  </td>
+                  <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 13px; color: #6b7280; text-align: right;">
+                    ${formatCurrency(data.ticketTax, data.currency)}
                   </td>
                 </tr>` : ''}
                 <tr style="background: #f9fafb;">

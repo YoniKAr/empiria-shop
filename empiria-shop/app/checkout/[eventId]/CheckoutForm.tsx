@@ -26,6 +26,9 @@ interface CheckoutFormProps {
   occurrences: Occurrence[];
   currency: string;
   passProcessingFee: boolean;
+  chargeTicketTax: boolean;
+  feePercent: number;
+  feeFixedPerTicket: number;
   user: {
     email?: string;
     given_name?: string;
@@ -42,6 +45,9 @@ export function CheckoutForm({
   occurrences,
   currency,
   passProcessingFee,
+  chargeTicketTax,
+  feePercent,
+  feeFixedPerTicket,
   user,
 }: CheckoutFormProps) {
   const [quantities, setQuantities] = useState<Record<string, number>>(() => {
@@ -63,15 +69,36 @@ export function CheckoutForm({
     0
   );
 
+  // Fee calculation — mirrors server-side logic in checkout route
   const STRIPE_PERCENT = 0.029;
   const STRIPE_FIXED = 0.30;
+  const PLATFORM_HST_RATE = 0.13;
+  const TICKET_TAX_RATE = 0.13;
 
-  let processingFee = 0;
-  let customerTotal = subtotal;
+  // Platform fee (convenience fee) - includes Stripe fees within it
+  const platformFee = subtotal > 0
+    ? Math.round((subtotal * (feePercent / 100) + (feeFixedPerTicket * totalItems)) * 100) / 100
+    : 0;
+
+  // Ticket tax (organizer collects and remits)
+  const ticketTaxRate = chargeTicketTax ? TICKET_TAX_RATE : 0;
+  const ticketTax = Math.round(subtotal * ticketTaxRate * 100) / 100;
+
+  let customerTotal: number;
+  let convenienceFee = 0;
+  let convenienceFeeHST = 0;
 
   if (passProcessingFee && subtotal > 0) {
-    customerTotal = Math.round(((subtotal + STRIPE_FIXED) / (1 - STRIPE_PERCENT)) * 100) / 100;
-    processingFee = Math.round((customerTotal - subtotal) * 100) / 100;
+    // PASS MODE: algebraic solution for circular dependency
+    const rawTotal = (subtotal * (1 + ticketTaxRate) + (1 + PLATFORM_HST_RATE) * platformFee - STRIPE_FIXED * PLATFORM_HST_RATE) / (1 + STRIPE_PERCENT * PLATFORM_HST_RATE);
+    customerTotal = Math.round(rawTotal * 100) / 100;
+    const stripeFeeEstimate = Math.round((STRIPE_PERCENT * customerTotal + STRIPE_FIXED) * 100) / 100;
+    const netPlatform = Math.max(0, Math.round((platformFee - stripeFeeEstimate) * 100) / 100);
+    convenienceFee = platformFee;
+    convenienceFeeHST = Math.round(netPlatform * PLATFORM_HST_RATE * 100) / 100;
+  } else {
+    // ABSORB MODE: customer pays only ticket price + ticket tax
+    customerTotal = Math.round((subtotal + ticketTax) * 100) / 100;
   }
 
   const formatPrice = (amount: number) => {
@@ -245,13 +272,31 @@ export function CheckoutForm({
               </span>
               <span>{formatPrice(subtotal)}</span>
             </div>
-            {passProcessingFee && processingFee > 0 && (
+            {passProcessingFee && convenienceFee > 0 && (
               <div
                 className="flex justify-between text-sm text-gray-500 mb-1"
-                data-testid="checkout-processing-fee"
+                data-testid="checkout-convenience-fee"
               >
-                <span>Processing fee</span>
-                <span>{formatPrice(processingFee)}</span>
+                <span>Convenience Fee</span>
+                <span>{formatPrice(convenienceFee)}</span>
+              </div>
+            )}
+            {passProcessingFee && convenienceFeeHST > 0 && (
+              <div
+                className="flex justify-between text-sm text-gray-500 mb-1"
+                data-testid="checkout-convenience-fee-hst"
+              >
+                <span>HST on Convenience Fee</span>
+                <span>{formatPrice(convenienceFeeHST)}</span>
+              </div>
+            )}
+            {ticketTax > 0 && (
+              <div
+                className="flex justify-between text-sm text-gray-500 mb-1"
+                data-testid="checkout-ticket-tax"
+              >
+                <span>Sales Tax (HST 13%)</span>
+                <span>{formatPrice(ticketTax)}</span>
               </div>
             )}
             <div
@@ -261,9 +306,9 @@ export function CheckoutForm({
               <span>Total</span>
               <span>{formatPrice(customerTotal)}</span>
             </div>
-            {passProcessingFee && processingFee > 0 && (
+            {(ticketTax > 0 || (passProcessingFee && convenienceFeeHST > 0)) && (
               <p className="text-xs text-gray-400 mt-1">
-                Includes payment processing fee
+                Taxes are included in the total
               </p>
             )}
           </div>

@@ -99,6 +99,9 @@ async function handleCheckoutCompleted(session: any) {
   const processingFeeAmount = parseFloat(metadata.processing_fee_amount || '0');
   const passProcessingFee = metadata.pass_processing_fee === 'true';
   const totalTickets = parseInt(metadata.total_tickets || '0', 10);
+  const ticketTax = parseFloat(metadata.ticket_tax || '0');
+  const platformHSTEstimate = parseFloat(metadata.platform_hst || '0');
+  const chargeTicketTax = metadata.charge_ticket_tax === 'true';
 
   // Seat selections for seat_map mode
   const seatSelections: Array<{ seatId: string; sectionId: string; label: string }> | null =
@@ -161,17 +164,21 @@ async function handleCheckoutCompleted(session: any) {
       console.log(`[Webhook] Using estimated Stripe fee: $${stripeFee}`);
     }
 
-    // ── Get tax amount from session ──
-    const taxAmount = (session.total_details?.amount_tax || 0) / 100; // cents → dollars
+    // Constants
+    const PLATFORM_HST_RATE = 0.13;
 
-    // Calculate actual organizer payout based on fee absorption model
+    // Calculate actual net platform revenue with real Stripe fee
+    const actualNetPlatform = Math.max(0, platformFee - stripeFee);
+    const actualPlatformHST = Math.round(actualNetPlatform * PLATFORM_HST_RATE * 100) / 100;
+    const actualTakeHome = Math.round((actualNetPlatform - actualPlatformHST) * 100) / 100;
+
     let actualOrganizerPayout: number;
     if (passProcessingFee) {
-      // Attendee paid the processing fee — organizer gets full (subtotal - platformFee)
-      actualOrganizerPayout = subtotal - platformFee;
+      // Pass mode: organizer gets full ticket revenue + ticket tax
+      actualOrganizerPayout = subtotal + ticketTax;
     } else {
-      // Organizer absorbs Stripe fee
-      actualOrganizerPayout = subtotal - platformFee - stripeFee;
+      // Absorb mode: organizer absorbs convenience fee + HST on it
+      actualOrganizerPayout = subtotal + ticketTax - platformFee - actualPlatformHST;
     }
     actualOrganizerPayout = Math.max(0, actualOrganizerPayout);
 
@@ -186,20 +193,28 @@ async function handleCheckoutCompleted(session: any) {
         total_amount: customerTotal,
         platform_fee_amount: platformFee,
         organizer_payout_amount: actualOrganizerPayout,
-        processing_fee_amount: processingFeeAmount,
+        processing_fee_amount: 0,
+        ticket_tax_amount: ticketTax,
+        platform_fee_tax_amount: actualPlatformHST,
+        stripe_fee_amount: stripeFee,
+        net_platform_revenue: actualNetPlatform,
         total_tickets: totalTickets,
         currency: session.currency || 'cad',
         buyer_email: userEmail || null,
         buyer_name: userName || null,
         payout_breakdown: {
-          version: 3,
+          version: 4,
           subtotal,
           customer_total: customerTotal,
-          processing_fee: processingFeeAmount,
+          processing_fee: 0,
           pass_processing_fee: passProcessingFee,
           total_tickets: totalTickets,
           platform_fee_fixed_semantics: 'per_ticket',
-          tax_amount: taxAmount,
+          ticket_tax: ticketTax,
+          charge_ticket_tax: chargeTicketTax,
+          platform_hst: actualPlatformHST,
+          net_platform: actualNetPlatform,
+          platform_take_home: actualTakeHome,
           stripe_fee: stripeFee,
           platform_fee_percent: feePercent,
           platform_fee_fixed: feeFixed,
@@ -330,11 +345,12 @@ async function handleCheckoutCompleted(session: any) {
       let elevsoftAmount: number;
 
       if (isPlatformEvent) {
-        // Platform events: Elevsoft gets 100% of (revenue - Stripe fees)
-        elevsoftAmount = passProcessingFee ? subtotal : Math.max(0, subtotal - stripeFee);
+        // Platform events: Elevsoft gets 100% of take-home (platform IS Elevsoft for these)
+        elevsoftAmount = actualTakeHome;
       } else {
-        // Organizer events: Elevsoft gets elevsoftPercent% of GROSS platform fee
-        elevsoftAmount = platformFee * (elevsoftPercent / 100);
+        // Organizer events: Elevsoft gets elevsoftPercent% of take-home
+        // Take-home = net platform revenue - platform HST
+        elevsoftAmount = actualTakeHome * (elevsoftPercent / 100);
       }
 
       elevsoftAmount = Math.max(0, elevsoftAmount);
@@ -367,15 +383,20 @@ async function handleCheckoutCompleted(session: any) {
     await supabase
       .from('orders')
       .update({
+        elevsoft_amount: elevsoftTransferData?.amount || 0,
         payout_breakdown: {
-          version: 3,
+          version: 4,
           subtotal,
           customer_total: customerTotal,
-          processing_fee: processingFeeAmount,
+          processing_fee: 0,
           pass_processing_fee: passProcessingFee,
           total_tickets: totalTickets,
           platform_fee_fixed_semantics: 'per_ticket',
-          tax_amount: taxAmount,
+          ticket_tax: ticketTax,
+          charge_ticket_tax: chargeTicketTax,
+          platform_hst: actualPlatformHST,
+          net_platform: actualNetPlatform,
+          platform_take_home: actualTakeHome,
           stripe_fee: stripeFee,
           platform_fee_percent: feePercent,
           platform_fee_fixed: feeFixed,
@@ -531,7 +552,9 @@ async function handleCheckoutCompleted(session: any) {
             unitPrice: s.unitPrice,
           })),
           total: customerTotal,
-          processingFee: processingFeeAmount,
+          convenienceFee: passProcessingFee ? platformFee : 0,
+          convenienceFeeHST: passProcessingFee ? actualPlatformHST : 0,
+          ticketTax: ticketTax,
           currency: session.currency || 'cad',
           tickets: allTickets,
           receiptUrl,

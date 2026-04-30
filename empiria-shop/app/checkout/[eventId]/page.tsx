@@ -14,7 +14,8 @@ export default async function CheckoutPage({ params }: { params: Promise<{ event
   const { data: event, error } = await supabase
     .from('events')
     .select(`
-      id, title, slug, currency, status, pass_processing_fee,
+      id, title, slug, currency, status, pass_processing_fee, charge_ticket_tax,
+      platform_fee_percent, platform_fee_fixed,
       ticket_tiers (id, name, description, price, currency, remaining_quantity),
       event_occurrences (id, starts_at, ends_at, label)
     `)
@@ -53,6 +54,9 @@ export default async function CheckoutPage({ params }: { params: Promise<{ event
           occurrences={occurrences}
           currency={event.currency || 'cad'}
           passProcessingFee={Boolean(event.pass_processing_fee)}
+          chargeTicketTax={Boolean(event.charge_ticket_tax)}
+          feePercent={Number(event.platform_fee_percent) || 3.5}
+          feeFixedPerTicket={event.platform_fee_fixed != null ? Number(event.platform_fee_fixed) : 1.50}
           user={user}
         />
       </div>
