@@ -15,9 +15,9 @@ export async function proxy(request: NextRequest) {
     try {
       return await auth0.middleware(request);
     } catch {
-      // Clear stale session cookie and redirect to login
-      const response = NextResponse.redirect(new URL('/auth/login', request.url));
-      response.cookies.set('appSession', '', { maxAge: 0, path: '/' });
+      // Clear stale session cookie and redirect to home (NOT /auth/login to avoid loops)
+      const response = NextResponse.redirect(new URL('/', request.url));
+      response.cookies.delete('appSession');
       return response;
     }
   }
