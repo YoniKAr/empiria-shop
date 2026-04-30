@@ -7,22 +7,7 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Only run auth0.middleware() for /auth/* routes (login, callback, logout).
-  // For all other routes, pass through without session rolling — this prevents
-  // the SDK from refreshing/recreating stale host-only cookies on every request.
-  // getSession() still reads the shared .empiriaindia.com cookie directly.
-  if (request.nextUrl.pathname.startsWith('/auth/')) {
-    try {
-      return await auth0.middleware(request);
-    } catch {
-      // Clear stale session cookie and redirect to home (NOT /auth/login to avoid loops)
-      const response = NextResponse.redirect(new URL('/', request.url));
-      response.cookies.delete('appSession');
-      return response;
-    }
-  }
-
-  return NextResponse.next();
+  return auth0.middleware(request);
 }
 
 export const config = {
