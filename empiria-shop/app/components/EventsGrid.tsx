@@ -70,7 +70,7 @@ export default function EventsGrid({ events }: EventsGridProps) {
                             : 'Upcoming Events'}
                     </h2>
                     <div className="flex gap-2">
-                        {['All', 'Music', 'Tech', 'Food'].map((filter) => (
+                        {['All', 'Greek', 'Indian', 'Italian'].map((filter) => (
                             <button
                                 key={filter}
                                 onClick={() => setQuery(filter === 'All' ? '' : filter)}
