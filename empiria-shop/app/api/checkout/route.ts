@@ -128,7 +128,7 @@ export async function POST(request: NextRequest) {
     const lineItems: Array<{
       price_data: {
         currency: string;
-        tax_behavior?: string;
+        tax_behavior?: 'exclusive' | 'inclusive' | 'unspecified';
         product_data: { name: string; description?: string; tax_code?: string };
         unit_amount: number;
       };
@@ -183,7 +183,7 @@ export async function POST(request: NextRequest) {
       lineItems.push({
         price_data: {
           currency: event.currency || 'cad',
-          ...(chargeTicketTax && { tax_behavior: 'exclusive' }),
+          ...(chargeTicketTax && { tax_behavior: 'exclusive' as const }),
           product_data: {
             name: `${tier.name} — ${event.title}`,
             ...(tier.description && { description: tier.description }),
@@ -393,7 +393,7 @@ export async function POST(request: NextRequest) {
       lineItems.push({
         price_data: {
           currency,
-          ...(chargeTicketTax && { tax_behavior: 'exclusive' }),
+          ...(chargeTicketTax && { tax_behavior: 'exclusive' as const }),
           product_data: {
             name: 'Convenience Fee',
             description: 'Platform service fee (includes payment processing)',
@@ -408,7 +408,7 @@ export async function POST(request: NextRequest) {
         lineItems.push({
           price_data: {
             currency,
-            ...(chargeTicketTax && { tax_behavior: 'exclusive' }),
+            ...(chargeTicketTax && { tax_behavior: 'exclusive' as const }),
             product_data: {
               name: 'HST on Convenience Fee (13%)',
               description: 'Harmonized Sales Tax (13%) on convenience fee',
