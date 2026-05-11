@@ -172,13 +172,20 @@ async function handleCheckoutCompleted(session: any) {
     const actualPlatformHST = Math.round(actualNetPlatform * PLATFORM_HST_RATE * 100) / 100;
     const actualTakeHome = Math.round((actualNetPlatform - actualPlatformHST) * 100) / 100;
 
+    // When Stripe Tax is enabled (charge_ticket_tax), the actual tax amount
+    // is calculated by Stripe at checkout. Read it from the session object.
+    let actualTicketTax = ticketTax;
+    if (chargeTicketTax && session.total_details && typeof (session.total_details as any).amount_tax === 'number') {
+      actualTicketTax = (session.total_details as any).amount_tax / 100;
+    }
+
     let actualOrganizerPayout: number;
     if (passProcessingFee) {
       // Pass mode: organizer gets full ticket revenue + ticket tax
-      actualOrganizerPayout = subtotal + ticketTax;
+      actualOrganizerPayout = subtotal + actualTicketTax;
     } else {
       // Absorb mode: organizer absorbs convenience fee + HST on it
-      actualOrganizerPayout = subtotal + ticketTax - platformFee - actualPlatformHST;
+      actualOrganizerPayout = subtotal + actualTicketTax - platformFee - actualPlatformHST;
     }
     actualOrganizerPayout = Math.max(0, actualOrganizerPayout);
 
@@ -194,7 +201,7 @@ async function handleCheckoutCompleted(session: any) {
         platform_fee_amount: platformFee,
         organizer_payout_amount: actualOrganizerPayout,
         processing_fee_amount: 0,
-        ticket_tax_amount: ticketTax,
+        ticket_tax_amount: actualTicketTax,
         platform_fee_tax_amount: actualPlatformHST,
         stripe_fee_amount: stripeFee,
         net_platform_revenue: actualNetPlatform,
@@ -210,7 +217,7 @@ async function handleCheckoutCompleted(session: any) {
           pass_processing_fee: passProcessingFee,
           total_tickets: totalTickets,
           platform_fee_fixed_semantics: 'per_ticket',
-          ticket_tax: ticketTax,
+          ticket_tax: actualTicketTax,
           charge_ticket_tax: chargeTicketTax,
           platform_hst: actualPlatformHST,
           net_platform: actualNetPlatform,
@@ -392,7 +399,7 @@ async function handleCheckoutCompleted(session: any) {
           pass_processing_fee: passProcessingFee,
           total_tickets: totalTickets,
           platform_fee_fixed_semantics: 'per_ticket',
-          ticket_tax: ticketTax,
+          ticket_tax: actualTicketTax,
           charge_ticket_tax: chargeTicketTax,
           platform_hst: actualPlatformHST,
           net_platform: actualNetPlatform,

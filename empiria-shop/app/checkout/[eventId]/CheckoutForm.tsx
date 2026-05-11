@@ -73,32 +73,32 @@ export function CheckoutForm({
   const STRIPE_PERCENT = 0.029;
   const STRIPE_FIXED = 0.30;
   const PLATFORM_HST_RATE = 0.13;
-  const TICKET_TAX_RATE = 0.13;
 
   // Platform fee (convenience fee) - includes Stripe fees within it
   const platformFee = subtotal > 0
     ? Math.round((subtotal * (feePercent / 100) + (feeFixedPerTicket * totalItems)) * 100) / 100
     : 0;
 
-  // Ticket tax (organizer collects and remits)
-  const ticketTaxRate = chargeTicketTax ? TICKET_TAX_RATE : 0;
-  const ticketTax = Math.round(subtotal * ticketTaxRate * 100) / 100;
+  // When Stripe Tax is enabled, ticket tax is calculated at checkout by Stripe
+  // based on buyer/event location. We show 0 here and note it's calculated at checkout.
+  const ticketTaxRate = 0;
+  const ticketTax = 0;
 
   let customerTotal: number;
   let convenienceFee = 0;
   let convenienceFeeHST = 0;
 
   if (passProcessingFee && subtotal > 0) {
-    // PASS MODE: algebraic solution for circular dependency
-    const rawTotal = (subtotal * (1 + ticketTaxRate) + (1 + PLATFORM_HST_RATE) * platformFee - STRIPE_FIXED * PLATFORM_HST_RATE) / (1 + STRIPE_PERCENT * PLATFORM_HST_RATE);
+    // PASS MODE: customer pays ticket + fee + HST on fee (+ Stripe Tax at checkout)
+    const rawTotal = (subtotal + (1 + PLATFORM_HST_RATE) * platformFee - STRIPE_FIXED * PLATFORM_HST_RATE) / (1 + STRIPE_PERCENT * PLATFORM_HST_RATE);
     customerTotal = Math.round(rawTotal * 100) / 100;
     const stripeFeeEstimate = Math.round((STRIPE_PERCENT * customerTotal + STRIPE_FIXED) * 100) / 100;
     const netPlatform = Math.max(0, Math.round((platformFee - stripeFeeEstimate) * 100) / 100);
     convenienceFee = platformFee;
     convenienceFeeHST = Math.round(netPlatform * PLATFORM_HST_RATE * 100) / 100;
   } else {
-    // ABSORB MODE: customer pays only ticket price + ticket tax
-    customerTotal = Math.round((subtotal + ticketTax) * 100) / 100;
+    // ABSORB MODE: customer pays only ticket price (+ Stripe Tax at checkout)
+    customerTotal = Math.round(subtotal * 100) / 100;
   }
 
   const formatPrice = (amount: number) => {
@@ -290,23 +290,28 @@ export function CheckoutForm({
                 <span>{formatPrice(convenienceFeeHST)}</span>
               </div>
             )}
-            {ticketTax > 0 && (
+            {chargeTicketTax && (
               <div
                 className="flex justify-between text-sm text-gray-500 mb-1"
                 data-testid="checkout-ticket-tax"
               >
-                <span>Sales Tax (HST 13%)</span>
-                <span>{formatPrice(ticketTax)}</span>
+                <span>Sales Tax</span>
+                <span className="text-xs italic">Calculated at checkout</span>
               </div>
             )}
             <div
               className="flex justify-between font-bold text-lg"
               data-testid="checkout-total"
             >
-              <span>Total</span>
+              <span>{chargeTicketTax ? 'Subtotal' : 'Total'}</span>
               <span>{formatPrice(customerTotal)}</span>
             </div>
-            {(ticketTax > 0 || (passProcessingFee && convenienceFeeHST > 0)) && (
+            {chargeTicketTax && (
+              <p className="text-xs text-gray-400 mt-1">
+                Applicable sales tax will be added at checkout based on your location
+              </p>
+            )}
+            {!chargeTicketTax && passProcessingFee && convenienceFeeHST > 0 && (
               <p className="text-xs text-gray-400 mt-1">
                 Taxes are included in the total
               </p>

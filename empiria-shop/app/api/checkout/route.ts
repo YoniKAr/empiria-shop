@@ -123,10 +123,13 @@ export async function POST(request: NextRequest) {
     // 6. Validate each tier selection
     const now = new Date();
     let subtotal = 0;
+    const chargeTicketTax = event.charge_ticket_tax === true;
+
     const lineItems: Array<{
       price_data: {
         currency: string;
-        product_data: { name: string; description?: string };
+        tax_behavior?: string;
+        product_data: { name: string; description?: string; tax_code?: string };
         unit_amount: number;
       };
       quantity: number;
@@ -180,9 +183,11 @@ export async function POST(request: NextRequest) {
       lineItems.push({
         price_data: {
           currency: event.currency || 'cad',
+          ...(chargeTicketTax && { tax_behavior: 'exclusive' }),
           product_data: {
             name: `${tier.name} — ${event.title}`,
             ...(tier.description && { description: tier.description }),
+            ...(chargeTicketTax && { tax_code: 'txcd_20060003' }),
           },
           unit_amount: toStripeAmount(tier.price, event.currency || 'cad'),
         },
@@ -334,7 +339,6 @@ export async function POST(request: NextRequest) {
     const feePercent = Number(event.platform_fee_percent) || 3.5;
     const feeFixedPerTicket = event.platform_fee_fixed != null ? Number(event.platform_fee_fixed) : 1.50;
     const passProcessingFee = event.pass_processing_fee === true;
-    const chargeTicketTax = event.charge_ticket_tax === true;
 
     const totalTickets = validatedSelections.reduce((sum: number, s: { quantity: number }) => sum + s.quantity, 0);
 
@@ -345,11 +349,12 @@ export async function POST(request: NextRequest) {
     const STRIPE_PERCENT = 0.029;
     const STRIPE_FIXED = 0.30;
     const PLATFORM_HST_RATE = 0.13;
-    const TICKET_TAX_RATE = 0.13;
 
-    // Ticket tax (organizer collects and remits)
-    const ticketTaxRate = chargeTicketTax ? TICKET_TAX_RATE : 0;
-    const ticketTax = Math.round(subtotal * ticketTaxRate * 100) / 100;
+    // Ticket tax: when Stripe Tax is enabled, Stripe calculates it automatically
+    // at checkout based on buyer/event location — we set it to 0 in our calculation.
+    // When disabled, no tax is charged.
+    const ticketTaxRate = 0;
+    const ticketTax = 0;
 
     let customerTotal: number;
     let stripeFeeEstimate: number;
@@ -382,13 +387,17 @@ export async function POST(request: NextRequest) {
     platformHST = Math.max(0, platformHST);
 
     // Add convenience fee line items (only in pass mode)
+    // Fee items are marked non-taxable (txcd_00000000) so Stripe Tax doesn't
+    // double-tax them — the platform always charges 13% HST on the fee.
     if (passProcessingFee && platformFee > 0) {
       lineItems.push({
         price_data: {
           currency,
+          ...(chargeTicketTax && { tax_behavior: 'exclusive' }),
           product_data: {
             name: 'Convenience Fee',
             description: 'Platform service fee (includes payment processing)',
+            ...(chargeTicketTax && { tax_code: 'txcd_00000000' }),
           },
           unit_amount: toStripeAmount(platformFee, currency),
         },
@@ -399,30 +408,17 @@ export async function POST(request: NextRequest) {
         lineItems.push({
           price_data: {
             currency,
+            ...(chargeTicketTax && { tax_behavior: 'exclusive' }),
             product_data: {
-              name: 'HST on Convenience Fee',
+              name: 'HST on Convenience Fee (13%)',
               description: 'Harmonized Sales Tax (13%) on convenience fee',
+              ...(chargeTicketTax && { tax_code: 'txcd_00000000' }),
             },
             unit_amount: toStripeAmount(platformHST, currency),
           },
           quantity: 1,
         });
       }
-    }
-
-    // Add ticket tax line item (both modes, if organizer enabled it)
-    if (ticketTax > 0) {
-      lineItems.push({
-        price_data: {
-          currency,
-          product_data: {
-            name: 'Sales Tax (HST 13%)',
-            description: 'Harmonized Sales Tax on ticket price',
-          },
-          unit_amount: toStripeAmount(ticketTax, currency),
-        },
-        quantity: 1,
-      });
     }
 
     // 7b. Check for multi-organizer revenue splits
@@ -495,6 +491,7 @@ export async function POST(request: NextRequest) {
       mode: 'payment',
       line_items: lineItems,
       ...(customerEmail && { customer_email: customerEmail }),
+      ...(chargeTicketTax && { automatic_tax: { enabled: true } }),
       payment_intent_data: {
         transfer_group: transferGroup,
         metadata,
