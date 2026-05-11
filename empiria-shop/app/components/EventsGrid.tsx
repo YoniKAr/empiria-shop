@@ -1,6 +1,5 @@
 'use client';
 
-import { useState } from 'react';
 import { Search } from 'lucide-react';
 import { getCurrencySymbol } from '@/lib/utils';
 import { EventCard } from './EventCard';
@@ -22,45 +21,25 @@ interface Event {
 
 interface EventsGridProps {
     events: Event[];
+    query: string;
+    setQuery: (q: string) => void;
 }
 
-export default function EventsGrid({ events }: EventsGridProps) {
-    const [query, setQuery] = useState('');
-
-    const filtered = events.filter((event) => {
-        if (!query.trim()) return true;
-        const q = query.toLowerCase();
-        return (
-            event.title?.toLowerCase().includes(q) ||
-            event.venue_name?.toLowerCase().includes(q) ||
-            event.city?.toLowerCase().includes(q) ||
-            (event as any).categories?.name?.toLowerCase().includes(q)
-        );
-    });
+export default function EventsGrid({ events, query, setQuery }: EventsGridProps) {
+    const filtered = query.trim()
+        ? events.filter((event) => {
+              const q = query.toLowerCase();
+              return (
+                  event.title?.toLowerCase().includes(q) ||
+                  event.venue_name?.toLowerCase().includes(q) ||
+                  event.city?.toLowerCase().includes(q) ||
+                  (event as any).categories?.name?.toLowerCase().includes(q)
+              );
+          })
+        : events;
 
     return (
-        <div className="w-full">
-            {/* Search Bar */}
-            <div className="bg-white p-2 rounded-full shadow-xl border border-gray-200 max-w-3xl mx-auto flex flex-col sm:flex-row gap-2">
-                <div className="flex-1 flex items-center px-4 h-12 bg-gray-50 sm:bg-transparent rounded-full sm:rounded-none">
-                    <Search className="text-gray-400 w-5 h-5 mr-3 flex-shrink-0" />
-                    <input
-                        id="event-search"
-                        type="text"
-                        value={query}
-                        onChange={(e) => setQuery(e.target.value)}
-                        placeholder="Search events, artists, categories, city..."
-                        className="bg-transparent w-full outline-none text-sm font-medium placeholder:text-gray-400"
-                    />
-                </div>
-                <button
-                    onClick={() => setQuery(query)}
-                    className="bg-[#F98C1F] text-white h-12 px-8 rounded-full font-bold hover:brightness-110 transition-all"
-                >
-                    Search
-                </button>
-            </div>
-
+        <div className="w-full bg-white">
             {/* Events Grid */}
             <div className="max-w-7xl mx-auto px-4 sm:px-6 py-16 text-left">
                 <div className="flex items-end justify-between mb-8">
