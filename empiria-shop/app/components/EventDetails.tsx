@@ -10,9 +10,12 @@ interface EventDetailsProps {
     endAt: string
     venueName: string
     city: string
+    addressText?: string
     organizer: string
     galleryUrls?: string[]
     whatToExpect?: string[]
+    sponsorLogos?: string[]
+    trailerUrl?: string
 }
 
 export function EventDetails({
@@ -21,9 +24,12 @@ export function EventDetails({
     endAt,
     venueName,
     city,
+    addressText,
     organizer,
     galleryUrls = [],
     whatToExpect = [],
+    sponsorLogos = [],
+    trailerUrl,
 }: EventDetailsProps) {
     const [showShare, setShowShare] = useState(false)
     const [copied, setCopied] = useState(false)
@@ -136,16 +142,22 @@ export function EventDetails({
                     </div>
                 </div>
 
-                <div className="bg-white border border-gray-200 rounded-xl p-5 flex items-start gap-4">
+                <a
+                    href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(addressText || [venueName, city].filter(Boolean).join(', '))}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="bg-white border border-gray-200 rounded-xl p-5 flex items-start gap-4 hover:border-[#F98C1F]/40 hover:shadow-sm transition-all group"
+                >
                     <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-orange-50 flex items-center justify-center">
                         <MapPin className="w-5 h-5 text-[#F98C1F]" />
                     </div>
                     <div>
                         <p className="text-xs text-gray-500 uppercase tracking-wider font-medium mb-1">Where</p>
-                        <p className="text-sm text-gray-900 font-medium">{venueName}</p>
-                        <p className="text-xs text-gray-500 mt-0.5">{city}</p>
+                        <p className="text-sm text-gray-900 font-medium group-hover:text-[#F98C1F] transition-colors">{venueName}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">{addressText || city}</p>
+                        <p className="text-[10px] text-[#F98C1F] font-medium mt-1.5 opacity-0 group-hover:opacity-100 transition-opacity">Get Directions &rarr;</p>
                     </div>
-                </div>
+                </a>
 
                 <div className="bg-white border border-gray-200 rounded-xl p-5 flex items-start gap-4">
                     <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-orange-50 flex items-center justify-center">
@@ -335,6 +347,61 @@ export function EventDetails({
                             >
                                 <span className="w-1.5 h-1.5 rounded-full bg-[#F98C1F] flex-shrink-0" />
                                 {highlight}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Video / Trailer */}
+            {trailerUrl && (() => {
+                const url = trailerUrl.trim()
+                let embedUrl = ''
+                const ytMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/)
+                if (ytMatch) embedUrl = `https://www.youtube.com/embed/${ytMatch[1]}`
+                const vimeoMatch = url.match(/(?:vimeo\.com\/)(\d+)/)
+                if (vimeoMatch) embedUrl = `https://player.vimeo.com/video/${vimeoMatch[1]}`
+                if (!embedUrl) return null
+                return (
+                    <div>
+                        <h3 className="text-lg font-semibold text-[#F98C1F] mb-4 font-[family-name:var(--font-space-grotesk)]">
+                            Event Trailer
+                        </h3>
+                        <div className="overflow-hidden rounded-xl border border-gray-200">
+                            <div className="relative w-full" style={{ paddingBottom: '56.25%' }}>
+                                <iframe
+                                    src={embedUrl}
+                                    className="absolute inset-0 h-full w-full"
+                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                    allowFullScreen
+                                    title="Event trailer"
+                                />
+                            </div>
+                        </div>
+                    </div>
+                )
+            })()}
+
+            {/* Sponsors */}
+            {sponsorLogos.length > 0 && (
+                <div>
+                    <h3 className="text-lg font-semibold text-[#F98C1F] mb-4 font-[family-name:var(--font-space-grotesk)]">
+                        Event Sponsors
+                    </h3>
+                    <div className="flex gap-6 overflow-x-auto pb-2 items-center" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
+                        {sponsorLogos.map((url, index) => (
+                            <div
+                                key={index}
+                                className="flex-shrink-0 h-16 px-4 flex items-center justify-center bg-white border border-gray-100 rounded-xl shadow-sm"
+                            >
+                                <Image
+                                    src={url}
+                                    alt={`Sponsor ${index + 1}`}
+                                    width={120}
+                                    height={48}
+                                    className="object-contain max-h-12"
+                                    unoptimized
+                                />
                             </div>
                         ))}
                     </div>

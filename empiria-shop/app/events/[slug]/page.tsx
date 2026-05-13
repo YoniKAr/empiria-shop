@@ -167,9 +167,12 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                         endAt={heroEndAt}
                         venueName={event.venue_name}
                         city={event.city}
+                        addressText={event.address_text}
                         organizer={organizer}
                         galleryUrls={galleryUrls}
                         whatToExpect={whatToExpect}
+                        sponsorLogos={(event as any).sponsor_logos || []}
+                        trailerUrl={(event as any).trailer_url || ''}
                     />
                 </div>
 
