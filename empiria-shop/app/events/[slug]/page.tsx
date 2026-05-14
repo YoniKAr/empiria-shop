@@ -1,9 +1,11 @@
 import { getSafeSession } from '@/lib/auth0';
 import { getSupabaseAdmin } from '@/lib/supabase';
+import { getCurrencySymbol } from '@/lib/utils';
 import { notFound } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import { EventHero } from '@/app/components/EventHero';
 import { EventDetails } from '@/app/components/EventDetails';
+import { EventCard } from '@/app/components/EventCard';
 import { TicketWidget } from '@/app/components/TicketWidget';
 import ZoneSelector from '@/components/seatmap/ZoneSelector';
 import SeatSelector from '@/components/seatmap/SeatSelector';
@@ -132,6 +134,60 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
     const session = await getSafeSession();
     const user = session?.user;
 
+    // Fetch similar events (same category or overlapping tags)
+    let similarEvents: any[] = [];
+    if (event.category_id) {
+        const { data: catEvents } = await supabase
+            .from('events')
+            .select(`
+                id, title, slug, cover_image_url,
+                venue_name, city, currency, organizer_id, source_app,
+                categories (name),
+                ticket_tiers (price),
+                event_occurrences (starts_at)
+            `)
+            .eq('status', 'published')
+            .eq('category_id', event.category_id)
+            .neq('id', event.id)
+            .order('created_at', { ascending: false })
+            .limit(4);
+        similarEvents = catEvents || [];
+    }
+
+    // If not enough from category, try tag overlap
+    if (similarEvents.length < 4 && event.tags && event.tags.length > 0) {
+        const existingIds = [event.id, ...similarEvents.map((e: any) => e.id)];
+        const { data: tagEvents } = await supabase
+            .from('events')
+            .select(`
+                id, title, slug, cover_image_url,
+                venue_name, city, currency, organizer_id, source_app,
+                categories (name),
+                ticket_tiers (price),
+                event_occurrences (starts_at)
+            `)
+            .eq('status', 'published')
+            .overlaps('tags', event.tags)
+            .not('id', 'in', `(${existingIds.join(',')})`)
+            .order('created_at', { ascending: false })
+            .limit(4 - similarEvents.length);
+        similarEvents = [...similarEvents, ...(tagEvents || [])];
+    }
+
+    // Batch-fetch organizer names for similar events
+    if (similarEvents.length > 0) {
+        const orgIds = [...new Set(similarEvents.map((e: any) => e.organizer_id).filter(Boolean))];
+        const { data: profiles } = orgIds.length > 0
+            ? await supabase.from('users').select('auth0_id, full_name').in('auth0_id', orgIds)
+            : { data: [] };
+        const pMap: Record<string, string> = {};
+        (profiles || []).forEach((p: any) => { pMap[p.auth0_id] = p.full_name; });
+        similarEvents = similarEvents.map((e: any) => ({
+            ...e,
+            organizer_name: e.source_app === 'admin' ? 'Empiria Events' : (pMap[e.organizer_id] || 'Empiria Events'),
+        }));
+    }
+
     return (
         <div className="min-h-screen bg-white">
             <Navbar />
@@ -256,6 +312,41 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                     )}
                 </div>
             </div>
+
+            {/* Similar Events */}
+            {similarEvents.length > 0 && (
+                <div className="border-t border-gray-100 bg-gray-50/50">
+                    <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16">
+                        <h2 className="text-2xl font-bold text-slate-900 mb-8">You Might Also Like</h2>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                            {similarEvents.map((se: any) => {
+                                const prices = se.ticket_tiers?.map((t: any) => t.price) || [];
+                                const minPrice = prices.length > 0 ? Math.min(...prices) : 0;
+                                const sym = getCurrencySymbol(se.currency || 'cad');
+                                const occs = se.event_occurrences || [];
+                                const startAt = occs[0]?.starts_at || undefined;
+
+                                return (
+                                    <EventCard
+                                        key={se.id}
+                                        id={se.id}
+                                        title={se.title}
+                                        slug={se.slug}
+                                        coverImageUrl={se.cover_image_url}
+                                        venueName={se.venue_name}
+                                        city={se.city}
+                                        category={se.categories?.name}
+                                        startAt={startAt}
+                                        minPrice={minPrice}
+                                        currencySymbol={sym}
+                                        organizerName={se.organizer_name}
+                                    />
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
