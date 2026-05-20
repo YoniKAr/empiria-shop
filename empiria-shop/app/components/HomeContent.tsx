@@ -35,9 +35,10 @@ interface FeaturedEvent {
 interface HomeContentProps {
   events: Event[];
   featuredEvents: FeaturedEvent[];
+  categories: { id: string; name: string }[];
 }
 
-export default function HomeContent({ events, featuredEvents }: HomeContentProps) {
+export default function HomeContent({ events, featuredEvents, categories }: HomeContentProps) {
   const [query, setQuery] = useState('');
 
   return (
@@ -48,7 +49,7 @@ export default function HomeContent({ events, featuredEvents }: HomeContentProps
         setQuery={setQuery}
       />
       <div id="events-section">
-        <EventsGrid events={events} query={query} setQuery={setQuery} />
+        <EventsGrid events={events} query={query} setQuery={setQuery} categories={categories} />
       </div>
     </>
   );

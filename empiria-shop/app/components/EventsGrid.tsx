@@ -23,9 +23,10 @@ interface EventsGridProps {
     events: Event[];
     query: string;
     setQuery: (q: string) => void;
+    categories: { id: string; name: string }[];
 }
 
-export default function EventsGrid({ events, query, setQuery }: EventsGridProps) {
+export default function EventsGrid({ events, query, setQuery, categories }: EventsGridProps) {
     const filtered = query.trim()
         ? events.filter((event) => {
               const q = query.toLowerCase();
@@ -49,7 +50,7 @@ export default function EventsGrid({ events, query, setQuery }: EventsGridProps)
                             : 'Upcoming Events'}
                     </h2>
                     <div className="flex gap-2">
-                        {['All', 'Greek', 'Indian', 'Italian'].map((filter) => (
+                        {['All', ...categories.map(c => c.name)].map((filter) => (
                             <button
                                 key={filter}
                                 onClick={() => setQuery(filter === 'All' ? '' : filter)}

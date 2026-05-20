@@ -11,6 +11,7 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { CheckCircle2, Calendar, MapPin, ArrowRight } from 'lucide-react';
 import Navbar from '@/components/Navbar';
+import Footer from '@/components/Footer';
 
 export default async function CheckoutSuccessPage({
   searchParams,
@@ -315,6 +316,8 @@ export default async function CheckoutSuccessPage({
           </a>
         </div>
       </div>
+
+      <Footer />
     </div>
   );
 }

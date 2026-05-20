@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabase';
 import Navbar from '@/components/Navbar';
+import Footer from '@/components/Footer';
 import HomeContent from '@/app/components/HomeContent';
 
 export default async function ShopHome() {
@@ -16,6 +17,7 @@ export default async function ShopHome() {
     `)
         .eq('status', 'published')
         .eq('is_featured', true)
+        .eq('event_type', 'event')
         .order('created_at', { ascending: false })
         .limit(5);
 
@@ -30,6 +32,7 @@ export default async function ShopHome() {
       event_occurrences (starts_at)
     `)
         .eq('status', 'published')
+        .eq('event_type', 'event')
         .order('created_at', { ascending: false })
         .limit(12);
 
@@ -55,12 +58,20 @@ export default async function ShopHome() {
         }));
     }
 
+    // Fetch active categories for filter buttons
+    const { data: categories } = await supabase
+        .from('categories')
+        .select('id, name')
+        .eq('is_active', true)
+        .order('name');
+
     const featuredEvents = (rawFeatured || []) as any[];
 
     return (
         <div className="min-h-screen bg-white font-sans text-slate-900">
             <Navbar />
-            <HomeContent events={events} featuredEvents={featuredEvents} />
+            <HomeContent events={events} featuredEvents={featuredEvents} categories={(categories || []) as { id: string; name: string }[]} />
+            <Footer />
         </div>
     );
 }

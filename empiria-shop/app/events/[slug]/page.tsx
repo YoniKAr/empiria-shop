@@ -10,6 +10,7 @@ import { TicketWidget } from '@/app/components/TicketWidget';
 import ZoneSelector from '@/components/seatmap/ZoneSelector';
 import SeatSelector from '@/components/seatmap/SeatSelector';
 import AssignedSeatPicker from '@/components/seatmap/AssignedSeatPicker';
+import Footer from '@/components/Footer';
 import type { SeatingConfig } from '@/lib/seatmap-types';
 
 export default async function EventPage({ params }: { params: Promise<{ slug: string }> }) {
@@ -347,6 +348,8 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                     </div>
                 </div>
             )}
+
+            <Footer />
         </div>
     );
 }

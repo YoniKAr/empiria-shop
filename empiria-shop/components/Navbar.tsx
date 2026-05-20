@@ -25,16 +25,23 @@ export default async function Navbar() {
   return (
     <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-100">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-        <Link href="/" className="flex items-center gap-2">
-          <Image
-            src="/logo.png"
-            alt="Empiria Logo"
-            width={130}
-            height={40}
-            className="object-contain"
-            priority
-          />
-        </Link>
+        <div className="flex items-center gap-8">
+          <Link href="/" className="flex items-center gap-2">
+            <Image
+              src="/logo.png"
+              alt="Empiria Logo"
+              width={130}
+              height={40}
+              className="object-contain"
+              priority
+            />
+          </Link>
+
+          <div className="flex items-center gap-6">
+            <Link href="/" className="text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">Events</Link>
+            <Link href="/gifft" className="text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">GIFFT</Link>
+          </div>
+        </div>
 
         <div className="flex items-center gap-4">
           <CurrencySelector defaultCurrency={defaultCurrency || undefined} />

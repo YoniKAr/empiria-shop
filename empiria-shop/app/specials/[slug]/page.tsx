@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabase';
 import Navbar from '@/components/Navbar';
+import Footer from '@/components/Footer';
 import { notFound } from 'next/navigation';
 import { SpecialPageContent } from './SpecialPageContent';
 
@@ -59,6 +60,7 @@ export default async function SpecialPage({ params }: { params: Promise<{ slug: 
     <div className="min-h-screen bg-white font-sans text-slate-900">
       <Navbar />
       <SpecialPageContent page={page} events={events} />
+      <Footer />
     </div>
   );
 }
