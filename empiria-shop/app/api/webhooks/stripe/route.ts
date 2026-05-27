@@ -561,7 +561,7 @@ async function handleCheckoutCompleted(session: any) {
           total: customerTotal,
           convenienceFee: passProcessingFee ? platformFee : 0,
           convenienceFeeHST: passProcessingFee ? actualPlatformHST : 0,
-          ticketTax: ticketTax,
+          ticketTax: actualTicketTax,
           currency: session.currency || 'cad',
           tickets: allTickets,
           receiptUrl,

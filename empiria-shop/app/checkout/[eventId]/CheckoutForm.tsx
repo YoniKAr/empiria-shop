@@ -9,6 +9,7 @@ interface Tier {
   description: string | null;
   price: number;
   remaining_quantity: number;
+  max_per_order: number | null;
   currency: string;
 }
 
@@ -243,13 +244,13 @@ export function CheckoutForm({
                     </span>
                     <button
                       type="button"
-                      onClick={() =>
-                        setQty(
-                          tier.id,
-                          Math.min(tier.remaining_quantity, qty + 1)
-                        )
-                      }
-                      disabled={qty >= tier.remaining_quantity}
+                      onClick={() => {
+                        const maxAllowed = tier.max_per_order
+                          ? Math.min(tier.remaining_quantity, tier.max_per_order)
+                          : tier.remaining_quantity;
+                        setQty(tier.id, Math.min(maxAllowed, qty + 1));
+                      }}
+                      disabled={qty >= (tier.max_per_order ? Math.min(tier.remaining_quantity, tier.max_per_order) : tier.remaining_quantity)}
                       className="w-8 h-8 rounded-lg bg-gray-200 flex items-center justify-center text-gray-700 hover:bg-orange-100 transition-colors disabled:opacity-30"
                       data-testid={`checkout-tier-increase-${tier.id}`}
                       aria-label={`Increase ${tier.name} quantity`}

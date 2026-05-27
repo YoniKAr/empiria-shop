@@ -22,6 +22,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
         .from('events')
         .select('*, categories(name), ticket_tiers(*), event_occurrences(*)')
         .eq('slug', slug)
+        .eq('status', 'published')
         .single();
 
     if (!event) notFound();
@@ -120,7 +121,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
     const seatingConfig: SeatingConfig | null =
         rawSeatingConfig &&
         typeof rawSeatingConfig === 'object' &&
-        (rawSeatingConfig.image_url !== undefined || rawSeatingConfig.seat_ranges !== undefined)
+        (rawSeatingConfig.image_url !== undefined || rawSeatingConfig.seat_ranges !== undefined || rawSeatingConfig.zones !== undefined)
             ? rawSeatingConfig as SeatingConfig
             : null;
 
@@ -129,7 +130,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
         .sort((a: any, b: any) => a.price - b.price);
 
     const currency = event.currency || 'cad';
-    const currencySymbol = currency === 'inr' ? '\u20B9' : currency === 'usd' ? '$' : 'CA$';
+    const currencySymbol = getCurrencySymbol(currency);
 
     // Get user session
     const session = await getSafeSession();

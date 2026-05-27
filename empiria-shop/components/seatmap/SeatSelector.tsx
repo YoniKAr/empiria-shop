@@ -138,8 +138,23 @@ export default function SeatSelector({
     return map;
   }, [config.zones, sections, tierMap]);
 
-  // Compute sold seats
-  const soldSeats = useMemo(() => new Set<string>(), []);
+  // Compute sold seats — fetched from DB on mount
+  const [soldSeats, setSoldSeats] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    async function fetchSoldSeats() {
+      try {
+        const res = await fetch(`/api/sold-seats?eventId=${encodeURIComponent(eventId)}`);
+        const data = await res.json();
+        if (data.seatLabels && Array.isArray(data.seatLabels)) {
+          setSoldSeats(new Set(data.seatLabels));
+        }
+      } catch (err) {
+        console.error("Failed to fetch sold seats:", err);
+      }
+    }
+    fetchSoldSeats();
+  }, [eventId]);
 
   // Hold expiry timer
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
