@@ -103,6 +103,11 @@ async function handleCheckoutCompleted(session: any) {
   const platformHSTEstimate = parseFloat(metadata.platform_hst || '0');
   const chargeTicketTax = metadata.charge_ticket_tax === 'true';
 
+  // Coupon/discount metadata
+  const couponId = metadata.coupon_id || null;
+  const discountAmount = parseFloat(metadata.discount_amount || '0');
+  const couponCode = metadata.coupon_code || '';
+
   // Seat selections for seat_map mode
   const seatSelections: Array<{ seatId: string; sectionId: string; label: string }> | null =
     metadata.seat_selections ? JSON.parse(metadata.seat_selections) : null;
@@ -181,11 +186,11 @@ async function handleCheckoutCompleted(session: any) {
 
     let actualOrganizerPayout: number;
     if (passProcessingFee) {
-      // Pass mode: organizer gets full ticket revenue + ticket tax
-      actualOrganizerPayout = subtotal + actualTicketTax;
+      // Pass mode: organizer gets full ticket revenue + ticket tax - discount (organizer absorbs discount)
+      actualOrganizerPayout = subtotal + actualTicketTax - discountAmount;
     } else {
-      // Absorb mode: organizer absorbs convenience fee + HST on it
-      actualOrganizerPayout = subtotal + actualTicketTax - platformFee - actualPlatformHST;
+      // Absorb mode: organizer absorbs convenience fee + HST + discount
+      actualOrganizerPayout = subtotal + actualTicketTax - discountAmount - platformFee - actualPlatformHST;
     }
     actualOrganizerPayout = Math.max(0, actualOrganizerPayout);
 
@@ -198,6 +203,8 @@ async function handleCheckoutCompleted(session: any) {
         stripe_payment_intent_id: session.payment_intent,
         stripe_checkout_session_id: session.id,
         total_amount: customerTotal,
+        coupon_id: couponId || null,
+        discount_amount: discountAmount,
         platform_fee_amount: platformFee,
         organizer_payout_amount: actualOrganizerPayout,
         processing_fee_amount: 0,
@@ -219,6 +226,8 @@ async function handleCheckoutCompleted(session: any) {
           platform_fee_fixed_semantics: 'per_ticket',
           ticket_tax: actualTicketTax,
           charge_ticket_tax: chargeTicketTax,
+          discount_amount: discountAmount,
+          coupon_code: couponCode,
           platform_hst: actualPlatformHST,
           net_platform: actualNetPlatform,
           platform_take_home: actualTakeHome,
@@ -401,6 +410,8 @@ async function handleCheckoutCompleted(session: any) {
           platform_fee_fixed_semantics: 'per_ticket',
           ticket_tax: actualTicketTax,
           charge_ticket_tax: chargeTicketTax,
+          discount_amount: discountAmount,
+          coupon_code: couponCode,
           platform_hst: actualPlatformHST,
           net_platform: actualNetPlatform,
           platform_take_home: actualTakeHome,
@@ -424,7 +435,7 @@ async function handleCheckoutCompleted(session: any) {
     // 2. Fetch event details for confirmation email
     const { data: eventData } = await supabase
       .from('events')
-      .select('title, venue_name, city')
+      .select('title, venue_name, city, location_type, meeting_link')
       .eq('id', eventId)
       .single();
 
@@ -541,6 +552,37 @@ async function handleCheckoutCompleted(session: any) {
       }
     }
 
+    // 3c. Track coupon usage
+    if (couponId) {
+      try {
+        // Record usage in coupon_usages table
+        await supabase.from('coupon_usages').insert({
+          coupon_id: couponId,
+          order_id: order.id,
+          user_id: userId,
+          discount_amount: discountAmount,
+        });
+
+        // Increment current_uses on the coupon (fetch-then-update pattern)
+        const { data: couponData } = await supabase
+          .from('coupons')
+          .select('current_uses')
+          .eq('id', couponId)
+          .single();
+
+        if (couponData) {
+          await supabase
+            .from('coupons')
+            .update({ current_uses: couponData.current_uses + 1 })
+            .eq('id', couponId);
+        }
+
+        console.log(`[Webhook] Coupon usage tracked: ${couponCode} (${couponId})`);
+      } catch (couponTrackError) {
+        console.error('[Webhook] Failed to track coupon usage:', couponTrackError);
+      }
+    }
+
     // 4. Send confirmation email (non-blocking — failures must not break the webhook)
     if (userEmail && eventData && allTickets.length > 0) {
       try {
@@ -553,6 +595,8 @@ async function handleCheckoutCompleted(session: any) {
           eventEndDate: emailEndDate,
           venueName: eventData.venue_name || '',
           city: eventData.city || '',
+          meetingLink: eventData.meeting_link || '',
+          locationType: eventData.location_type || 'physical',
           lineItems: tierSelections.map((s) => ({
             tierName: s.tierName,
             quantity: s.quantity,
@@ -562,6 +606,8 @@ async function handleCheckoutCompleted(session: any) {
           convenienceFee: passProcessingFee ? platformFee : 0,
           convenienceFeeHST: passProcessingFee ? actualPlatformHST : 0,
           ticketTax: actualTicketTax,
+          discountAmount: discountAmount,
+          couponCode: couponCode,
           currency: session.currency || 'cad',
           tickets: allTickets,
           receiptUrl,

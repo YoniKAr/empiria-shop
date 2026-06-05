@@ -25,12 +25,16 @@ interface OrderEmailData {
   eventEndDate?: string;
   venueName: string;
   city: string;
+  meetingLink?: string;
+  locationType?: string;
   lineItems: LineItem[];
   total: number;
   processingFee?: number;
   convenienceFee?: number;
   convenienceFeeHST?: number;
   ticketTax?: number;
+  discountAmount?: number;
+  couponCode?: string;
   currency: string;
   tickets: TicketInfo[];
   receiptUrl?: string;
@@ -241,7 +245,8 @@ function buildEmailHtml(data: OrderEmailData, walletResults: Array<{ticketId: st
                   <td style="padding: 20px;">
                     <h3 style="margin: 0 0 8px; font-size: 17px; font-weight: 700; color: #0c4a6e;">${data.eventTitle}</h3>
                     <p style="margin: 0 0 4px; font-size: 14px; color: #0369a1;">${eventDateFormatted}</p>
-                    ${venue ? `<p style="margin: 0; font-size: 14px; color: #0369a1;">${venue}</p>` : ''}
+                    ${venue ? `<p style="margin: 0 0 4px; font-size: 14px; color: #0369a1;">${venue}</p>` : ''}
+                    ${(data.locationType === 'virtual' || data.locationType === 'hybrid') && data.meetingLink ? `<p style="margin: 0; font-size: 14px;"><a href="${data.meetingLink}" style="color: #0369a1; text-decoration: underline; font-weight: 600;" target="_blank">Join Online Meeting</a></p>` : ''}
                   </td>
                 </tr>
               </table>
@@ -285,6 +290,15 @@ function buildEmailHtml(data: OrderEmailData, walletResults: Array<{ticketId: st
                   </td>
                   <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 13px; color: #6b7280; text-align: right;">
                     ${formatCurrency(data.ticketTax, data.currency)}
+                  </td>
+                </tr>` : ''}
+                ${data.discountAmount && data.discountAmount > 0 ? `
+                <tr>
+                  <td colspan="3" style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 13px; color: #059669; text-align: right;">
+                    Discount${data.couponCode ? ` (${data.couponCode})` : ''}
+                  </td>
+                  <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 13px; color: #059669; text-align: right;">
+                    -${formatCurrency(data.discountAmount, data.currency)}
                   </td>
                 </tr>` : ''}
                 <tr style="background: #f9fafb;">

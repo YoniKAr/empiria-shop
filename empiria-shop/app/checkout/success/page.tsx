@@ -9,7 +9,7 @@ import { formatCurrency } from '@/lib/utils';
 import { generateQRCodeDataURL } from '@/lib/qrcode';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { CheckCircle2, Calendar, MapPin, ArrowRight } from 'lucide-react';
+import { CheckCircle2, Calendar, MapPin, ArrowRight, Video } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 
@@ -66,7 +66,7 @@ export default async function CheckoutSuccessPage({
   // Fetch event info
   const { data: event } = await supabase
     .from('events')
-    .select('title, slug, venue_name, city, cover_image_url')
+    .select('title, slug, venue_name, city, cover_image_url, location_type, meeting_link')
     .eq('id', eventId)
     .single();
 
@@ -154,6 +154,17 @@ export default async function CheckoutSuccessPage({
                     <MapPin size={14} />
                     {event.venue_name}{event.city ? `, ${event.city}` : ''}
                   </div>
+                )}
+                {event.meeting_link && (event.location_type === 'virtual' || event.location_type === 'hybrid') && (
+                  <a
+                    href={event.meeting_link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`flex items-center gap-1.5 hover:underline ${event.cover_image_url ? 'text-white/90' : 'text-indigo-600'}`}
+                  >
+                    <Video size={14} />
+                    Join Online Meeting
+                  </a>
                 )}
               </div>
             </div>

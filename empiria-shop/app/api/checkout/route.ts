@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
   try {
     // 1. Parse request body
     const body = await request.json();
-    const { eventId, tiers, contactEmail, contactName, occurrenceId, seatSelections, sessionId, assignedSeats } = body as {
+    const { eventId, tiers, contactEmail, contactName, occurrenceId, seatSelections, sessionId, assignedSeats, couponCode } = body as {
       eventId: string;
       tiers: TierSelection[];
       contactEmail?: string;
@@ -38,6 +38,7 @@ export async function POST(request: NextRequest) {
       seatSelections?: SeatSelection[];
       sessionId?: string;
       assignedSeats?: AssignedSeatSelection[];
+      couponCode?: string;
     };
 
     if (!eventId || !tiers || tiers.length === 0) {
@@ -193,6 +194,104 @@ export async function POST(request: NextRequest) {
         },
         quantity: selection.quantity,
       });
+    }
+
+    // 6a. Coupon validation (inline for atomicity with checkout)
+    let discountAmount = 0;
+    let couponId: string | null = null;
+    let couponCode_validated: string | null = null;
+
+    if (couponCode) {
+      const trimmedCode = couponCode.trim();
+
+      // Look up coupon by code (case-insensitive)
+      const { data: coupon, error: couponError } = await supabase
+        .from('coupons')
+        .select('id, code, discount_type, discount_value, max_discount_cap, currency, is_active, starts_at, expires_at, max_uses, current_uses, max_uses_per_user, scope, event_id, category_id, created_by')
+        .ilike('code', trimmedCode)
+        .single();
+
+      if (couponError || !coupon) {
+        return NextResponse.json({ error: 'Invalid coupon code' }, { status: 400 });
+      }
+
+      if (!coupon.is_active) {
+        return NextResponse.json({ error: 'This coupon is no longer active' }, { status: 400 });
+      }
+
+      if (coupon.starts_at && new Date(coupon.starts_at) > now) {
+        return NextResponse.json({ error: 'This coupon is not yet active' }, { status: 400 });
+      }
+
+      if (coupon.expires_at && new Date(coupon.expires_at) < now) {
+        return NextResponse.json({ error: 'This coupon has expired' }, { status: 400 });
+      }
+
+      if (coupon.max_uses !== null && coupon.current_uses >= coupon.max_uses) {
+        return NextResponse.json({ error: 'This coupon has reached its usage limit' }, { status: 400 });
+      }
+
+      // Scope validation
+      switch (coupon.scope) {
+        case 'event':
+          if (coupon.event_id !== eventId) {
+            return NextResponse.json({ error: 'This coupon is not valid for this event' }, { status: 400 });
+          }
+          break;
+        case 'organizer_all':
+          if (coupon.created_by !== event.organizer_id) {
+            return NextResponse.json({ error: 'This coupon is not valid for this event' }, { status: 400 });
+          }
+          break;
+        case 'platform_all':
+          // Always valid
+          break;
+        case 'category': {
+          const { data: eventCat } = await supabase
+            .from('events')
+            .select('category_id')
+            .eq('id', eventId)
+            .single();
+          if (coupon.category_id !== eventCat?.category_id) {
+            return NextResponse.json({ error: 'This coupon is not valid for this event category' }, { status: 400 });
+          }
+          break;
+        }
+        default:
+          return NextResponse.json({ error: 'Invalid coupon scope' }, { status: 400 });
+      }
+
+      // Per-user limit check (skip for guests)
+      const userId_check = user?.sub || null;
+      if (userId_check && coupon.max_uses_per_user !== null) {
+        const { count } = await supabase
+          .from('coupon_usages')
+          .select('id', { count: 'exact', head: true })
+          .eq('coupon_id', coupon.id)
+          .eq('user_id', userId_check);
+
+        if (count !== null && count >= coupon.max_uses_per_user) {
+          return NextResponse.json({ error: 'You have already used this coupon the maximum number of times' }, { status: 400 });
+        }
+      }
+
+      // Calculate discount amount
+      if (coupon.discount_type === 'percentage') {
+        discountAmount = subtotal * (coupon.discount_value / 100);
+        if (coupon.max_discount_cap) {
+          discountAmount = Math.min(discountAmount, coupon.max_discount_cap);
+        }
+      } else {
+        // Flat discount
+        if (subtotal < coupon.discount_value) {
+          return NextResponse.json({ error: 'Order subtotal is less than the coupon discount amount' }, { status: 400 });
+        }
+        discountAmount = coupon.discount_value;
+      }
+
+      discountAmount = Math.round(discountAmount * 100) / 100;
+      couponId = coupon.id;
+      couponCode_validated = coupon.code;
     }
 
     // 6b. If seat_map mode, verify each seat has a valid hold for this session
@@ -367,18 +466,20 @@ export async function POST(request: NextRequest) {
       // Algebraic solution for circular dependency (Stripe fee depends on total, HST depends on Stripe fee)
       // Total = [S(1 + R_t) + 1.13P - STRIPE_FIXED * PLATFORM_HST_RATE] / (1 + STRIPE_PERCENT * PLATFORM_HST_RATE)
       const rawTotal = (subtotal * (1 + ticketTaxRate) + (1 + PLATFORM_HST_RATE) * platformFee - STRIPE_FIXED * PLATFORM_HST_RATE) / (1 + STRIPE_PERCENT * PLATFORM_HST_RATE);
-      customerTotal = Math.round(rawTotal * 100) / 100;
+      customerTotal = Math.round((rawTotal - discountAmount) * 100) / 100;
       stripeFeeEstimate = Math.round((STRIPE_PERCENT * customerTotal + STRIPE_FIXED) * 100) / 100;
       netPlatform = Math.round((platformFee - stripeFeeEstimate) * 100) / 100;
       platformHST = Math.round(netPlatform * PLATFORM_HST_RATE * 100) / 100;
-      organizerPayout = Math.round((subtotal + ticketTax) * 100) / 100;
+      // Organizer absorbs the discount: payout = subtotal - discount
+      organizerPayout = Math.round((subtotal + ticketTax - discountAmount) * 100) / 100;
     } else {
-      // ABSORB MODE: customer pays only ticket price + ticket tax
-      customerTotal = Math.round((subtotal + ticketTax) * 100) / 100;
+      // ABSORB MODE: customer pays only ticket price + ticket tax - discount
+      customerTotal = Math.round((subtotal + ticketTax - discountAmount) * 100) / 100;
       stripeFeeEstimate = Math.round((STRIPE_PERCENT * customerTotal + STRIPE_FIXED) * 100) / 100;
       netPlatform = Math.round((platformFee - stripeFeeEstimate) * 100) / 100;
       platformHST = Math.round(netPlatform * PLATFORM_HST_RATE * 100) / 100;
-      organizerPayout = Math.round((subtotal + ticketTax - platformFee - platformHST) * 100) / 100;
+      // Organizer absorbs the discount: payout = subtotal - discount - fees
+      organizerPayout = Math.round((subtotal + ticketTax - discountAmount - platformFee - platformHST) * 100) / 100;
     }
 
     // Ensure non-negative
@@ -453,6 +554,9 @@ export async function POST(request: NextRequest) {
       total_tickets: totalTickets.toString(),
       source_app: 'shop',
       occurrence_id: occurrenceId || '',
+      coupon_id: couponId || '',
+      coupon_code: couponCode_validated || '',
+      discount_amount: discountAmount.toFixed(2),
       ticket_tax: ticketTax.toFixed(2),
       platform_hst: platformHST.toFixed(2),
       stripe_fee_estimate: stripeFeeEstimate.toFixed(2),
@@ -482,6 +586,18 @@ export async function POST(request: NextRequest) {
     // 10. Create Stripe Checkout Session
     const appBaseUrl = process.env.APP_BASE_URL || 'https://shop.empiriaindia.com';
 
+    // Create an ad-hoc Stripe coupon for the discount (if applicable)
+    let stripeDiscounts: Array<{ coupon: string }> | undefined;
+    if (discountAmount > 0) {
+      const stripeCoupon = await stripe.coupons.create({
+        amount_off: toStripeAmount(discountAmount, currency),
+        currency,
+        name: `Promo: ${couponCode_validated}`,
+        duration: 'once',
+      });
+      stripeDiscounts = [{ coupon: stripeCoupon.id }];
+    }
+
     let checkoutSession;
 
     // Unified checkout: all charges land on platform account.
@@ -492,6 +608,7 @@ export async function POST(request: NextRequest) {
       line_items: lineItems,
       ...(customerEmail && { customer_email: customerEmail }),
       ...(chargeTicketTax && { automatic_tax: { enabled: true } }),
+      ...(stripeDiscounts && { discounts: stripeDiscounts }),
       payment_intent_data: {
         transfer_group: transferGroup,
         metadata,

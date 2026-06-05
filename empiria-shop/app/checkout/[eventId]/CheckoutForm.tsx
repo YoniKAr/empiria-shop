@@ -61,6 +61,15 @@ export function CheckoutForm({
   const [lastName, setLastName] = useState(user?.family_name ?? "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [couponCode, setCouponCode] = useState('');
+  const [couponApplied, setCouponApplied] = useState<{
+    couponId: string;
+    discountType: string;
+    discountValue: number;
+    maxDiscountCap: number | null;
+  } | null>(null);
+  const [couponLoading, setCouponLoading] = useState(false);
+  const [couponError, setCouponError] = useState<string | null>(null);
 
   const selectedOccurrence = occurrences[0];
 
@@ -69,6 +78,20 @@ export function CheckoutForm({
     (s, t) => s + t.price * (quantities[t.id] ?? 0),
     0
   );
+
+  // Coupon discount calculation
+  let discountAmount = 0;
+  if (couponApplied && subtotal > 0) {
+    if (couponApplied.discountType === 'percentage') {
+      discountAmount = Math.min(
+        subtotal * (couponApplied.discountValue / 100),
+        couponApplied.maxDiscountCap || Infinity
+      );
+    } else {
+      discountAmount = subtotal >= couponApplied.discountValue ? couponApplied.discountValue : 0;
+    }
+    discountAmount = Math.round(discountAmount * 100) / 100;
+  }
 
   // Fee calculation — mirrors server-side logic in checkout route
   const STRIPE_PERCENT = 0.029;
@@ -90,16 +113,16 @@ export function CheckoutForm({
   let convenienceFeeHST = 0;
 
   if (passProcessingFee && subtotal > 0) {
-    // PASS MODE: customer pays ticket + fee + HST on fee (+ Stripe Tax at checkout)
+    // PASS MODE: customer pays ticket + fee + HST on fee (+ Stripe Tax at checkout) - discount
     const rawTotal = (subtotal + (1 + PLATFORM_HST_RATE) * platformFee - STRIPE_FIXED * PLATFORM_HST_RATE) / (1 + STRIPE_PERCENT * PLATFORM_HST_RATE);
-    customerTotal = Math.round(rawTotal * 100) / 100;
+    customerTotal = Math.round((rawTotal - discountAmount) * 100) / 100;
     const stripeFeeEstimate = Math.round((STRIPE_PERCENT * customerTotal + STRIPE_FIXED) * 100) / 100;
     const netPlatform = Math.max(0, Math.round((platformFee - stripeFeeEstimate) * 100) / 100);
     convenienceFee = platformFee;
     convenienceFeeHST = Math.round(netPlatform * PLATFORM_HST_RATE * 100) / 100;
   } else {
-    // ABSORB MODE: customer pays only ticket price (+ Stripe Tax at checkout)
-    customerTotal = Math.round(subtotal * 100) / 100;
+    // ABSORB MODE: customer pays only ticket price - discount (+ Stripe Tax at checkout)
+    customerTotal = Math.round((subtotal - discountAmount) * 100) / 100;
   }
 
   const formatPrice = (amount: number) => {
@@ -110,6 +133,34 @@ export function CheckoutForm({
 
   const setQty = (tierId: string, qty: number) => {
     setQuantities((prev) => ({ ...prev, [tierId]: Math.max(0, qty) }));
+  };
+
+  const handleApplyCoupon = async () => {
+    if (!couponCode.trim()) return;
+    setCouponLoading(true);
+    setCouponError(null);
+    try {
+      const res = await fetch('/api/coupons/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: couponCode.trim(), eventId }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.valid) {
+        setCouponError(data.error || 'Invalid coupon code');
+        return;
+      }
+      setCouponApplied({
+        couponId: data.couponId,
+        discountType: data.discountType,
+        discountValue: data.discountValue,
+        maxDiscountCap: data.maxDiscountCap,
+      });
+    } catch {
+      setCouponError('Failed to validate coupon');
+    } finally {
+      setCouponLoading(false);
+    }
   };
 
   const handleSubmit = async () => {
@@ -139,6 +190,7 @@ export function CheckoutForm({
           contactEmail: email,
           contactName: `${firstName} ${lastName}`.trim() || undefined,
           occurrenceId: selectedOccurrence?.id,
+          couponCode: couponApplied ? couponCode.trim() : undefined,
         }),
       });
 
@@ -273,6 +325,12 @@ export function CheckoutForm({
               </span>
               <span>{formatPrice(subtotal)}</span>
             </div>
+            {discountAmount > 0 && (
+              <div className="flex justify-between text-sm text-green-600 mb-1">
+                <span>Discount ({couponCode})</span>
+                <span>-{formatPrice(discountAmount)}</span>
+              </div>
+            )}
             {passProcessingFee && convenienceFee > 0 && (
               <div
                 className="flex justify-between text-sm text-gray-500 mb-1"
@@ -318,6 +376,51 @@ export function CheckoutForm({
               </p>
             )}
           </div>
+        )}
+      </div>
+
+      {/* Coupon Code */}
+      <div className="bg-white p-6 rounded-xl shadow-sm mb-6">
+        <h3 className="font-bold text-sm mb-3">Promo Code</h3>
+        {couponApplied ? (
+          <div className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg">
+            <div>
+              <span className="text-green-700 font-semibold text-sm">{couponCode.toUpperCase()}</span>
+              <span className="text-green-600 text-sm ml-2">
+                {couponApplied.discountType === 'percentage'
+                  ? `${couponApplied.discountValue}% off`
+                  : `${formatPrice(couponApplied.discountValue)} off`}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => { setCouponApplied(null); setCouponCode(''); setCouponError(null); }}
+              className="text-gray-400 hover:text-gray-600 text-sm font-medium"
+            >
+              Remove
+            </button>
+          </div>
+        ) : (
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={couponCode}
+              onChange={(e) => { setCouponCode(e.target.value.toUpperCase()); setCouponError(null); }}
+              placeholder="Enter promo code"
+              className="flex-1 border p-3 rounded-lg text-sm uppercase"
+            />
+            <button
+              type="button"
+              onClick={handleApplyCoupon}
+              disabled={couponLoading || !couponCode.trim()}
+              className="px-5 py-3 bg-black text-white rounded-lg text-sm font-semibold disabled:opacity-50"
+            >
+              {couponLoading ? 'Checking...' : 'Apply'}
+            </button>
+          </div>
+        )}
+        {couponError && (
+          <p className="text-red-500 text-sm mt-2">{couponError}</p>
         )}
       </div>
 
