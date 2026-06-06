@@ -4,8 +4,8 @@ import Footer from '@/components/Footer';
 import GifftContent from './GifftContent';
 
 export const metadata = {
-  title: 'GIFFT - Global International Film Festival | Empiria',
-  description: 'Discover movies playing in cities across Canada through the Global International Film Festival.',
+  title: 'GIFFT - Greek International Film Festival Tour of Canada | Empiria',
+  description: 'Discover movies playing in cities across Canada through the Greek International Film Festival Tour of Canada.',
 };
 
 export default async function GifftPage() {

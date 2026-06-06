@@ -440,9 +440,15 @@ export async function POST(request: NextRequest) {
     const passProcessingFee = event.pass_processing_fee === true;
 
     const totalTickets = validatedSelections.reduce((sum: number, s: { quantity: number }) => sum + s.quantity, 0);
+    // The fixed per-ticket fee only applies to PAID tickets — free tickets (price 0)
+    // incur no fee, even on events that mix free and paid tiers.
+    const paidTickets = validatedSelections.reduce(
+      (sum: number, s: { quantity: number; unitPrice: number }) => sum + (s.unitPrice > 0 ? s.quantity : 0),
+      0
+    );
 
     // Platform fee (convenience fee) - includes Stripe fees within it
-    const platformFee = Math.round((subtotal * (feePercent / 100) + (feeFixedPerTicket * totalTickets)) * 100) / 100;
+    const platformFee = Math.round((subtotal * (feePercent / 100) + (feeFixedPerTicket * paidTickets)) * 100) / 100;
 
     // Tax rates
     const STRIPE_PERCENT = 0.029;

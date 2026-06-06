@@ -78,6 +78,12 @@ export function CheckoutForm({
     (s, t) => s + t.price * (quantities[t.id] ?? 0),
     0
   );
+  // The fixed per-ticket fee only applies to PAID tickets — free tickets (price 0)
+  // incur no fee, even on events that mix free and paid tiers.
+  const paidItems = tiers.reduce(
+    (s, t) => s + (t.price > 0 ? (quantities[t.id] ?? 0) : 0),
+    0
+  );
 
   // Coupon discount calculation
   let discountAmount = 0;
@@ -100,7 +106,7 @@ export function CheckoutForm({
 
   // Platform fee (convenience fee) - includes Stripe fees within it
   const platformFee = subtotal > 0
-    ? Math.round((subtotal * (feePercent / 100) + (feeFixedPerTicket * totalItems)) * 100) / 100
+    ? Math.round((subtotal * (feePercent / 100) + (feeFixedPerTicket * paidItems)) * 100) / 100
     : 0;
 
   // When Stripe Tax is enabled, ticket tax is calculated at checkout by Stripe

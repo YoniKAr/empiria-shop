@@ -116,7 +116,7 @@ function GifftContentInner({ cities, movies, featured, sponsors }: GifftContentP
             GIFFT
           </h1>
           <p className="text-xl md:text-2xl text-white/70 mb-3 font-medium">
-            Global International Film Festival
+            Greek International Film Festival Tour of Canada
           </p>
           <p className="text-base text-white/50 max-w-lg mx-auto">
             Discover movies playing in cities across Canada
