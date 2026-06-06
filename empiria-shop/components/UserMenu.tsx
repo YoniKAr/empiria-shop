@@ -14,7 +14,6 @@ const PROFILE_URL = 'https://profile.empiriaindia.com';
 const DASHBOARD_URLS: Record<string, { label: string; href: string }[]> = {
   admin: [
     { label: 'Admin Dashboard', href: 'https://admin.empiriaindia.com/dashboard' },
-    { label: 'Organizer Dashboard', href: 'https://organizer.empiriaindia.com/dashboard' },
   ],
   organizer: [
     { label: 'Organizer Dashboard', href: 'https://organizer.empiriaindia.com/dashboard' },
