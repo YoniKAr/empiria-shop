@@ -9,6 +9,8 @@ interface UserMenuProps {
   userRole: string | null;
 }
 
+const PROFILE_URL = 'https://profile.empiriaindia.com';
+
 const DASHBOARD_URLS: Record<string, { label: string; href: string }[]> = {
   admin: [
     { label: 'Admin Dashboard', href: 'https://admin.empiriaindia.com/dashboard' },
@@ -37,6 +39,9 @@ export default function UserMenu({ userName, userPicture, userRole }: UserMenuPr
   }, []);
 
   const dashboardLinks = userRole ? DASHBOARD_URLS[userRole] || [] : [];
+  // Attendees (default customer role) buy tickets, so they get the profile/tickets
+  // link. Organizers/admins manage events and never purchase on these accounts.
+  const isAttendee = !userRole || userRole === 'attendee';
   const firstName = userName?.split(' ')[0] || 'User';
 
   return (
@@ -69,7 +74,21 @@ export default function UserMenu({ userName, userPicture, userRole }: UserMenuPr
             )}
           </div>
 
-          {/* Dashboard links */}
+          {/* Attendee: profile & tickets (attendees are the only ones who buy tickets) */}
+          {isAttendee && (
+            <div className="py-1 border-b border-gray-100">
+              <a
+                href={PROFILE_URL}
+                className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                onClick={() => setOpen(false)}
+              >
+                <User size={16} className="text-gray-400" />
+                My Tickets &amp; Profile
+              </a>
+            </div>
+          )}
+
+          {/* Dashboard links (organizer/admin) */}
           {dashboardLinks.length > 0 && (
             <div className="py-1 border-b border-gray-100">
               {dashboardLinks.map((link) => (

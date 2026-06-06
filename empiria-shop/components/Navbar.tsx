@@ -53,7 +53,7 @@ export default async function Navbar() {
             />
           ) : (
             <a
-              href="https://auth.empiriaindia.com/auth/login?returnTo=https://shop.empiriaindia.com"
+              href="/auth/login"
               className="text-sm font-bold bg-black text-white px-5 py-2.5 rounded-full hover:bg-gray-800 transition-colors"
             >
               Sign In
