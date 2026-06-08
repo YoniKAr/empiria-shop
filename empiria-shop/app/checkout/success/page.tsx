@@ -13,6 +13,18 @@ import { CheckCircle2, Calendar, MapPin, ArrowRight, Video } from 'lucide-react'
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 
+// Only allow http(s) meeting links as clickable anchors — blocks
+// javascript:/data:/vbscript: and other XSS-prone schemes.
+function safeMeetingHref(url: string | null | undefined): string | null {
+  if (!url) return null;
+  try {
+    const u = new URL(url);
+    return u.protocol === 'https:' || u.protocol === 'http:' ? u.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
 export default async function CheckoutSuccessPage({
   searchParams,
 }: {
@@ -155,9 +167,9 @@ export default async function CheckoutSuccessPage({
                     {event.venue_name}{event.city ? `, ${event.city}` : ''}
                   </div>
                 )}
-                {event.meeting_link && (event.location_type === 'virtual' || event.location_type === 'hybrid') && (
+                {safeMeetingHref(event.meeting_link) && (event.location_type === 'virtual' || event.location_type === 'hybrid') && (
                   <a
-                    href={event.meeting_link}
+                    href={safeMeetingHref(event.meeting_link)!}
                     target="_blank"
                     rel="noopener noreferrer"
                     className={`flex items-center gap-1.5 hover:underline ${event.cover_image_url ? 'text-white/90' : 'text-indigo-600'}`}
