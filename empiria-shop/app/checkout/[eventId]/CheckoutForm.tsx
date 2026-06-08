@@ -9,6 +9,7 @@ interface Tier {
   description: string | null;
   price: number;
   remaining_quantity: number;
+  min_per_order: number | null;
   max_per_order: number | null;
   currency: string;
 }
@@ -286,7 +287,7 @@ export function CheckoutForm({
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => setQty(tier.id, qty - 1)}
+                      onClick={() => setQty(tier.id, qty <= (tier.min_per_order ?? 1) ? 0 : qty - 1)}
                       disabled={qty === 0}
                       className="w-8 h-8 rounded-lg bg-gray-200 flex items-center justify-center text-gray-700 hover:bg-orange-100 transition-colors disabled:opacity-30"
                       data-testid={`checkout-tier-decrease-${tier.id}`}
@@ -306,7 +307,9 @@ export function CheckoutForm({
                         const maxAllowed = tier.max_per_order
                           ? Math.min(tier.remaining_quantity, tier.max_per_order)
                           : tier.remaining_quantity;
-                        setQty(tier.id, Math.min(maxAllowed, qty + 1));
+                        // Jump straight to the minimum when going from 0.
+                        const target = qty === 0 ? (tier.min_per_order ?? 1) : qty + 1;
+                        setQty(tier.id, Math.min(maxAllowed, target));
                       }}
                       disabled={qty >= (tier.max_per_order ? Math.min(tier.remaining_quantity, tier.max_per_order) : tier.remaining_quantity)}
                       className="w-8 h-8 rounded-lg bg-gray-200 flex items-center justify-center text-gray-700 hover:bg-orange-100 transition-colors disabled:opacity-30"

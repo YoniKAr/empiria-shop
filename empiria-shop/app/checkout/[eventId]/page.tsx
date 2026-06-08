@@ -16,7 +16,7 @@ export default async function CheckoutPage({ params }: { params: Promise<{ event
     .select(`
       id, title, slug, currency, status, pass_processing_fee, charge_ticket_tax,
       platform_fee_percent, platform_fee_fixed,
-      ticket_tiers (id, name, description, price, currency, remaining_quantity, max_per_order),
+      ticket_tiers (id, name, description, price, currency, remaining_quantity, min_per_order, max_per_order),
       event_occurrences (id, starts_at, ends_at, label)
     `)
     .eq('id', eventId)
@@ -33,6 +33,7 @@ export default async function CheckoutPage({ params }: { params: Promise<{ event
     description: t.description,
     price: t.price,
     remaining_quantity: t.remaining_quantity,
+    min_per_order: t.min_per_order ?? 1,
     max_per_order: t.max_per_order ?? null,
     currency: t.currency || event.currency || 'cad',
   }));

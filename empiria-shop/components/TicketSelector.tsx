@@ -14,6 +14,7 @@ interface TicketTier {
   price: number;
   currency: string;
   remaining_quantity: number;
+  min_per_order?: number;
   max_per_order: number;
   sales_start_at: string | null;
   sales_end_at: string | null;
@@ -62,8 +63,13 @@ export default function TicketSelector({
   const updateQuantity = (tierId: string, delta: number) => {
     setQuantities((prev) => {
       const tier = tiers.find((t) => t.id === tierId)!;
+      const min = tier.min_per_order ?? 1;
       const current = prev[tierId] || 0;
-      const next = Math.max(0, Math.min(tier.max_per_order, current + delta));
+      // Quantity is either 0 or within [min, max]: jump 0->min and min->0.
+      let target: number;
+      if (delta > 0) target = current === 0 ? min : current + delta;
+      else target = current <= min ? 0 : current + delta;
+      const next = Math.max(0, Math.min(tier.max_per_order, target));
       return { ...prev, [tierId]: next };
     });
     setError(null);

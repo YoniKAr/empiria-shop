@@ -113,7 +113,7 @@ export async function POST(request: NextRequest) {
     const tierIds = tiers.map((t) => t.tierId);
     const { data: ticketTiers, error: tierError } = await supabase
       .from('ticket_tiers')
-      .select('id, name, description, price, currency, remaining_quantity, max_per_order, sales_start_at, sales_end_at, is_hidden, event_id')
+      .select('id, name, description, price, currency, remaining_quantity, min_per_order, max_per_order, sales_start_at, sales_end_at, is_hidden, event_id')
       .in('id', tierIds)
       .eq('event_id', eventId);
 
@@ -149,9 +149,10 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Tier does not belong to this event' }, { status: 400 });
       }
 
-      if (selection.quantity < 1 || selection.quantity > tier.max_per_order) {
+      const minQty = (tier as { min_per_order?: number }).min_per_order ?? 1;
+      if (selection.quantity < minQty || selection.quantity > tier.max_per_order) {
         return NextResponse.json(
-          { error: `Quantity for "${tier.name}" must be between 1 and ${tier.max_per_order}` },
+          { error: `Quantity for "${tier.name}" must be between ${minQty} and ${tier.max_per_order}` },
           { status: 400 }
         );
       }
