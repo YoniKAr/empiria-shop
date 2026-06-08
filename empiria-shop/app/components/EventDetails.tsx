@@ -15,7 +15,6 @@ interface EventDetailsProps {
     organizer: string
     galleryUrls?: string[]
     whatToExpect?: string[]
-    sponsorLogos?: string[]
     trailerUrl?: string
 }
 
@@ -29,7 +28,6 @@ export function EventDetails({
     organizer,
     galleryUrls = [],
     whatToExpect = [],
-    sponsorLogos = [],
     trailerUrl,
 }: EventDetailsProps) {
     const [showShare, setShowShare] = useState(false)
@@ -383,29 +381,6 @@ export function EventDetails({
                     </div>
                 )
             })()}
-
-            {/* Sponsors */}
-            {sponsorLogos.length > 0 && (
-                <div>
-                    <h3 className="text-lg font-semibold text-[#F15A29] mb-4 font-[family-name:var(--font-space-grotesk)]">
-                        Event Sponsors
-                    </h3>
-                    <div className="flex gap-6 overflow-x-auto pb-2 items-center" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
-                        {sponsorLogos.map((url, index) => (
-                            <div
-                                key={index}
-                                className="flex-shrink-0 w-48 h-28 p-5 flex items-center justify-center bg-white border border-gray-100 rounded-xl shadow-sm"
-                            >
-                                <img
-                                    src={url}
-                                    alt={`Sponsor ${index + 1}`}
-                                    className="max-h-full max-w-full object-contain"
-                                />
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
 
             {/* Fullscreen Lightbox Modal */}
             {lightboxIndex !== null && galleryUrls.length > 0 && (

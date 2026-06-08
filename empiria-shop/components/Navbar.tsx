@@ -40,6 +40,7 @@ export default async function Navbar() {
           <div className="flex items-center gap-6">
             <Link href="/" className="text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">Events</Link>
             <Link href="/gifft" className="text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">GIFFT</Link>
+            <Link href="/specials" className="text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">Specials</Link>
           </div>
         </div>
 

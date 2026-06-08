@@ -20,20 +20,40 @@ export default async function SpecialPage({ params }: { params: Promise<{ slug: 
 
   if (!page) notFound();
 
-  // Fetch published events for this category
-  const { data: rawEvents } = await supabase
-    .from('events')
-    .select(`
+  // Fetch events: hand-picked (admin-curated) if event_ids is set, else by category
+  const EVENT_COLUMNS = `
       id, title, slug, cover_image_url,
       venue_name, city, currency, organizer_id, source_app,
       categories (name),
       ticket_tiers (price),
       event_occurrences (starts_at)
-    `)
-    .eq('status', 'published')
-    .eq('visibility', 'public')
-    .eq('category_id', page.category_id)
-    .order('created_at', { ascending: false });
+    `;
+
+  let rawEvents: any[] | null;
+  if (Array.isArray(page.event_ids) && page.event_ids.length > 0) {
+    const { data } = await supabase
+      .from('events')
+      .select(EVENT_COLUMNS)
+      .in('id', page.event_ids)
+      .eq('status', 'published')
+      .eq('visibility', 'public');
+    // Preserve the admin-specified order
+    const order = new Map<string, number>(
+      page.event_ids.map((id: string, i: number) => [id, i] as [string, number])
+    );
+    rawEvents = (data ?? []).sort(
+      (a: any, b: any) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0)
+    );
+  } else {
+    const { data } = await supabase
+      .from('events')
+      .select(EVENT_COLUMNS)
+      .eq('status', 'published')
+      .eq('visibility', 'public')
+      .eq('category_id', page.category_id)
+      .order('created_at', { ascending: false });
+    rawEvents = data;
+  }
 
   // Batch-fetch organizer names (same pattern as homepage)
   let events: any[] = [];

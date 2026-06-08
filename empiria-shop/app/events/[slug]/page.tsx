@@ -5,6 +5,7 @@ import { notFound } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import { EventHero } from '@/app/components/EventHero';
 import { EventDetails } from '@/app/components/EventDetails';
+import SponsorSections from '@/app/components/SponsorSections';
 import { EventCard } from '@/app/components/EventCard';
 import { TicketWidget } from '@/app/components/TicketWidget';
 import ZoneSelector from '@/components/seatmap/ZoneSelector';
@@ -231,7 +232,6 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                         organizer={organizer}
                         galleryUrls={galleryUrls}
                         whatToExpect={whatToExpect}
-                        sponsorLogos={(event as any).sponsor_logos || []}
                         trailerUrl={(event as any).trailer_url || ''}
                     />
                 </div>
@@ -319,6 +319,9 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                     )}
                 </div>
             </div>
+
+            {/* Sponsors */}
+            <SponsorSections sections={(event as any).sponsor_sections ?? []} />
 
             {/* Similar Events */}
             {similarEvents.length > 0 && (

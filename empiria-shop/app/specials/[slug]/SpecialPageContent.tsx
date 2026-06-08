@@ -4,6 +4,8 @@ import Link from "next/link";
 import { Download } from "lucide-react";
 import { EventCard } from "@/app/components/EventCard";
 import { getCurrencySymbol } from "@/lib/utils";
+import SponsorSections from "@/app/components/SponsorSections";
+import { isSafeUrl, type SponsorSection } from "@/lib/eventFields";
 
 interface SpecialPageContentProps {
   page: {
@@ -15,6 +17,7 @@ interface SpecialPageContentProps {
     pamphlet_url: string | null;
     events_bg_url: string | null;
     events_section_title: string | null;
+    sponsor_sections: SponsorSection[] | null;
     category: { name: string } | null;
   };
   events: Array<{
@@ -47,11 +50,11 @@ export function SpecialPageContent({ page, events }: SpecialPageContentProps) {
     <>
       {/* ── HERO SECTION ── */}
       {page.hero_media_type === "image" && page.hero_media_url ? (
-        <section className="min-h-[60vh] relative overflow-hidden flex items-end">
+        <section className="relative w-full aspect-video overflow-hidden flex items-end">
           <img
             src={page.hero_media_url}
             alt={page.title}
-            className="object-cover w-full h-full absolute inset-0"
+            className="w-full h-full object-cover absolute inset-0"
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/40 to-black/20" />
           <div className="relative z-10 w-full max-w-7xl mx-auto px-4 sm:px-6 pb-16 pt-32">
@@ -134,7 +137,7 @@ export function SpecialPageContent({ page, events }: SpecialPageContentProps) {
       )}
 
       {/* ── PDF / PAMPHLET SECTION ── */}
-      {page.pamphlet_url && (
+      {page.pamphlet_url && isSafeUrl(page.pamphlet_url) && (
         <section className="max-w-4xl mx-auto px-4 sm:px-6 pb-16">
           <h2 className="text-2xl font-bold text-slate-900 mb-6">
             Event Pamphlet
@@ -158,11 +161,11 @@ export function SpecialPageContent({ page, events }: SpecialPageContentProps) {
 
       {/* ── EVENTS SECTION ── */}
       <section className="relative py-20">
-        {page.events_bg_url ? (
+        {page.events_bg_url && isSafeUrl(page.events_bg_url) ? (
           <>
             <div
               className="absolute inset-0 bg-cover bg-center"
-              style={{ backgroundImage: `url(${page.events_bg_url})` }}
+              style={{ backgroundImage: `url("${page.events_bg_url}")` }}
             />
             <div className="absolute inset-0 bg-black/60" />
           </>
@@ -214,6 +217,9 @@ export function SpecialPageContent({ page, events }: SpecialPageContentProps) {
           )}
         </div>
       </section>
+
+      {/* ── SPONSORS SECTION ── */}
+      <SponsorSections sections={page.sponsor_sections ?? []} />
 
       {/* ── BACK LINK ── */}
       <div className="text-center py-12">

@@ -67,3 +67,37 @@ export function validateCustomFields(fields: CustomField[]): string | null {
   }
   return null;
 }
+
+// --- Sponsor sections ---
+export type SponsorTier = "primary" | "secondary" | "tertiary";
+
+export interface Sponsor {
+  id: string;
+  logo_url: string;
+  name?: string;
+  link_url?: string;
+}
+
+export interface SponsorSection {
+  id: string;
+  title?: string;
+  tier: SponsorTier;
+  sponsors: Sponsor[];
+}
+
+// Logo box height per tier (px) — the section "thickness".
+export const SPONSOR_TIER_HEIGHT: Record<SponsorTier, number> = {
+  primary: 128,
+  secondary: 96,
+  tertiary: 64,
+};
+
+export function validateSponsorSections(sections: SponsorSection[]): string | null {
+  for (const s of sections) {
+    for (const sp of s.sponsors) {
+      if (!sp.logo_url) return "Every sponsor needs a logo.";
+      if (sp.link_url && !isSafeUrl(sp.link_url)) return `Sponsor link "${sp.link_url}" must be a valid http(s) URL.`;
+    }
+  }
+  return null;
+}
