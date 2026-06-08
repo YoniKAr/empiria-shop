@@ -53,8 +53,8 @@ export function EventCard({
                         />
                     ) : (
                         <div className="w-full h-full flex items-center justify-center">
-                            <div className="w-16 h-16 border-2 border-[#F98C1F] rounded-lg flex items-center justify-center">
-                                <ImageIcon className="w-8 h-8 text-[#F98C1F]" />
+                            <div className="w-16 h-16 border-2 border-[#F15A29] rounded-lg flex items-center justify-center">
+                                <ImageIcon className="w-8 h-8 text-[#F15A29]" />
                             </div>
                         </div>
                     )}
@@ -69,7 +69,7 @@ export function EventCard({
                     {/* Category Badge */}
                     {category && (
                         <div className="absolute bottom-3 left-3">
-                            <span className="bg-[#F98C1F] text-white text-xs font-bold px-3 py-1 rounded-md shadow-sm z-10 uppercase tracking-wider">
+                            <span className="bg-[#F15A29] text-white text-xs font-bold px-3 py-1 rounded-md shadow-sm z-10 uppercase tracking-wider">
                                 {category}
                             </span>
                         </div>
@@ -83,7 +83,7 @@ export function EventCard({
                         {/* Date Box */}
                         {eventDate ? (
                             <div className="flex-shrink-0 border border-gray-200 rounded-lg px-3 py-2 text-center min-w-[56px] shadow-[0_2px_8px_-4px_rgba(0,0,0,0.1)]">
-                                <span className="block text-[#F98C1F] text-[10px] font-bold uppercase tracking-widest">{month}</span>
+                                <span className="block text-[#F15A29] text-[10px] font-bold uppercase tracking-widest">{month}</span>
                                 <span className="block text-slate-900 text-xl font-extrabold leading-tight mt-0.5">{day}</span>
                             </div>
                         ) : (
@@ -94,11 +94,11 @@ export function EventCard({
 
                         {/* Title and Time */}
                         <div className="flex-1 min-w-0 flex flex-col h-full pt-0.5">
-                            <h3 className="font-bold text-[17px] text-slate-900 leading-tight group-hover:text-[#F98C1F] transition-colors line-clamp-2">
+                            <h3 className="font-bold text-[17px] text-slate-900 leading-tight group-hover:text-[#F15A29] transition-colors line-clamp-2">
                                 {title}
                             </h3>
                             {eventDate && (
-                                <p className="text-[#F98C1F] text-[13px] font-semibold mt-1.5 flex items-center">
+                                <p className="text-[#F15A29] text-[13px] font-semibold mt-1.5 flex items-center">
                                     {dayName}, {time}
                                 </p>
                             )}
@@ -130,7 +130,7 @@ export function EventCard({
                         {/* Organizer Info */}
                         <div className="flex items-center gap-2">
                             {/* Initials Avatar */}
-                            <div className="w-7 h-7 rounded-full bg-[#F98C1F] flex items-center justify-center flex-shrink-0">
+                            <div className="w-7 h-7 rounded-full bg-[#F15A29] flex items-center justify-center flex-shrink-0">
                                 <span className="text-white text-[10px] font-bold uppercase leading-none">
                                     {(organizerName || 'E').split(' ').map((w: string) => w[0]).slice(0, 2).join('')}
                                 </span>
@@ -141,7 +141,7 @@ export function EventCard({
                         </div>
 
                         {/* View Details Link */}
-                        <span className="text-[#F98C1F] font-bold text-[13px] group-hover:underline">
+                        <span className="text-[#F15A29] font-bold text-[13px] group-hover:underline">
                             Get Tickets
                         </span>
                     </div>

@@ -104,7 +104,7 @@ export function CheckoutForm({
   const STRIPE_FIXED = 0.30;
   const PLATFORM_HST_RATE = 0.13;
 
-  // Platform fee (convenience fee) - includes Stripe fees within it
+  // Platform fee (service fee) - includes Stripe fees within it
   const platformFee = subtotal > 0
     ? Math.round((subtotal * (feePercent / 100) + (feeFixedPerTicket * paidItems)) * 100) / 100
     : 0;
@@ -258,7 +258,7 @@ export function CheckoutForm({
                 data-testid={`checkout-tier-${tier.id}`}
                 className={`flex items-center justify-between p-4 rounded-xl border-2 transition-all ${
                   qty > 0
-                    ? "border-[#F98C1F] bg-orange-50"
+                    ? "border-[#F15A29] bg-orange-50"
                     : soldOut
                       ? "border-gray-200 opacity-50"
                       : "border-gray-200"
@@ -273,7 +273,7 @@ export function CheckoutForm({
                       {tier.description}
                     </p>
                   )}
-                  <p className="text-sm font-bold text-[#F98C1F] mt-1">
+                  <p className="text-sm font-bold text-[#F15A29] mt-1">
                     {formatPrice(tier.price)}
                   </p>
                 </div>
@@ -342,7 +342,7 @@ export function CheckoutForm({
                 className="flex justify-between text-sm text-gray-500 mb-1"
                 data-testid="checkout-convenience-fee"
               >
-                <span>Convenience Fee</span>
+                <span>Service Fee</span>
                 <span>{formatPrice(convenienceFee)}</span>
               </div>
             )}
@@ -351,7 +351,7 @@ export function CheckoutForm({
                 className="flex justify-between text-sm text-gray-500 mb-1"
                 data-testid="checkout-convenience-fee-hst"
               >
-                <span>HST on Convenience Fee</span>
+                <span>HST on Service Fee</span>
                 <span>{formatPrice(convenienceFeeHST)}</span>
               </div>
             )}

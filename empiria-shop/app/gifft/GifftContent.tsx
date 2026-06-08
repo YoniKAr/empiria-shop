@@ -104,12 +104,12 @@ function GifftContentInner({ cities, movies, featured, sponsors }: GifftContentP
       <section className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 overflow-hidden">
         {/* Decorative elements */}
         <div className="absolute inset-0 opacity-10">
-          <div className="absolute top-0 left-1/4 w-96 h-96 bg-[#F98C1F] rounded-full blur-[128px]" />
-          <div className="absolute bottom-0 right-1/4 w-72 h-72 bg-[#F98C1F] rounded-full blur-[96px]" />
+          <div className="absolute top-0 left-1/4 w-96 h-96 bg-[#F15A29] rounded-full blur-[128px]" />
+          <div className="absolute bottom-0 right-1/4 w-72 h-72 bg-[#F15A29] rounded-full blur-[96px]" />
         </div>
 
         <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 py-20 md:py-28 text-center">
-          <span className="inline-block bg-[#F98C1F]/10 text-[#F98C1F] text-xs font-bold uppercase tracking-[0.2em] px-4 py-1.5 rounded-full mb-6 border border-[#F98C1F]/20">
+          <span className="inline-block bg-[#F15A29]/10 text-[#F15A29] text-xs font-bold uppercase tracking-[0.2em] px-4 py-1.5 rounded-full mb-6 border border-[#F15A29]/20">
             Film Festival
           </span>
           <h1 className="text-5xl md:text-7xl font-bold text-white mb-4 tracking-tight font-[family-name:var(--font-space-grotesk)]">
@@ -135,7 +135,7 @@ function GifftContentInner({ cities, movies, featured, sponsors }: GifftContentP
               onClick={() => handleCityChange('')}
               className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-all ${
                 !selectedCitySlug
-                  ? 'bg-[#F98C1F] text-white shadow-sm'
+                  ? 'bg-[#F15A29] text-white shadow-sm'
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
             >
@@ -147,7 +147,7 @@ function GifftContentInner({ cities, movies, featured, sponsors }: GifftContentP
                 onClick={() => handleCityChange(city.slug)}
                 className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-all ${
                   selectedCitySlug === city.slug
-                    ? 'bg-[#F98C1F] text-white shadow-sm'
+                    ? 'bg-[#F15A29] text-white shadow-sm'
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }`}
               >
@@ -219,7 +219,7 @@ function GifftContentInner({ cities, movies, featured, sponsors }: GifftContentP
         {filteredFeatured.length > 0 && (
           <div className="mb-12">
             <h2 className="text-2xl font-bold text-slate-900 mb-6 font-[family-name:var(--font-space-grotesk)]">
-              <span className="text-[#F98C1F]">Featured</span> Movies
+              <span className="text-[#F15A29]">Featured</span> Movies
             </h2>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-5">
               {filteredFeatured.map((f) => {

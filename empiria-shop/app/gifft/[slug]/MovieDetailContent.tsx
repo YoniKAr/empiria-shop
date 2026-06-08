@@ -121,7 +121,7 @@ export default function MovieDetailContent({
       {/* Hero Section - Two Column */}
       <section className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
         <div className="absolute inset-0 opacity-5">
-          <div className="absolute top-0 right-0 w-96 h-96 bg-[#F98C1F] rounded-full blur-[128px]" />
+          <div className="absolute top-0 right-0 w-96 h-96 bg-[#F15A29] rounded-full blur-[128px]" />
         </div>
 
         <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 py-12 md:py-16">
@@ -153,7 +153,7 @@ export default function MovieDetailContent({
             <div className="text-center md:text-left">
               {/* Genre badge */}
               {movie.genre && (
-                <span className="inline-block bg-[#F98C1F]/10 text-[#F98C1F] text-xs font-bold uppercase tracking-[0.15em] px-3 py-1 rounded-full border border-[#F98C1F]/20 mb-4">
+                <span className="inline-block bg-[#F15A29]/10 text-[#F15A29] text-xs font-bold uppercase tracking-[0.15em] px-3 py-1 rounded-full border border-[#F15A29]/20 mb-4">
                   {movie.genre}
                 </span>
               )}
@@ -232,7 +232,7 @@ export default function MovieDetailContent({
       {/* Trailer Section */}
       {trailerEmbedUrl && (
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-12">
-          <h2 className="text-2xl font-bold text-[#F98C1F] mb-6 font-[family-name:var(--font-space-grotesk)]">
+          <h2 className="text-2xl font-bold text-[#F15A29] mb-6 font-[family-name:var(--font-space-grotesk)]">
             Trailer
           </h2>
           <div className="overflow-hidden rounded-xl border border-gray-200">
@@ -254,18 +254,18 @@ export default function MovieDetailContent({
         <div className="border-t border-gray-100">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 py-12">
             <h2 className="text-2xl font-bold text-slate-900 mb-6 font-[family-name:var(--font-space-grotesk)]">
-              <span className="text-[#F98C1F]">Upcoming</span> Showings
+              <span className="text-[#F15A29]">Upcoming</span> Showings
             </h2>
             <div className="flex flex-col gap-4">
               {futureOccurrences.map((occ: any) => (
                 <div
                   key={occ.id}
-                  className="bg-white border border-gray-200 rounded-xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-[#F98C1F]/30 hover:shadow-sm transition-all"
+                  className="bg-white border border-gray-200 rounded-xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-[#F15A29]/30 hover:shadow-sm transition-all"
                 >
                   <div className="flex items-start gap-4">
                     {/* Date box */}
                     <div className="flex-shrink-0 border border-gray-200 rounded-lg px-3 py-2 text-center min-w-[60px] shadow-sm">
-                      <span className="block text-[#F98C1F] text-[10px] font-bold uppercase tracking-widest">
+                      <span className="block text-[#F15A29] text-[10px] font-bold uppercase tracking-widest">
                         {new Date(occ.starts_at).toLocaleDateString('en-CA', { month: 'short' }).toUpperCase()}
                       </span>
                       <span className="block text-slate-900 text-xl font-extrabold leading-tight mt-0.5">
@@ -275,7 +275,7 @@ export default function MovieDetailContent({
 
                     <div>
                       <p className="text-sm font-semibold text-slate-900">{formatDate(occ.starts_at)}</p>
-                      <p className="text-sm text-[#F98C1F] font-medium mt-0.5">{formatTime(occ.starts_at)}</p>
+                      <p className="text-sm text-[#F15A29] font-medium mt-0.5">{formatTime(occ.starts_at)}</p>
                       <div className="flex items-center gap-3 mt-1.5 text-xs text-gray-500">
                         {(occ.venue_name || event.venue_name) && (
                           <span className="flex items-center gap-1">
@@ -298,7 +298,7 @@ export default function MovieDetailContent({
 
                   <Link
                     href={`/checkout/${event.id}`}
-                    className="flex-shrink-0 bg-[#F98C1F] hover:bg-[#e07d15] text-white font-bold text-sm px-6 py-2.5 rounded-full transition-colors text-center shadow-sm"
+                    className="flex-shrink-0 bg-[#F15A29] hover:bg-[#e07d15] text-white font-bold text-sm px-6 py-2.5 rounded-full transition-colors text-center shadow-sm"
                   >
                     Get Tickets
                   </Link>
@@ -316,7 +316,7 @@ export default function MovieDetailContent({
             <p className="text-gray-500 mb-4">No upcoming showings scheduled yet.</p>
             <Link
               href={`/checkout/${event.id}`}
-              className="inline-block bg-[#F98C1F] hover:bg-[#e07d15] text-white font-bold text-sm px-8 py-3 rounded-full transition-colors shadow-sm"
+              className="inline-block bg-[#F15A29] hover:bg-[#e07d15] text-white font-bold text-sm px-8 py-3 rounded-full transition-colors shadow-sm"
             >
               Get Tickets
             </Link>
@@ -328,7 +328,7 @@ export default function MovieDetailContent({
       {sponsorLogos.length > 0 && (
         <div className="border-t border-gray-100">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 py-12">
-            <h2 className="text-lg font-semibold text-[#F98C1F] mb-4 font-[family-name:var(--font-space-grotesk)]">
+            <h2 className="text-lg font-semibold text-[#F15A29] mb-4 font-[family-name:var(--font-space-grotesk)]">
               Sponsors
             </h2>
             <div

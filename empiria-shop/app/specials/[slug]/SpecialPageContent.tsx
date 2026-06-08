@@ -56,7 +56,7 @@ export function SpecialPageContent({ page, events }: SpecialPageContentProps) {
           <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/40 to-black/20" />
           <div className="relative z-10 w-full max-w-7xl mx-auto px-4 sm:px-6 pb-16 pt-32">
             {page.category && (
-              <span className="inline-block bg-[#F98C1F] text-white text-xs font-bold px-4 py-1.5 rounded-full uppercase tracking-wider mb-4">
+              <span className="inline-block bg-[#F15A29] text-white text-xs font-bold px-4 py-1.5 rounded-full uppercase tracking-wider mb-4">
                 {page.category.name}
               </span>
             )}
@@ -89,7 +89,7 @@ export function SpecialPageContent({ page, events }: SpecialPageContentProps) {
             })()}
             <div className="text-center mt-10">
               {page.category && (
-                <span className="inline-block bg-[#F98C1F] text-white text-xs font-bold px-4 py-1.5 rounded-full uppercase tracking-wider mb-4">
+                <span className="inline-block bg-[#F15A29] text-white text-xs font-bold px-4 py-1.5 rounded-full uppercase tracking-wider mb-4">
                   {page.category.name}
                 </span>
               )}
@@ -108,7 +108,7 @@ export function SpecialPageContent({ page, events }: SpecialPageContentProps) {
         <section className="bg-gradient-to-b from-[#1a1a1a] to-[#2d1f0f] py-24">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 text-center">
             {page.category && (
-              <span className="inline-block bg-[#F98C1F] text-white text-xs font-bold px-4 py-1.5 rounded-full uppercase tracking-wider mb-4">
+              <span className="inline-block bg-[#F15A29] text-white text-xs font-bold px-4 py-1.5 rounded-full uppercase tracking-wider mb-4">
                 {page.category.name}
               </span>
             )}
@@ -148,7 +148,7 @@ export function SpecialPageContent({ page, events }: SpecialPageContentProps) {
             href={page.pamphlet_url}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 mt-4 px-5 py-2.5 bg-[#F98C1F] text-white rounded-full font-medium text-sm hover:brightness-110 transition"
+            className="inline-flex items-center gap-2 mt-4 px-5 py-2.5 bg-[#F15A29] text-white rounded-full font-medium text-sm hover:brightness-110 transition"
           >
             <Download className="w-4 h-4" />
             Download Pamphlet
@@ -219,7 +219,7 @@ export function SpecialPageContent({ page, events }: SpecialPageContentProps) {
       <div className="text-center py-12">
         <Link
           href="/"
-          className="text-[#F98C1F] font-medium hover:underline"
+          className="text-[#F15A29] font-medium hover:underline"
         >
           &larr; Back to All Events
         </Link>

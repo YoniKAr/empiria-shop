@@ -77,8 +77,12 @@ export default function FeaturedHero({ featuredEvents, query, setQuery }: Featur
           </div>
         ))
       ) : (
-        /* Fallback gradient when no featured events */
-        <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-orange-950 to-slate-900" />
+        /* Fallback banner image when no featured events */
+        <img
+          src="/banners/hero-concert.jpg"
+          alt="Live event crowd with hands raised"
+          className="absolute inset-0 w-full h-full object-cover"
+        />
       )}
 
       {/* Dark gradient overlay */}
@@ -89,7 +93,7 @@ export default function FeaturedHero({ featuredEvents, query, setQuery }: Featur
         <div className="text-center max-w-4xl mx-auto -mt-16">
           <h1 className="text-4xl md:text-6xl lg:text-7xl font-extrabold tracking-tight mb-6 text-white drop-shadow-lg">
             Discover your next{' '}
-            <span className="text-orange-400">experience.</span>
+            <span className="text-[#F15A29]">experience.</span>
           </h1>
           <p className="text-lg md:text-xl text-white/80 mb-10 max-w-2xl mx-auto">
             From underground music gigs to massive tech conferences, find the events that matter to you.
@@ -113,7 +117,7 @@ export default function FeaturedHero({ featuredEvents, query, setQuery }: Featur
                   document.getElementById('events-section')?.scrollIntoView({ behavior: 'smooth' });
                 }
               }}
-              className="bg-[#F98C1F] text-white h-12 px-8 rounded-full font-bold hover:brightness-110 transition-all cursor-pointer"
+              className="bg-[#F15A29] text-white h-12 px-8 rounded-full font-bold hover:brightness-110 transition-all cursor-pointer"
             >
               Search
             </button>
@@ -127,7 +131,7 @@ export default function FeaturedHero({ featuredEvents, query, setQuery }: Featur
               {/* Current event info */}
               <div className="text-white max-w-lg">
                 {currentEvent?.categories?.name && (
-                  <span className="inline-block bg-[#F98C1F] text-white text-xs font-bold px-3 py-1 rounded-md uppercase tracking-wider mb-3">
+                  <span className="inline-block bg-[#F15A29] text-white text-xs font-bold px-3 py-1 rounded-md uppercase tracking-wider mb-3">
                     {currentEvent.categories.name}
                   </span>
                 )}
@@ -185,7 +189,7 @@ export default function FeaturedHero({ featuredEvents, query, setQuery }: Featur
                         onClick={() => setCurrent(i)}
                         className={`rounded-full transition-all duration-300 ${
                           i === current
-                            ? 'w-8 h-2.5 bg-[#F98C1F]'
+                            ? 'w-8 h-2.5 bg-[#F15A29]'
                             : 'w-2.5 h-2.5 bg-white/50 hover:bg-white/80'
                         }`}
                       />

@@ -133,7 +133,7 @@ export function EventDetails({
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="bg-white border border-gray-200 rounded-xl p-5 flex items-start gap-4">
                     <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-orange-50 flex items-center justify-center">
-                        <Clock className="w-5 h-5 text-[#F98C1F]" />
+                        <Clock className="w-5 h-5 text-[#F15A29]" />
                     </div>
                     <div>
                         <p className="text-xs text-gray-500 uppercase tracking-wider font-medium mb-1">When</p>
@@ -146,22 +146,22 @@ export function EventDetails({
                     href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(addressText || [venueName, city].filter(Boolean).join(', '))}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="bg-white border border-gray-200 rounded-xl p-5 flex items-start gap-4 hover:border-[#F98C1F]/40 hover:shadow-sm transition-all group"
+                    className="bg-white border border-gray-200 rounded-xl p-5 flex items-start gap-4 hover:border-[#F15A29]/40 hover:shadow-sm transition-all group"
                 >
                     <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-orange-50 flex items-center justify-center">
-                        <MapPin className="w-5 h-5 text-[#F98C1F]" />
+                        <MapPin className="w-5 h-5 text-[#F15A29]" />
                     </div>
                     <div>
                         <p className="text-xs text-gray-500 uppercase tracking-wider font-medium mb-1">Where</p>
-                        <p className="text-sm text-gray-900 font-medium group-hover:text-[#F98C1F] transition-colors">{venueName}</p>
+                        <p className="text-sm text-gray-900 font-medium group-hover:text-[#F15A29] transition-colors">{venueName}</p>
                         <p className="text-xs text-gray-500 mt-0.5">{addressText || city}</p>
-                        <p className="text-[10px] text-[#F98C1F] font-medium mt-1.5 opacity-0 group-hover:opacity-100 transition-opacity">Get Directions &rarr;</p>
+                        <p className="text-[10px] text-[#F15A29] font-medium mt-1.5 opacity-0 group-hover:opacity-100 transition-opacity">Get Directions &rarr;</p>
                     </div>
                 </a>
 
                 <div className="bg-white border border-gray-200 rounded-xl p-5 flex items-start gap-4">
                     <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-orange-50 flex items-center justify-center">
-                        <Info className="w-5 h-5 text-[#F98C1F]" />
+                        <Info className="w-5 h-5 text-[#F15A29]" />
                     </div>
                     <div>
                         <p className="text-xs text-gray-500 uppercase tracking-wider font-medium mb-1">Organized by</p>
@@ -174,7 +174,7 @@ export function EventDetails({
             {galleryUrls.length > 0 && (
                 <div className="flex flex-col gap-5">
                     <div className="flex items-center justify-between">
-                        <h2 className="text-2xl font-bold text-[#F98C1F] font-[family-name:var(--font-space-grotesk)]">
+                        <h2 className="text-2xl font-bold text-[#F15A29] font-[family-name:var(--font-space-grotesk)]">
                             Event Gallery
                         </h2>
                         <div className="flex items-center gap-2">
@@ -207,7 +207,7 @@ export function EventDetails({
                             <button
                                 key={index}
                                 onClick={() => openLightbox(index)}
-                                className="group relative flex-shrink-0 w-64 md:w-72 aspect-[4/3] rounded-xl overflow-hidden cursor-pointer snap-start focus:outline-none focus-visible:ring-2 focus-visible:ring-[#F98C1F] focus-visible:ring-offset-2 shadow-sm border border-gray-100"
+                                className="group relative flex-shrink-0 w-64 md:w-72 aspect-[4/3] rounded-xl overflow-hidden cursor-pointer snap-start focus:outline-none focus-visible:ring-2 focus-visible:ring-[#F15A29] focus-visible:ring-offset-2 shadow-sm border border-gray-100"
                                 aria-label={`View Gallery Image ${index + 1} in full size`}
                             >
                                 <Image
@@ -233,7 +233,7 @@ export function EventDetails({
             {/* About section */}
             <div className="relative z-20">
                 <div className="flex items-center justify-between mb-6">
-                    <h2 className="text-2xl font-bold text-[#F98C1F] font-[family-name:var(--font-space-grotesk)]">
+                    <h2 className="text-2xl font-bold text-[#F15A29] font-[family-name:var(--font-space-grotesk)]">
                         About This Event
                     </h2>
 
@@ -241,7 +241,7 @@ export function EventDetails({
                     <div className="relative">
                         <button
                             onClick={() => setShowShare((v) => !v)}
-                            className="flex items-center gap-2 text-sm text-gray-500 hover:text-[#F98C1F] transition-colors"
+                            className="flex items-center gap-2 text-sm text-gray-500 hover:text-[#F15A29] transition-colors"
                             aria-label="Share event"
                         >
                             <Share2 className="w-4 h-4" />
@@ -336,7 +336,7 @@ export function EventDetails({
             {/* What to Expect */}
             {whatToExpect.length > 0 && (
                 <div>
-                    <h3 className="text-lg font-semibold text-[#F98C1F] mb-4 font-[family-name:var(--font-space-grotesk)]">
+                    <h3 className="text-lg font-semibold text-[#F15A29] mb-4 font-[family-name:var(--font-space-grotesk)]">
                         What to Expect
                     </h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -345,7 +345,7 @@ export function EventDetails({
                                 key={highlight}
                                 className="flex items-center gap-3 text-sm text-gray-600"
                             >
-                                <span className="w-1.5 h-1.5 rounded-full bg-[#F98C1F] flex-shrink-0" />
+                                <span className="w-1.5 h-1.5 rounded-full bg-[#F15A29] flex-shrink-0" />
                                 {highlight}
                             </div>
                         ))}
@@ -364,7 +364,7 @@ export function EventDetails({
                 if (!embedUrl) return null
                 return (
                     <div>
-                        <h3 className="text-lg font-semibold text-[#F98C1F] mb-4 font-[family-name:var(--font-space-grotesk)]">
+                        <h3 className="text-lg font-semibold text-[#F15A29] mb-4 font-[family-name:var(--font-space-grotesk)]">
                             Event Trailer
                         </h3>
                         <div className="overflow-hidden rounded-xl border border-gray-200">
@@ -385,7 +385,7 @@ export function EventDetails({
             {/* Sponsors */}
             {sponsorLogos.length > 0 && (
                 <div>
-                    <h3 className="text-lg font-semibold text-[#F98C1F] mb-4 font-[family-name:var(--font-space-grotesk)]">
+                    <h3 className="text-lg font-semibold text-[#F15A29] mb-4 font-[family-name:var(--font-space-grotesk)]">
                         Event Sponsors
                     </h3>
                     <div className="flex gap-6 overflow-x-auto pb-2 items-center" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
@@ -471,7 +471,7 @@ export function EventDetails({
                                 key={index}
                                 onClick={() => setLightboxIndex(index)}
                                 className={`relative w-14 h-10 rounded-md overflow-hidden transition-all duration-200 ${index === lightboxIndex
-                                    ? "ring-2 ring-[#F98C1F] opacity-100 scale-105"
+                                    ? "ring-2 ring-[#F15A29] opacity-100 scale-105"
                                     : "opacity-50 hover:opacity-80"
                                     }`}
                                 aria-label={`Go to image ${index + 1}`}

@@ -268,7 +268,7 @@ function buildEmailHtml(data: OrderEmailData, walletResults: Array<{ticketId: st
                 ${data.convenienceFee && data.convenienceFee > 0 ? `
                 <tr>
                   <td colspan="3" style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 13px; color: #6b7280; text-align: right;">
-                    Convenience Fee
+                    Service Fee
                   </td>
                   <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 13px; color: #6b7280; text-align: right;">
                     ${formatCurrency(data.convenienceFee, data.currency)}
@@ -277,7 +277,7 @@ function buildEmailHtml(data: OrderEmailData, walletResults: Array<{ticketId: st
                 ${data.convenienceFeeHST && data.convenienceFeeHST > 0 ? `
                 <tr>
                   <td colspan="3" style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 13px; color: #6b7280; text-align: right;">
-                    HST on Convenience Fee
+                    HST on Service Fee
                   </td>
                   <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 13px; color: #6b7280; text-align: right;">
                     ${formatCurrency(data.convenienceFeeHST, data.currency)}

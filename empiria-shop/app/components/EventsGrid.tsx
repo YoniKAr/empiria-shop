@@ -44,7 +44,7 @@ export default function EventsGrid({ events, query, setQuery, categories }: Even
             {/* Events Grid */}
             <div className="max-w-7xl mx-auto px-4 sm:px-6 py-16 text-left">
                 <div className="flex items-end justify-between mb-8">
-                    <h2 className="text-2xl font-bold text-[#F98C1F]">
+                    <h2 className="text-2xl font-bold text-[#F15A29]">
                         {query.trim()
                             ? `Results for "${query}" (${filtered.length})`
                             : 'Upcoming Events'}
@@ -54,7 +54,7 @@ export default function EventsGrid({ events, query, setQuery, categories }: Even
                             <button
                                 key={filter}
                                 onClick={() => setQuery(filter === 'All' ? '' : filter)}
-                                className="px-4 py-1.5 rounded-full border border-gray-200 text-sm font-medium hover:border-[#F98C1F] hover:text-[#F98C1F] transition-colors bg-white"
+                                className="px-4 py-1.5 rounded-full border border-gray-200 text-sm font-medium hover:border-[#F15A29] hover:text-[#F15A29] transition-colors bg-white"
                             >
                                 {filter}
                             </button>

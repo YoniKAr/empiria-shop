@@ -63,14 +63,14 @@ export default function MovieCard({
 
         {/* Content */}
         <div className="p-4 flex flex-col flex-1">
-          <h3 className="font-bold text-[15px] text-slate-900 leading-tight group-hover:text-[#F98C1F] transition-colors line-clamp-2 mb-2">
+          <h3 className="font-bold text-[15px] text-slate-900 leading-tight group-hover:text-[#F15A29] transition-colors line-clamp-2 mb-2">
             {title}
           </h3>
 
           {/* Genre + Duration badges */}
           <div className="flex flex-wrap gap-1.5 mb-2">
             {genre && (
-              <span className="bg-orange-50 text-[#F98C1F] text-[10px] font-semibold px-2 py-0.5 rounded-md">
+              <span className="bg-orange-50 text-[#F15A29] text-[10px] font-semibold px-2 py-0.5 rounded-md">
                 {genre}
               </span>
             )}

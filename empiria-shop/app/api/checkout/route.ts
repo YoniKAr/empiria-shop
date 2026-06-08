@@ -447,7 +447,7 @@ export async function POST(request: NextRequest) {
       0
     );
 
-    // Platform fee (convenience fee) - includes Stripe fees within it
+    // Platform fee (service fee) - includes Stripe fees within it
     const platformFee = Math.round((subtotal * (feePercent / 100) + (feeFixedPerTicket * paidTickets)) * 100) / 100;
 
     // Tax rates
@@ -468,7 +468,7 @@ export async function POST(request: NextRequest) {
     let organizerPayout: number;
 
     if (passProcessingFee) {
-      // PASS MODE: customer pays ticket price + convenience fee + HST on fee + ticket tax
+      // PASS MODE: customer pays ticket price + service fee + HST on fee + ticket tax
       // Algebraic solution for circular dependency (Stripe fee depends on total, HST depends on Stripe fee)
       // Total = [S(1 + R_t) + 1.13P - STRIPE_FIXED * PLATFORM_HST_RATE] / (1 + STRIPE_PERCENT * PLATFORM_HST_RATE)
       const rawTotal = (subtotal * (1 + ticketTaxRate) + (1 + PLATFORM_HST_RATE) * platformFee - STRIPE_FIXED * PLATFORM_HST_RATE) / (1 + STRIPE_PERCENT * PLATFORM_HST_RATE);
@@ -493,7 +493,7 @@ export async function POST(request: NextRequest) {
     netPlatform = Math.max(0, netPlatform);
     platformHST = Math.max(0, platformHST);
 
-    // Add convenience fee line items (only in pass mode)
+    // Add service fee line items (only in pass mode)
     // Fee items are marked non-taxable (txcd_00000000) so Stripe Tax doesn't
     // double-tax them — the platform always charges 13% HST on the fee.
     if (passProcessingFee && platformFee > 0) {
@@ -502,7 +502,7 @@ export async function POST(request: NextRequest) {
           currency,
           ...(chargeTicketTax && { tax_behavior: 'exclusive' as const }),
           product_data: {
-            name: 'Convenience Fee',
+            name: 'Service Fee',
             description: 'Platform service fee (includes payment processing)',
             ...(chargeTicketTax && { tax_code: 'txcd_00000000' }),
           },
@@ -517,8 +517,8 @@ export async function POST(request: NextRequest) {
             currency,
             ...(chargeTicketTax && { tax_behavior: 'exclusive' as const }),
             product_data: {
-              name: 'HST on Convenience Fee (13%)',
-              description: 'Harmonized Sales Tax (13%) on convenience fee',
+              name: 'HST on Service Fee (13%)',
+              description: 'Harmonized Sales Tax (13%) on service fee',
               ...(chargeTicketTax && { tax_code: 'txcd_00000000' }),
             },
             unit_amount: toStripeAmount(platformHST, currency),

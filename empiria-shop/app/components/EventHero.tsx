@@ -49,7 +49,7 @@ export function EventHero({
                 <div className="flex flex-col gap-5">
                     {/* Category badge */}
                     <div>
-                        <span className="inline-block bg-[#F98C1F] text-white px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-widest">
+                        <span className="inline-block bg-[#F15A29] text-white px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-widest">
                             {category}
                         </span>
                     </div>
@@ -62,20 +62,20 @@ export function EventHero({
                     {/* Meta info */}
                     <div className="flex flex-wrap gap-6 text-sm md:text-base text-white/80">
                         <div className="flex items-center gap-2.5">
-                            <Calendar className="w-4 h-4 text-[#F98C1F]" />
+                            <Calendar className="w-4 h-4 text-[#F15A29]" />
                             <span>
                                 {formattedDate} &middot; {formattedTime}
                             </span>
                         </div>
                         <div className="flex items-center gap-2.5">
-                            <MapPin className="w-4 h-4 text-[#F98C1F]" />
+                            <MapPin className="w-4 h-4 text-[#F15A29]" />
                             <span>
                                 {venueName}, {city}
                             </span>
                         </div>
                         {attendeeCount && (
                             <div className="flex items-center gap-2.5">
-                                <Users className="w-4 h-4 text-[#F98C1F]" />
+                                <Users className="w-4 h-4 text-[#F15A29]" />
                                 <span>{attendeeCount.toLocaleString()} attending</span>
                             </div>
                         )}

@@ -32,7 +32,7 @@ export function TicketWidget({ tiers, eventId, currency = "cad" }: TicketWidgetP
         <div className="sticky top-24">
             <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-lg shadow-black/5">
                 {/* Header */}
-                <div className="bg-[#F98C1F] px-6 py-5">
+                <div className="bg-[#F15A29] px-6 py-5">
                     <div className="flex items-center gap-3">
                         <Ticket className="w-5 h-5 text-white" />
                         <h3 className="font-bold text-lg text-white font-[family-name:var(--font-space-grotesk)]">
@@ -60,13 +60,13 @@ export function TicketWidget({ tiers, eventId, currency = "cad" }: TicketWidgetP
                                 className={`relative w-full text-left p-4 rounded-xl border-2 transition-all duration-200 ${isSoldOut
                                         ? "border-gray-200 opacity-50 cursor-not-allowed bg-white"
                                         : isSelected
-                                            ? "border-[#F98C1F] bg-orange-50"
+                                            ? "border-[#F15A29] bg-orange-50"
                                             : "border-gray-200 hover:border-orange-300 bg-white"
                                     }`}
                             >
                                 {/* Selected indicator */}
                                 {isSelected && !isSoldOut && (
-                                    <div className="absolute top-3 right-3 w-5 h-5 rounded-full bg-[#F98C1F] flex items-center justify-center">
+                                    <div className="absolute top-3 right-3 w-5 h-5 rounded-full bg-[#F15A29] flex items-center justify-center">
                                         <Check className="w-3 h-3 text-white" />
                                     </div>
                                 )}
@@ -79,7 +79,7 @@ export function TicketWidget({ tiers, eventId, currency = "cad" }: TicketWidgetP
                                         {tier.description}
                                     </span>
                                     <div className="flex items-center justify-between mt-1">
-                                        <span className="text-lg font-bold text-[#F98C1F]">
+                                        <span className="text-lg font-bold text-[#F15A29]">
                                             {tier.price === 0 ? "FREE" : `${sym}${tier.price.toLocaleString()}`}
                                         </span>
                                         {isSoldOut ? (
@@ -133,7 +133,7 @@ export function TicketWidget({ tiers, eventId, currency = "cad" }: TicketWidgetP
                     {selected && (
                         <div className="flex items-center justify-between mb-4 px-1">
                             <span className="text-sm text-gray-600">Total</span>
-                            <span className="text-2xl font-bold text-[#F98C1F] font-[family-name:var(--font-space-grotesk)]">
+                            <span className="text-2xl font-bold text-[#F15A29] font-[family-name:var(--font-space-grotesk)]">
                                 {total === 0 ? "FREE" : `${sym}${total.toLocaleString()}`}
                             </span>
                         </div>
@@ -141,7 +141,7 @@ export function TicketWidget({ tiers, eventId, currency = "cad" }: TicketWidgetP
 
                     <Link
                         href={`/checkout/${eventId}`}
-                        className="block w-full bg-[#F98C1F] text-white text-center py-4 rounded-xl font-bold text-base hover:brightness-110 active:scale-[0.98] transition-all duration-200 font-[family-name:var(--font-space-grotesk)]"
+                        className="block w-full bg-[#F15A29] text-white text-center py-4 rounded-xl font-bold text-base hover:brightness-110 active:scale-[0.98] transition-all duration-200 font-[family-name:var(--font-space-grotesk)]"
                     >
                         Get Tickets
                     </Link>

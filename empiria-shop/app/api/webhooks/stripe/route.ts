@@ -189,7 +189,7 @@ async function handleCheckoutCompleted(session: any) {
       // Pass mode: organizer gets full ticket revenue + ticket tax - discount (organizer absorbs discount)
       actualOrganizerPayout = subtotal + actualTicketTax - discountAmount;
     } else {
-      // Absorb mode: organizer absorbs convenience fee + HST + discount
+      // Absorb mode: organizer absorbs service fee + HST + discount
       actualOrganizerPayout = subtotal + actualTicketTax - discountAmount - platformFee - actualPlatformHST;
     }
     actualOrganizerPayout = Math.max(0, actualOrganizerPayout);
