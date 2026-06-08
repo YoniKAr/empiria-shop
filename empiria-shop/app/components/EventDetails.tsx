@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback, useEffect } from "react"
 import { Clock, MapPin, Info, Share2, X, Copy, Check, ChevronLeft, ChevronRight, ZoomIn } from "lucide-react"
 import Image from "next/image"
+import { sanitizeRichText } from "@/lib/sanitize-html"
 
 interface EventDetailsProps {
     description: string
@@ -328,9 +329,10 @@ export function EventDetails({
                     </div>
                 </div>
 
-                <div className="prose max-w-none">
-                    <p className="text-gray-600 leading-relaxed text-base">{description}</p>
-                </div>
+                <div
+                    className="max-w-none text-gray-600 leading-relaxed text-base whitespace-pre-line [&_a]:text-[#F15A29] [&_a]:underline [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-0.5"
+                    dangerouslySetInnerHTML={{ __html: sanitizeRichText(description) }}
+                />
             </div>
 
             {/* What to Expect */}

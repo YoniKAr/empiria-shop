@@ -4,6 +4,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { Calendar, MapPin, Clock, Globe, Star, Users } from 'lucide-react';
 import MovieCard from '@/app/components/MovieCard';
+import { sanitizeRichText } from '@/lib/sanitize-html';
 
 interface MovieDetail {
   director?: string;
@@ -219,9 +220,16 @@ export default function MovieDetailContent({
               {(movie.synopsis || description) && (
                 <div>
                   <p className="text-xs text-white/40 uppercase tracking-widest font-medium mb-2">Synopsis</p>
-                  <p className="text-white/60 leading-relaxed text-sm md:text-base max-w-2xl">
-                    {movie.synopsis || description}
-                  </p>
+                  {movie.synopsis ? (
+                    <p className="text-white/60 leading-relaxed text-sm md:text-base max-w-2xl">
+                      {movie.synopsis}
+                    </p>
+                  ) : (
+                    <div
+                      className="text-white/60 leading-relaxed text-sm md:text-base max-w-2xl whitespace-pre-line [&_a]:text-[#F15A29] [&_a]:underline [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5"
+                      dangerouslySetInnerHTML={{ __html: sanitizeRichText(description) }}
+                    />
+                  )}
                 </div>
               )}
             </div>
