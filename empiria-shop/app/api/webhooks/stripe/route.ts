@@ -79,6 +79,17 @@ async function handleCheckoutCompleted(session: any) {
     return;
   }
 
+  // Load staged per-ticket custom field responses (if any) for this session.
+  const { data: staged } = await supabase
+    .from('checkout_field_responses')
+    .select('responses')
+    .eq('stripe_checkout_session_id', session.id)
+    .maybeSingle();
+  const stagedResponses = (staged?.responses ?? []) as Array<{
+    tierId: string;
+    perTicket: Array<Array<{ field_id: string; label: string; value: string }>>;
+  }>;
+
   const eventId = metadata.event_id;
   const userAuth0Id = metadata.user_auth0_id || null;
   const userEmail = metadata.user_email || session.customer_email || '';
@@ -435,7 +446,7 @@ async function handleCheckoutCompleted(session: any) {
     // 2. Fetch event details for confirmation email
     const { data: eventData } = await supabase
       .from('events')
-      .select('title, venue_name, city, location_type, meeting_link')
+      .select('title, venue_name, city, location_type, meeting_link, cta_label')
       .eq('id', eventId)
       .single();
 
@@ -501,6 +512,9 @@ async function handleCheckoutCompleted(session: any) {
         labelsForThisTier.push(seatLabelQueue.shift()!);
       }
 
+      // Per-tier staged custom field responses; index resets per tier.
+      const stagedForTier = stagedResponses.find((s) => s.tierId === selection.tierId);
+
       const ticketInserts = Array.from({ length: selection.quantity }, (_, i) => ({
         event_id: eventId,
         tier_id: selection.tierId,
@@ -510,6 +524,7 @@ async function handleCheckoutCompleted(session: any) {
         attendee_email: userEmail,
         status: 'valid' as const,
         occurrence_id: occurrenceId,
+        field_responses: stagedForTier?.perTicket?.[i] ?? [],
         ...(labelsForThisTier[i] ? { seat_label: labelsForThisTier[i] } : {}),
       }));
 
@@ -534,6 +549,14 @@ async function handleCheckoutCompleted(session: any) {
           }
         }
       }
+    }
+
+    // 3a. Clean up staged custom field responses after tickets are created
+    if (staged) {
+      await supabase
+        .from('checkout_field_responses')
+        .delete()
+        .eq('stripe_checkout_session_id', session.id);
     }
 
     // 3b. Clean up seat holds after successful ticket creation
@@ -597,6 +620,7 @@ async function handleCheckoutCompleted(session: any) {
           city: eventData.city || '',
           meetingLink: eventData.meeting_link || '',
           locationType: eventData.location_type || 'physical',
+          ctaLabel: eventData.cta_label,
           lineItems: tierSelections.map((s) => ({
             tierName: s.tierName,
             quantity: s.quantity,

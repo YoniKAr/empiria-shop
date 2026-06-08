@@ -16,6 +16,7 @@ export default async function ShopHome() {
       event_occurrences (starts_at)
     `)
         .eq('status', 'published')
+        .eq('visibility', 'public')
         .eq('is_featured', true)
         .eq('event_type', 'event')
         .order('created_at', { ascending: false })
@@ -32,6 +33,7 @@ export default async function ShopHome() {
       event_occurrences (starts_at)
     `)
         .eq('status', 'published')
+        .eq('visibility', 'public')
         .eq('event_type', 'event')
         .order('created_at', { ascending: false })
         .limit(12);

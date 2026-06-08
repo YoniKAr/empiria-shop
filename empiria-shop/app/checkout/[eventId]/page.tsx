@@ -15,6 +15,7 @@ export default async function CheckoutPage({ params }: { params: Promise<{ event
     .from('events')
     .select(`
       id, title, slug, currency, status, pass_processing_fee, charge_ticket_tax,
+      entry_type, custom_fields,
       platform_fee_percent, platform_fee_fixed,
       ticket_tiers (id, name, description, price, currency, remaining_quantity, min_per_order, max_per_order),
       event_occurrences (id, starts_at, ends_at, label)
@@ -25,6 +26,11 @@ export default async function CheckoutPage({ params }: { params: Promise<{ event
 
   if (error || !event) {
     redirect('/');
+  }
+
+  // External events have no checkout — send the attendee to the event page to link out.
+  if (event.entry_type === 'external') {
+    redirect(`/events/${event.slug}`);
   }
 
   const tiers = (event.ticket_tiers ?? []).map((t: any) => ({
@@ -59,6 +65,7 @@ export default async function CheckoutPage({ params }: { params: Promise<{ event
           chargeTicketTax={Boolean(event.charge_ticket_tax)}
           feePercent={Number(event.platform_fee_percent) || 3.5}
           feeFixedPerTicket={event.platform_fee_fixed != null ? Number(event.platform_fee_fixed) : 1.50}
+          customFields={event.custom_fields ?? []}
           user={user}
         />
       </div>

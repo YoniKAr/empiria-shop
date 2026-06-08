@@ -1,8 +1,9 @@
 "use client"
 
 import { useState } from "react"
-import { Check, Minus, Plus, ShieldCheck, Ticket } from "lucide-react"
+import { Check, ExternalLink, Minus, Plus, ShieldCheck, Ticket } from "lucide-react"
 import Link from "next/link"
+import { ctaButtonText, isSafeUrl } from "@/lib/eventFields"
 
 interface TicketTier {
     id: string
@@ -16,9 +17,51 @@ interface TicketWidgetProps {
     tiers: TicketTier[]
     eventId: string
     currency?: string
+    ctaLabel?: string
+    entryType?: string
+    externalUrl?: string | null
 }
 
-export function TicketWidget({ tiers, eventId, currency = "cad" }: TicketWidgetProps) {
+export function TicketWidget({ tiers, eventId, currency = "cad", ctaLabel, entryType, externalUrl }: TicketWidgetProps) {
+    // External events: link out instead of the ticket UI.
+    if (entryType === "external") {
+        const hasSafeUrl = !!externalUrl && isSafeUrl(externalUrl)
+        return (
+            <div className="sticky top-24">
+                <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-lg shadow-black/5">
+                    <div className="bg-[#F15A29] px-6 py-5">
+                        <div className="flex items-center gap-3">
+                            <ExternalLink className="w-5 h-5 text-white" />
+                            <h3 className="font-bold text-lg text-white font-[family-name:var(--font-space-grotesk)]">
+                                {ctaButtonText(ctaLabel)}
+                            </h3>
+                        </div>
+                    </div>
+                    <div className="px-5 py-6">
+                        {hasSafeUrl ? (
+                            <a
+                                href={externalUrl!}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="block w-full bg-[#F15A29] text-white text-center py-4 rounded-xl font-bold text-base hover:brightness-110 active:scale-[0.98] transition-all duration-200 font-[family-name:var(--font-space-grotesk)]"
+                            >
+                                {ctaButtonText(ctaLabel)}
+                            </a>
+                        ) : (
+                            <p className="text-sm text-gray-500 text-center py-2">
+                                This event is hosted externally.
+                            </p>
+                        )}
+                    </div>
+                </div>
+            </div>
+        )
+    }
+
+    return <TicketedWidget tiers={tiers} eventId={eventId} currency={currency} ctaLabel={ctaLabel} />
+}
+
+function TicketedWidget({ tiers, eventId, currency = "cad", ctaLabel }: { tiers: TicketTier[]; eventId: string; currency?: string; ctaLabel?: string }) {
     const [selectedTier, setSelectedTier] = useState<string | null>(
         tiers[0]?.id ?? null
     )
@@ -36,7 +79,7 @@ export function TicketWidget({ tiers, eventId, currency = "cad" }: TicketWidgetP
                     <div className="flex items-center gap-3">
                         <Ticket className="w-5 h-5 text-white" />
                         <h3 className="font-bold text-lg text-white font-[family-name:var(--font-space-grotesk)]">
-                            Select Tickets
+                            {ctaButtonText(ctaLabel)}
                         </h3>
                     </div>
                 </div>
@@ -143,7 +186,7 @@ export function TicketWidget({ tiers, eventId, currency = "cad" }: TicketWidgetP
                         href={`/checkout/${eventId}`}
                         className="block w-full bg-[#F15A29] text-white text-center py-4 rounded-xl font-bold text-base hover:brightness-110 active:scale-[0.98] transition-all duration-200 font-[family-name:var(--font-space-grotesk)]"
                     >
-                        Get Tickets
+                        {ctaButtonText(ctaLabel)}
                     </Link>
 
                     <div className="flex items-center justify-center gap-2 mt-4">

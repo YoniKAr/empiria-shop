@@ -31,6 +31,7 @@ export default async function SpecialPage({ params }: { params: Promise<{ slug: 
       event_occurrences (starts_at)
     `)
     .eq('status', 'published')
+    .eq('visibility', 'public')
     .eq('category_id', page.category_id)
     .order('created_at', { ascending: false });
 

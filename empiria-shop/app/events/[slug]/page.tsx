@@ -149,6 +149,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                 event_occurrences (starts_at)
             `)
             .eq('status', 'published')
+            .eq('visibility', 'public')
             .eq('category_id', event.category_id)
             .neq('id', event.id)
             .order('created_at', { ascending: false })
@@ -169,6 +170,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                 event_occurrences (starts_at)
             `)
             .eq('status', 'published')
+            .eq('visibility', 'public')
             .overlaps('tags', event.tags)
             .not('id', 'in', `(${existingIds.join(',')})`)
             .order('created_at', { ascending: false })
@@ -310,6 +312,9 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                             tiers={tiers}
                             eventId={String(event.id)}
                             currency={currency}
+                            ctaLabel={event.cta_label}
+                            entryType={event.entry_type}
+                            externalUrl={event.external_url}
                         />
                     )}
                 </div>

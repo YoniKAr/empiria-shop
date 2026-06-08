@@ -2,6 +2,7 @@ import QRCodeLib from 'qrcode';
 import { resend } from '@/lib/resend';
 import { formatCurrency } from '@/lib/utils';
 import { generateApplePass, generateGoogleWalletLink } from './wallet';
+import { CTA_NOUN, CtaLabel } from '@/lib/eventFields';
 
 interface TicketInfo {
   id: string;
@@ -40,9 +41,11 @@ interface OrderEmailData {
   receiptUrl?: string;
   invoiceUrl?: string;
   invoicePdf?: string;
+  ctaLabel?: CtaLabel;
 }
 
 export async function sendOrderConfirmationEmail(data: OrderEmailData) {
+  const noun = CTA_NOUN[(data.ctaLabel as CtaLabel) ?? 'buy_tickets'];
   // Build event data for wallet generation
   const eventData = {
     id: data.orderId, // Use orderId as fallback since we don't have event id
@@ -98,7 +101,7 @@ export async function sendOrderConfirmationEmail(data: OrderEmailData) {
   const { error } = await resend.emails.send({
     from: fromEmail,
     to: data.to,
-    subject: `Your tickets for ${data.eventTitle} — Order #${data.orderId.slice(0, 8)}`,
+    subject: `Your ${noun.plural} for ${data.eventTitle} — Order #${data.orderId.slice(0, 8)}`,
     html,
     attachments: [
       ...qrAttachments.map((a) => ({
@@ -144,6 +147,7 @@ function formatEventDate(startDate: string, endDate?: string): string {
 }
 
 function buildEmailHtml(data: OrderEmailData, walletResults: Array<{ticketId: string; applePass: Buffer | null; googleLink: string | null}>): string {
+  const noun = CTA_NOUN[(data.ctaLabel as CtaLabel) ?? 'buy_tickets'];
   const eventDateFormatted = formatEventDate(
     data.eventDate,
     data.eventEndDate
@@ -232,7 +236,7 @@ function buildEmailHtml(data: OrderEmailData, walletResults: Array<{ticketId: st
             <td style="padding: 32px 32px 16px;">
               <h2 style="margin: 0 0 8px; font-size: 20px; font-weight: 700; color: #111827;">You're all set, ${data.attendeeName || 'there'}!</h2>
               <p style="margin: 0; font-size: 15px; color: #6b7280; line-height: 1.5;">
-                Your order has been confirmed. Here are your tickets and order details.
+                Your order has been confirmed. ${noun.confirmation}
               </p>
             </td>
           </tr>
@@ -336,7 +340,7 @@ function buildEmailHtml(data: OrderEmailData, walletResults: Array<{ticketId: st
           <!-- Tickets -->
           <tr>
             <td style="padding: 16px 32px 24px;">
-              <h3 style="margin: 0 0 12px; font-size: 15px; font-weight: 600; color: #111827;">Your Tickets</h3>
+              <h3 style="margin: 0 0 12px; font-size: 15px; font-weight: 600; color: #111827;">${noun.section}</h3>
               <p style="margin: 0 0 12px; font-size: 13px; color: #6b7280;">
                 Show the QR code at the venue entrance for check-in.
               </p>

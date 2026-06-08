@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { ShieldCheck, Minus, Plus, Loader2 } from "lucide-react";
+import type { CustomField } from "@/lib/eventFields";
 
 interface Tier {
   id: string;
@@ -31,6 +32,7 @@ interface CheckoutFormProps {
   chargeTicketTax: boolean;
   feePercent: number;
   feeFixedPerTicket: number;
+  customFields: CustomField[];
   user: {
     email?: string;
     given_name?: string;
@@ -50,6 +52,7 @@ export function CheckoutForm({
   chargeTicketTax,
   feePercent,
   feeFixedPerTicket,
+  customFields,
   user,
 }: CheckoutFormProps) {
   const [quantities, setQuantities] = useState<Record<string, number>>(() => {
@@ -71,6 +74,15 @@ export function CheckoutForm({
   } | null>(null);
   const [couponLoading, setCouponLoading] = useState(false);
   const [couponError, setCouponError] = useState<string | null>(null);
+
+  // Per-ticket custom field answers, keyed `${tierId}:${index}` → { fieldId: value }.
+  const [answers, setAnswers] = useState<Record<string, Record<string, string>>>({});
+  const setAnswer = (ticketKey: string, fieldId: string, value: string) => {
+    setAnswers((prev) => ({
+      ...prev,
+      [ticketKey]: { ...(prev[ticketKey] ?? {}), [fieldId]: value },
+    }));
+  };
 
   const selectedOccurrence = occurrences[0];
 
@@ -180,13 +192,36 @@ export function CheckoutForm({
       return;
     }
 
+    const tierSelections = tiers
+      .filter((t) => (quantities[t.id] ?? 0) > 0)
+      .map((t) => ({ tierId: t.id, quantity: quantities[t.id] }));
+
+    // Validate per-ticket required custom fields before submitting.
+    if (customFields.length > 0) {
+      for (const sel of tierSelections) {
+        for (let i = 0; i < sel.quantity; i++) {
+          const a = answers[`${sel.tierId}:${i}`] ?? {};
+          for (const f of customFields) {
+            if (f.required && !String(a[f.id] ?? "").trim()) {
+              setError(`Please answer all required questions ("${f.label}") for every attendee.`);
+              return;
+            }
+          }
+        }
+      }
+    }
+
     setLoading(true);
     setError(null);
 
     try {
-      const tierSelections = tiers
-        .filter((t) => (quantities[t.id] ?? 0) > 0)
-        .map((t) => ({ tierId: t.id, quantity: quantities[t.id] }));
+      const fieldResponses = tierSelections.map((sel) => ({
+        tierId: sel.tierId,
+        perTicket: Array.from({ length: sel.quantity }).map((_, i) => {
+          const a = answers[`${sel.tierId}:${i}`] ?? {};
+          return customFields.map((f) => ({ field_id: f.id, label: f.label, value: a[f.id] ?? "" }));
+        }),
+      }));
 
       const res = await fetch("/api/checkout", {
         method: "POST",
@@ -198,6 +233,7 @@ export function CheckoutForm({
           contactName: `${firstName} ${lastName}`.trim() || undefined,
           occurrenceId: selectedOccurrence?.id,
           couponCode: couponApplied ? couponCode.trim() : undefined,
+          fieldResponses,
         }),
       });
 
@@ -432,6 +468,69 @@ export function CheckoutForm({
           <p className="text-red-500 text-sm mt-2">{couponError}</p>
         )}
       </div>
+
+      {/* Per-ticket custom fields */}
+      {customFields.length > 0 && totalItems > 0 && (
+        <div className="bg-white p-6 rounded-xl shadow-sm mb-6" data-testid="checkout-custom-fields">
+          <h3 className="font-bold border-b pb-2 mb-4">Attendee Details</h3>
+          <div className="space-y-6">
+            {tiers
+              .filter((t) => (quantities[t.id] ?? 0) > 0)
+              .flatMap((tier) =>
+                Array.from({ length: quantities[tier.id] ?? 0 }).map((_, i) => {
+                  const ticketKey = `${tier.id}:${i}`;
+                  return (
+                    <div
+                      key={ticketKey}
+                      className="border border-gray-200 rounded-xl p-4"
+                      data-testid={`checkout-attendee-${ticketKey}`}
+                    >
+                      <p className="font-semibold text-sm text-gray-900 mb-3">
+                        {tier.name} — Attendee {i + 1}
+                      </p>
+                      <div className="space-y-3">
+                        {customFields.map((field) => {
+                          const value = answers[ticketKey]?.[field.id] ?? "";
+                          return (
+                            <div key={field.id}>
+                              <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                                {field.label}
+                                {field.required && <span className="text-red-500"> *</span>}
+                              </label>
+                              {field.type === "dropdown" ? (
+                                <select
+                                  className="w-full border p-3 rounded-lg text-sm bg-white"
+                                  value={value}
+                                  onChange={(e) => setAnswer(ticketKey, field.id, e.target.value)}
+                                  data-testid={`checkout-field-${ticketKey}-${field.id}`}
+                                >
+                                  <option value="">Select…</option>
+                                  {(field.options ?? []).map((opt) => (
+                                    <option key={opt} value={opt}>
+                                      {opt}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <input
+                                  type="text"
+                                  className="w-full border p-3 rounded-lg text-sm"
+                                  value={value}
+                                  onChange={(e) => setAnswer(ticketKey, field.id, e.target.value)}
+                                  data-testid={`checkout-field-${ticketKey}-${field.id}`}
+                                />
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+          </div>
+        </div>
+      )}
 
       {/* Contact Form */}
       <div className="bg-white p-6 rounded-xl shadow-sm">

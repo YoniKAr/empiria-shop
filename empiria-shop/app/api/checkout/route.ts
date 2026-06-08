@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
   try {
     // 1. Parse request body
     const body = await request.json();
-    const { eventId, tiers, contactEmail, contactName, occurrenceId, seatSelections, sessionId, assignedSeats, couponCode } = body as {
+    const { eventId, tiers, contactEmail, contactName, occurrenceId, seatSelections, sessionId, assignedSeats, couponCode, fieldResponses } = body as {
       eventId: string;
       tiers: TierSelection[];
       contactEmail?: string;
@@ -39,6 +39,10 @@ export async function POST(request: NextRequest) {
       sessionId?: string;
       assignedSeats?: AssignedSeatSelection[];
       couponCode?: string;
+      fieldResponses?: Array<{
+        tierId: string;
+        perTicket: Array<Array<{ field_id: string; label: string; value: string }>>;
+      }>;
     };
 
     if (!eventId || !tiers || tiers.length === 0) {
@@ -57,7 +61,7 @@ export async function POST(request: NextRequest) {
 
     const { data: event, error: eventError } = await supabase
       .from('events')
-      .select('id, title, slug, organizer_id, platform_fee_percent, platform_fee_fixed, pass_processing_fee, currency, status, total_capacity, total_tickets_sold, seating_type, seating_config, source_app, charge_ticket_tax')
+      .select('id, title, slug, organizer_id, platform_fee_percent, platform_fee_fixed, pass_processing_fee, currency, status, total_capacity, total_tickets_sold, seating_type, seating_config, source_app, charge_ticket_tax, custom_fields, entry_type')
       .eq('id', eventId)
       .single();
 
@@ -69,6 +73,15 @@ export async function POST(request: NextRequest) {
     if (event.status !== 'published') {
       return NextResponse.json({ error: 'Event is not available for purchase' }, { status: 400 });
     }
+
+    if (event.entry_type === 'external') {
+      return NextResponse.json({ error: 'External events do not support checkout.' }, { status: 400 });
+    }
+
+    // Custom fields for per-ticket answer validation (validated below, after the
+    // purchased tiers are themselves validated for quantity/availability).
+    const customFields = (event.custom_fields ?? []) as Array<{ id: string; label: string; type: string; required: boolean }>;
+    const requiredIds = customFields.filter((f) => f.required).map((f) => f.id);
 
     // Validate occurrence if provided
     if (occurrenceId) {
@@ -195,6 +208,24 @@ export async function POST(request: NextRequest) {
         },
         quantity: selection.quantity,
       });
+    }
+
+    // 6-fields. Validate per-ticket required custom field answers server-side.
+    // Iterate the SERVER-validated purchased tiers (not the client's fieldResponses)
+    // so an omitted/short fieldResponses payload can't bypass required answers.
+    if (requiredIds.length) {
+      for (const selection of validatedSelections) {
+        const tierResponses = (fieldResponses ?? []).find((r) => r.tierId === selection.tierId);
+        for (let i = 0; i < selection.quantity; i++) {
+          const perTicket = tierResponses?.perTicket?.[i] ?? [];
+          for (const id of requiredIds) {
+            const ans = perTicket.find((r) => r.field_id === id);
+            if (!ans || !String(ans.value).trim()) {
+              return NextResponse.json({ error: 'Missing required checkout answers.' }, { status: 400 });
+            }
+          }
+        }
+      }
     }
 
     // 6a. Coupon validation (inline for atomicity with checkout)
@@ -625,6 +656,15 @@ export async function POST(request: NextRequest) {
       cancel_url: `${appBaseUrl}/events/${event.slug}`,
       expires_at: Math.floor(Date.now() / 1000) + 1800,
     });
+
+    // Stage per-ticket custom field responses for the webhook to attach to tickets.
+    // Must NOT abort the redirect — the Stripe session already exists at this point.
+    if (customFields.length && fieldResponses?.length) {
+      const { error: stageError } = await supabase
+        .from('checkout_field_responses')
+        .insert({ stripe_checkout_session_id: checkoutSession.id, responses: fieldResponses });
+      if (stageError) console.error('[Checkout] Failed to stage field responses:', stageError);
+    }
 
     return NextResponse.json({ url: checkoutSession.url });
   } catch (error: unknown) {

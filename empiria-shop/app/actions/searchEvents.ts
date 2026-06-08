@@ -23,6 +23,7 @@ export async function searchEvents(query: string): Promise<SearchResult[]> {
         .select('id, title, slug, city, event_occurrences(starts_at)')
         .or(`title.ilike.%${query}%,city.ilike.%${query}%`)
         .eq('status', 'published') // Ensure we only show published events
+        .eq('visibility', 'public') // Hide private events from public search
         .limit(10);        // Limit results for performance
 
     if (error) {
