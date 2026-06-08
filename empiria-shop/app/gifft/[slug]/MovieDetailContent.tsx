@@ -338,15 +338,12 @@ export default function MovieDetailContent({
               {sponsorLogos.map((url: string, index: number) => (
                 <div
                   key={index}
-                  className="flex-shrink-0 h-16 px-4 flex items-center justify-center bg-white border border-gray-100 rounded-xl shadow-sm"
+                  className="flex-shrink-0 w-48 h-28 p-5 flex items-center justify-center bg-white border border-gray-100 rounded-xl shadow-sm"
                 >
-                  <Image
+                  <img
                     src={url}
                     alt={`Sponsor ${index + 1}`}
-                    width={120}
-                    height={48}
-                    className="object-contain max-h-12"
-                    unoptimized
+                    className="max-h-full max-w-full object-contain"
                   />
                 </div>
               ))}
