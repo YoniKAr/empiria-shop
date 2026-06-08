@@ -32,7 +32,7 @@ export function EventHero({
     })
 
     return (
-        <section className="relative h-[520px] md:h-[600px] overflow-hidden" aria-label="Event banner">
+        <section className="relative aspect-video min-h-[380px] md:min-h-0 overflow-hidden" aria-label="Event banner">
             {/* Background Image */}
             <img
                 src={coverImageUrl}

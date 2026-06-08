@@ -119,7 +119,7 @@ export default async function CheckoutSuccessPage({
         {event && (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-8">
             {event.cover_image_url && (
-              <div className="h-40 bg-gray-200 relative">
+              <div className="aspect-video bg-gray-200 relative">
                 <img
                   src={event.cover_image_url}
                   alt={event.title}

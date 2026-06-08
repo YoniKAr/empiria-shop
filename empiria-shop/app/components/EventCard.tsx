@@ -44,7 +44,7 @@ export function EventCard({
         <Link href={`/events/${slug}`} className="group block h-full">
             <div className="bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-300 h-full flex flex-col">
                 {/* Image Section */}
-                <div className="aspect-[4/3] bg-[#FEF3E7] relative overflow-hidden">
+                <div className="aspect-video bg-[#FEF3E7] relative overflow-hidden">
                     {coverImageUrl ? (
                         <img
                             src={coverImageUrl}
