@@ -332,7 +332,18 @@ function GifftContentInner({ cities, movies, featured, sponsors }: GifftContentP
           </div>
 
           {view === 'calendar' ? (
-            <GifftCalendar movies={filteredMovies} />
+            <GifftCalendar
+              movies={filteredMovies.map((m) => {
+                const detail = getMovieDetail(m);
+                return {
+                  id: m.id,
+                  title: m.title,
+                  slug: m.slug,
+                  posterUrl: detail.poster_url || m.cover_image_url,
+                  event_occurrences: m.event_occurrences,
+                };
+              })}
+            />
           ) : filteredMovies.length > 0 ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-5">
               {filteredMovies.map((movie) => {
