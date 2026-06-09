@@ -6,7 +6,7 @@ import Image from 'next/image';
 import MovieCard from '@/app/components/MovieCard';
 import GifftCalendar from './GifftCalendar';
 import SponsorSections from '@/app/components/SponsorSections';
-import type { SponsorSection } from '@/lib/eventFields';
+import { isSafeUrl, type SponsorSection } from '@/lib/eventFields';
 
 const GIFFT_SLIDES = [
   '/gifft/slide-1.jpg',
@@ -15,11 +15,24 @@ const GIFFT_SLIDES = [
   '/gifft/slide-4.jpg',
 ];
 
+// Parse a YouTube/Vimeo URL into an embeddable URL.
+// Copied from app/specials/[slug]/SpecialPageContent.tsx.
+function getEmbedUrl(url: string): string | null {
+  const ytMatch = url.match(
+    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/
+  );
+  if (ytMatch) return `https://www.youtube.com/embed/${ytMatch[1]}`;
+  const vimeoMatch = url.match(/vimeo\.com\/(\d+)/);
+  if (vimeoMatch) return `https://player.vimeo.com/video/${vimeoMatch[1]}`;
+  return null;
+}
+
 interface City {
   id: string;
   name: string;
   slug: string;
   banner_url?: string;
+  trailer_url?: string | null;
   is_active: boolean;
   display_order: number;
   sponsor_sections?: SponsorSection[] | null;
@@ -81,6 +94,16 @@ function GifftContentInner({ cities, movies, featured }: GifftContentProps) {
 
   // Movies view: grid or week calendar
   const [view, setView] = useState<'grid' | 'calendar'>('grid');
+
+  // City hero trailer playback (reset when the selected city changes)
+  const [playing, setPlaying] = useState(false);
+  useEffect(() => {
+    setPlaying(false);
+  }, [selectedCitySlug]);
+  const trailerEmbedUrl =
+    selectedCity?.trailer_url && isSafeUrl(selectedCity.trailer_url)
+      ? getEmbedUrl(selectedCity.trailer_url)
+      : null;
 
   // Hero slideshow
   const [slide, setSlide] = useState(0);
@@ -217,22 +240,55 @@ function GifftContentInner({ cities, movies, featured }: GifftContentProps) {
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-10">
-        {/* City Banner */}
+        {/* City Hero */}
         {selectedCity?.banner_url && (
-          <div className="relative w-full h-48 md:h-64 rounded-2xl overflow-hidden mb-10">
-            <Image
-              src={selectedCity.banner_url}
-              alt={`${selectedCity.name} banner`}
-              fill
-              className="object-cover"
-              unoptimized
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-            <div className="absolute bottom-6 left-6">
-              <h2 className="text-3xl md:text-4xl font-bold text-white font-[family-name:var(--font-space-grotesk)]">
-                {selectedCity.name}
-              </h2>
-            </div>
+          <div className="relative w-full aspect-[21/9] md:aspect-[3/1] min-h-[280px] overflow-hidden rounded-2xl mb-10">
+            {trailerEmbedUrl && playing ? (
+              <iframe
+                src={`${trailerEmbedUrl}?autoplay=1`}
+                className="absolute inset-0 w-full h-full"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+                title={`${selectedCity.name} trailer`}
+              />
+            ) : (
+              <>
+                <Image
+                  src={selectedCity.banner_url}
+                  alt={`${selectedCity.name} banner`}
+                  fill
+                  className="w-full h-full object-cover"
+                  unoptimized
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+                <div className="absolute bottom-6 left-6">
+                  <h2 className="text-3xl md:text-4xl font-bold text-white font-[family-name:var(--font-space-grotesk)]">
+                    {selectedCity.name}
+                  </h2>
+                </div>
+
+                {/* Play affordance — only when a valid trailer embed exists */}
+                {trailerEmbedUrl && (
+                  <button
+                    type="button"
+                    onClick={() => setPlaying(true)}
+                    aria-label={`Play ${selectedCity.name} trailer`}
+                    className="group absolute inset-0 flex items-center justify-center bg-black/20 transition-colors hover:bg-black/30"
+                  >
+                    <span className="flex h-16 w-16 md:h-20 md:w-20 items-center justify-center rounded-full bg-white/90 shadow-lg transition-transform group-hover:scale-110">
+                      <svg
+                        className="h-7 w-7 md:h-9 md:w-9 translate-x-0.5 text-[#F15A29]"
+                        viewBox="0 0 24 24"
+                        fill="currentColor"
+                        aria-hidden="true"
+                      >
+                        <path d="M8 5v14l11-7z" />
+                      </svg>
+                    </span>
+                  </button>
+                )}
+              </>
+            )}
           </div>
         )}
 
