@@ -72,7 +72,7 @@ interface GifftContentProps {
   sponsors: Sponsor[];
 }
 
-function GifftContentInner({ cities, movies, featured, sponsors }: GifftContentProps) {
+function GifftContentInner({ cities, movies, featured }: GifftContentProps) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const selectedCitySlug = searchParams.get('city') || '';
@@ -101,11 +101,6 @@ function GifftContentInner({ cities, movies, featured, sponsors }: GifftContentP
   const filteredFeatured = selectedCity
     ? featured.filter((f) => f.city_id === selectedCity.id)
     : featured;
-
-  // Filter sponsors by city
-  const filteredSponsors = selectedCity
-    ? sponsors.filter((s) => s.city_id === selectedCity.id)
-    : [];
 
   const handleCityChange = (slug: string) => {
     if (slug === '') {
@@ -241,41 +236,6 @@ function GifftContentInner({ cities, movies, featured, sponsors }: GifftContentP
           </div>
         )}
 
-        {/* City Sponsors */}
-        {filteredSponsors.length > 0 && (
-          <div className="mb-10">
-            <h3 className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-4">
-              City Sponsors
-            </h3>
-            <div
-              className="flex gap-6 overflow-x-auto pb-2 items-center"
-              style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-            >
-              {filteredSponsors.map((sponsor) => (
-                <a
-                  key={sponsor.id}
-                  href={sponsor.website_url || '#'}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex-shrink-0 h-16 px-6 flex items-center justify-center bg-white border border-gray-100 rounded-xl shadow-sm hover:shadow-md transition-shadow"
-                >
-                  {sponsor.logo_url ? (
-                    <Image
-                      src={sponsor.logo_url}
-                      alt={sponsor.name}
-                      width={120}
-                      height={48}
-                      className="object-contain max-h-10"
-                      unoptimized
-                    />
-                  ) : (
-                    <span className="text-sm font-medium text-gray-600">{sponsor.name}</span>
-                  )}
-                </a>
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* Featured Movies */}
         {filteredFeatured.length > 0 && (
