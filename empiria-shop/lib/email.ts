@@ -1,8 +1,10 @@
 import QRCodeLib from 'qrcode';
 import { resend } from '@/lib/resend';
-import { formatCurrency } from '@/lib/utils';
 import { generateApplePass, generateGoogleWalletLink } from './wallet';
-import { CTA_NOUN, CtaLabel } from '@/lib/eventFields';
+import { CtaLabel } from '@/lib/eventFields';
+import { render as ticketsTpl } from '@/designs/email-templates/order-confirmation-tickets';
+import { render as registrationTpl } from '@/designs/email-templates/order-confirmation-registration';
+import { render as rsvpTpl } from '@/designs/email-templates/order-confirmation-rsvp';
 
 interface TicketInfo {
   id: string;
@@ -17,7 +19,13 @@ interface LineItem {
   unitPrice: number;
 }
 
-interface OrderEmailData {
+export interface WalletResult {
+  ticketId: string;
+  applePass: Buffer | null;
+  googleLink: string | null;
+}
+
+export interface OrderEmailData {
   to: string;
   attendeeName: string;
   orderId: string;
@@ -45,7 +53,6 @@ interface OrderEmailData {
 }
 
 export async function sendOrderConfirmationEmail(data: OrderEmailData) {
-  const noun = CTA_NOUN[(data.ctaLabel as CtaLabel) ?? 'buy_tickets'];
   // Build event data for wallet generation
   const eventData = {
     id: data.orderId, // Use orderId as fallback since we don't have event id
@@ -85,7 +92,8 @@ export async function sendOrderConfirmationEmail(data: OrderEmailData) {
     ),
   ]);
 
-  const html = buildEmailHtml(data, walletResults);
+  const pick = ({ buy_tickets: ticketsTpl, register: registrationTpl, rsvp: rsvpTpl } as const)[(data.ctaLabel as CtaLabel) ?? 'buy_tickets'] ?? ticketsTpl;
+  const { subject, html } = pick(data, walletResults);
 
   const fromEmail = 'Empiria <tickets@empiriaindia.com>';
 
@@ -101,7 +109,7 @@ export async function sendOrderConfirmationEmail(data: OrderEmailData) {
   const { error } = await resend.emails.send({
     from: fromEmail,
     to: data.to,
-    subject: `Your ${noun.plural} for ${data.eventTitle} — Order #${data.orderId.slice(0, 8)}`,
+    subject,
     html,
     attachments: [
       ...qrAttachments.map((a) => ({
@@ -117,252 +125,4 @@ export async function sendOrderConfirmationEmail(data: OrderEmailData) {
   if (error) {
     throw new Error(`Resend API error: ${JSON.stringify(error)}`);
   }
-}
-
-function formatEventDate(startDate: string, endDate?: string): string {
-  const start = new Date(startDate);
-  const dateStr = start.toLocaleDateString('en-US', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
-  const timeStr = start.toLocaleTimeString('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-  });
-
-  if (endDate) {
-    const end = new Date(endDate);
-    const endTimeStr = end.toLocaleTimeString('en-US', {
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true,
-    });
-    return `${dateStr} &middot; ${timeStr} – ${endTimeStr}`;
-  }
-
-  return `${dateStr} &middot; ${timeStr}`;
-}
-
-function buildEmailHtml(data: OrderEmailData, walletResults: Array<{ticketId: string; applePass: Buffer | null; googleLink: string | null}>): string {
-  const noun = CTA_NOUN[(data.ctaLabel as CtaLabel) ?? 'buy_tickets'];
-  const eventDateFormatted = formatEventDate(
-    data.eventDate,
-    data.eventEndDate
-  );
-  const venue = [data.venueName, data.city].filter(Boolean).join(', ');
-
-  const lineItemRows = data.lineItems
-    .map(
-      (item) => `
-      <tr>
-        <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 14px; color: #374151;">
-          ${item.tierName}
-        </td>
-        <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 14px; color: #374151; text-align: center;">
-          ${item.quantity}
-        </td>
-        <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 14px; color: #374151; text-align: right;">
-          ${formatCurrency(item.unitPrice, data.currency)}
-        </td>
-        <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 14px; color: #374151; text-align: right;">
-          ${formatCurrency(item.unitPrice * item.quantity, data.currency)}
-        </td>
-      </tr>`
-    )
-    .join('');
-
-  const ticketCards = data.tickets
-    .map(
-      (ticket) => {
-        const wallet = walletResults.find((w) => w.ticketId === ticket.id);
-        const hasWallet = wallet && (wallet.applePass || wallet.googleLink);
-        return `
-      <tr>
-        <td style="padding: 8px 0;">
-          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px;">
-            <tr>
-              <td style="padding: 16px; text-align: center;">
-                <img src="cid:qr-${ticket.id}" alt="QR Code" width="160" height="160" style="display: block; margin: 0 auto;" />
-              </td>
-              <td style="padding: 16px; vertical-align: middle;">
-                <p style="margin: 0 0 4px; font-size: 14px; font-weight: 600; color: #111827;">${ticket.tierName}</p>
-                ${ticket.seatLabel ? `<p style="margin: 0 0 4px; font-size: 13px; color: #374151;">Seat: ${ticket.seatLabel}</p>` : ''}
-                <p style="margin: 0; font-size: 12px; color: #6b7280;">Ticket #${ticket.id.slice(0, 8)}</p>
-              </td>
-            </tr>${hasWallet ? `
-            <tr>
-              <td colspan="2" style="padding: 4px 16px 12px; text-align: center;">
-                ${wallet.applePass ? `<a href="cid:pass-${ticket.id}" style="display:inline-block; margin:4px; text-decoration:none;">
-                  <span style="display:inline-block; background:#000; color:#fff; padding:8px 16px; border-radius:8px; font-size:13px; font-weight:600;">&#63743; Add to Apple Wallet</span>
-                </a>` : ''}
-                ${wallet.googleLink ? `<a href="${wallet.googleLink}" style="display:inline-block; margin:4px; text-decoration:none;" target="_blank">
-                  <span style="display:inline-block; background:#1a73e8; color:#fff; padding:8px 16px; border-radius:8px; font-size:13px; font-weight:600;">Add to Google Wallet</span>
-                </a>` : ''}
-              </td>
-            </tr>` : ''}
-          </table>
-        </td>
-      </tr>`;
-      }
-    )
-    .join('');
-
-  return `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Order Confirmation</title>
-</head>
-<body style="margin: 0; padding: 0; background-color: #f3f4f6; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
-  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color: #f3f4f6;">
-    <tr>
-      <td align="center" style="padding: 32px 16px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width: 600px; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-
-          <!-- Header -->
-          <tr>
-            <td style="background: #111827; padding: 24px 32px; text-align: center;">
-              <h1 style="margin: 0; font-size: 22px; font-weight: 700; color: #ffffff; letter-spacing: -0.025em;">Empiria</h1>
-            </td>
-          </tr>
-
-          <!-- Confirmation Message -->
-          <tr>
-            <td style="padding: 32px 32px 16px;">
-              <h2 style="margin: 0 0 8px; font-size: 20px; font-weight: 700; color: #111827;">You're all set, ${data.attendeeName || 'there'}!</h2>
-              <p style="margin: 0; font-size: 15px; color: #6b7280; line-height: 1.5;">
-                Your order has been confirmed. ${noun.confirmation}
-              </p>
-            </td>
-          </tr>
-
-          <!-- Event Details -->
-          <tr>
-            <td style="padding: 16px 32px;">
-              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background: #f0f9ff; border-radius: 8px; border: 1px solid #bae6fd;">
-                <tr>
-                  <td style="padding: 20px;">
-                    <h3 style="margin: 0 0 8px; font-size: 17px; font-weight: 700; color: #0c4a6e;">${data.eventTitle}</h3>
-                    <p style="margin: 0 0 4px; font-size: 14px; color: #0369a1;">${eventDateFormatted}</p>
-                    ${venue ? `<p style="margin: 0 0 4px; font-size: 14px; color: #0369a1;">${venue}</p>` : ''}
-                    ${(data.locationType === 'virtual' || data.locationType === 'hybrid') && data.meetingLink ? `<p style="margin: 0; font-size: 14px;"><a href="${data.meetingLink}" style="color: #0369a1; text-decoration: underline; font-weight: 600;" target="_blank">Join Online Meeting</a></p>` : ''}
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-
-          <!-- Order Summary -->
-          <tr>
-            <td style="padding: 16px 32px;">
-              <h3 style="margin: 0 0 12px; font-size: 15px; font-weight: 600; color: #111827;">Order Summary</h3>
-              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden;">
-                <tr style="background: #f9fafb;">
-                  <th style="padding: 8px 12px; font-size: 12px; font-weight: 600; color: #6b7280; text-align: left; text-transform: uppercase;">Tier</th>
-                  <th style="padding: 8px 12px; font-size: 12px; font-weight: 600; color: #6b7280; text-align: center; text-transform: uppercase;">Qty</th>
-                  <th style="padding: 8px 12px; font-size: 12px; font-weight: 600; color: #6b7280; text-align: right; text-transform: uppercase;">Price</th>
-                  <th style="padding: 8px 12px; font-size: 12px; font-weight: 600; color: #6b7280; text-align: right; text-transform: uppercase;">Total</th>
-                </tr>
-                ${lineItemRows}
-                ${data.convenienceFee && data.convenienceFee > 0 ? `
-                <tr>
-                  <td colspan="3" style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 13px; color: #6b7280; text-align: right;">
-                    Service Fee
-                  </td>
-                  <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 13px; color: #6b7280; text-align: right;">
-                    ${formatCurrency(data.convenienceFee, data.currency)}
-                  </td>
-                </tr>` : ''}
-                ${data.convenienceFeeHST && data.convenienceFeeHST > 0 ? `
-                <tr>
-                  <td colspan="3" style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 13px; color: #6b7280; text-align: right;">
-                    HST on Service Fee
-                  </td>
-                  <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 13px; color: #6b7280; text-align: right;">
-                    ${formatCurrency(data.convenienceFeeHST, data.currency)}
-                  </td>
-                </tr>` : ''}
-                ${data.ticketTax && data.ticketTax > 0 ? `
-                <tr>
-                  <td colspan="3" style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 13px; color: #6b7280; text-align: right;">
-                    Sales Tax (HST 13%)
-                  </td>
-                  <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 13px; color: #6b7280; text-align: right;">
-                    ${formatCurrency(data.ticketTax, data.currency)}
-                  </td>
-                </tr>` : ''}
-                ${data.discountAmount && data.discountAmount > 0 ? `
-                <tr>
-                  <td colspan="3" style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 13px; color: #059669; text-align: right;">
-                    Discount${data.couponCode ? ` (${data.couponCode})` : ''}
-                  </td>
-                  <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 13px; color: #059669; text-align: right;">
-                    -${formatCurrency(data.discountAmount, data.currency)}
-                  </td>
-                </tr>` : ''}
-                <tr style="background: #f9fafb;">
-                  <td colspan="3" style="padding: 10px 12px; font-size: 14px; font-weight: 700; color: #111827; text-align: right;">
-                    Total
-                  </td>
-                  <td style="padding: 10px 12px; font-size: 14px; font-weight: 700; color: #111827; text-align: right;">
-                    ${formatCurrency(data.total, data.currency)}
-                  </td>
-                </tr>
-              </table>
-              <p style="margin: 8px 0 0; font-size: 12px; color: #9ca3af;">
-                Order #${data.orderId.slice(0, 8)}
-              </p>
-            </td>
-          </tr>
-
-          <!-- Payment Receipt & Invoice -->
-          ${(data.receiptUrl || data.invoiceUrl || data.invoicePdf) ? `
-          <tr>
-            <td style="padding: 4px 32px 16px;">
-              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-                <tr>
-                  <td align="center" style="padding: 12px 0;">
-                    ${data.receiptUrl ? `<a href="${data.receiptUrl}" target="_blank" style="display: inline-block; padding: 10px 20px; background: #111827; color: #ffffff; font-size: 14px; font-weight: 600; text-decoration: none; border-radius: 6px;">View Payment Receipt</a>` : ''}
-                    ${data.invoiceUrl ? `<a href="${data.invoiceUrl}" target="_blank" style="display: inline-block; padding: 10px 20px; background: #ffffff; color: #111827; font-size: 14px; font-weight: 600; text-decoration: none; border-radius: 6px; border: 1px solid #d1d5db; margin-left: 8px;">View Invoice</a>` : ''}
-                    ${data.invoicePdf ? `<a href="${data.invoicePdf}" target="_blank" style="display: inline-block; padding: 10px 20px; background: #ffffff; color: #111827; font-size: 14px; font-weight: 600; text-decoration: none; border-radius: 6px; border: 1px solid #d1d5db; margin-left: 8px;">Download Invoice PDF</a>` : ''}
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-          ` : ''}
-
-          <!-- Tickets -->
-          <tr>
-            <td style="padding: 16px 32px 24px;">
-              <h3 style="margin: 0 0 12px; font-size: 15px; font-weight: 600; color: #111827;">${noun.section}</h3>
-              <p style="margin: 0 0 12px; font-size: 13px; color: #6b7280;">
-                Show the QR code at the venue entrance for check-in.
-              </p>
-              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-                ${ticketCards}
-              </table>
-            </td>
-          </tr>
-
-          <!-- Footer -->
-          <tr>
-            <td style="padding: 20px 32px; background: #f9fafb; border-top: 1px solid #e5e7eb;">
-              <p style="margin: 0; font-size: 12px; color: #9ca3af; text-align: center; line-height: 1.5;">
-                This email was sent by Empiria. If you have questions about your order, please contact the event organizer.
-              </p>
-            </td>
-          </tr>
-
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>`;
 }
