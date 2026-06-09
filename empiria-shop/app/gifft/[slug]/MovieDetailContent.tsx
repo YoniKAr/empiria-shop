@@ -4,6 +4,8 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { Calendar, MapPin, Clock, Globe, Star, Users } from 'lucide-react';
 import MovieCard from '@/app/components/MovieCard';
+import SponsorSections from '@/app/components/SponsorSections';
+import type { SponsorSection } from '@/lib/eventFields';
 import { sanitizeRichText } from '@/lib/sanitize-html';
 
 interface MovieDetail {
@@ -78,9 +80,9 @@ export default function MovieDetailContent({
       ? movie.cast_members.split(',').map((s) => s.trim()).filter(Boolean)
       : [];
 
-  // Parse sponsor logos
-  const sponsorLogos: string[] = Array.isArray(event.sponsor_logos)
-    ? event.sponsor_logos
+  // Tiered sponsor sections (same as event/special pages)
+  const sponsorSections: SponsorSection[] = Array.isArray(event.sponsor_sections)
+    ? event.sponsor_sections
     : [];
 
   // Trailer embed logic (from EventDetails.tsx)
@@ -336,31 +338,10 @@ export default function MovieDetailContent({
         </div>
       )}
 
-      {/* Sponsors */}
-      {sponsorLogos.length > 0 && (
+      {/* Sponsors (tiered sections) */}
+      {sponsorSections.length > 0 && (
         <div className="border-t border-gray-100">
-          <div className="max-w-6xl mx-auto px-4 sm:px-6 py-12">
-            <h2 className="text-lg font-semibold text-[#F15A29] mb-4 font-[family-name:var(--font-space-grotesk)]">
-              Sponsors
-            </h2>
-            <div
-              className="flex gap-6 overflow-x-auto pb-2 items-center"
-              style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-            >
-              {sponsorLogos.map((url: string, index: number) => (
-                <div
-                  key={index}
-                  className="flex-shrink-0 w-48 h-28 p-5 flex items-center justify-center bg-white border border-gray-100 rounded-xl shadow-sm"
-                >
-                  <img
-                    src={url}
-                    alt={`Sponsor ${index + 1}`}
-                    className="max-h-full max-w-full object-contain"
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
+          <SponsorSections sections={sponsorSections} />
         </div>
       )}
 
