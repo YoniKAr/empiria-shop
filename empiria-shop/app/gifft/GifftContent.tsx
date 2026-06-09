@@ -1,9 +1,16 @@
 'use client';
 
 import { useSearchParams, useRouter } from 'next/navigation';
-import { Suspense } from 'react';
+import { Suspense, useState, useEffect } from 'react';
 import Image from 'next/image';
 import MovieCard from '@/app/components/MovieCard';
+
+const GIFFT_SLIDES = [
+  '/gifft/slide-1.jpg',
+  '/gifft/slide-2.jpg',
+  '/gifft/slide-3.jpg',
+  '/gifft/slide-4.jpg',
+];
 
 interface City {
   id: string;
@@ -68,6 +75,16 @@ function GifftContentInner({ cities, movies, featured, sponsors }: GifftContentP
 
   const selectedCity = cities.find((c) => c.slug === selectedCitySlug) || null;
 
+  // Hero slideshow
+  const [slide, setSlide] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(
+      () => setSlide((s) => (s + 1) % GIFFT_SLIDES.length),
+      5000
+    );
+    return () => clearInterval(timer);
+  }, []);
+
   // Filter movies by selected city
   const filteredMovies = selectedCity
     ? movies.filter((m) => m.city?.toLowerCase() === selectedCity.name.toLowerCase())
@@ -100,27 +117,57 @@ function GifftContentInner({ cities, movies, featured, sponsors }: GifftContentP
 
   return (
     <>
-      {/* Hero Section */}
-      <section className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 overflow-hidden">
-        {/* Decorative elements */}
-        <div className="absolute inset-0 opacity-10">
-          <div className="absolute top-0 left-1/4 w-96 h-96 bg-[#F15A29] rounded-full blur-[128px]" />
-          <div className="absolute bottom-0 right-1/4 w-72 h-72 bg-[#F15A29] rounded-full blur-[96px]" />
+      {/* Hero Section — slideshow */}
+      <section className="relative overflow-hidden min-h-[60vh] flex items-center bg-slate-900">
+        {/* Slideshow background */}
+        <div className="absolute inset-0">
+          {GIFFT_SLIDES.map((src, i) => (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              key={src}
+              src={src}
+              alt=""
+              aria-hidden="true"
+              className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-1000 ease-in-out ${
+                i === slide ? 'opacity-100' : 'opacity-0'
+              }`}
+            />
+          ))}
+          {/* Dark overlay for legibility */}
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-900/95 via-slate-900/70 to-slate-900/55" />
         </div>
 
-        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 py-20 md:py-28 text-center">
-          <span className="inline-block bg-[#F15A29]/10 text-[#F15A29] text-xs font-bold uppercase tracking-[0.2em] px-4 py-1.5 rounded-full mb-6 border border-[#F15A29]/20">
+        <div className="relative z-10 w-full max-w-7xl mx-auto px-4 sm:px-6 py-20 md:py-28 text-center">
+          <span className="inline-block bg-[#F15A29]/15 text-[#F15A29] text-xs font-bold uppercase tracking-[0.2em] px-4 py-1.5 rounded-full mb-6 border border-[#F15A29]/30">
             Film Festival
           </span>
-          <h1 className="text-5xl md:text-7xl font-bold text-white mb-4 tracking-tight font-[family-name:var(--font-space-grotesk)]">
-            GIFFT
-          </h1>
-          <p className="text-xl md:text-2xl text-white/70 mb-3 font-medium">
+          {/* GIFFT logo */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/gifft/gifft-logo-white.png"
+            alt="GIFFT"
+            className="mx-auto h-16 md:h-24 w-auto mb-6 drop-shadow-lg"
+          />
+          <p className="text-xl md:text-2xl text-white/80 mb-3 font-medium">
             Greek International Film Festival Tour of Canada
           </p>
-          <p className="text-base text-white/50 max-w-lg mx-auto">
+          <p className="text-base text-white/60 max-w-lg mx-auto">
             Discover movies playing in cities across Canada
           </p>
+          {/* Slide indicators */}
+          <div className="flex items-center justify-center gap-2 mt-8">
+            {GIFFT_SLIDES.map((_, i) => (
+              <button
+                key={i}
+                type="button"
+                aria-label={`Go to slide ${i + 1}`}
+                onClick={() => setSlide(i)}
+                className={`h-1.5 rounded-full transition-all ${
+                  i === slide ? 'w-6 bg-[#F15A29]' : 'w-1.5 bg-white/40 hover:bg-white/60'
+                }`}
+              />
+            ))}
+          </div>
         </div>
       </section>
 
