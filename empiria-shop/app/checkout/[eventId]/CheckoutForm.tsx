@@ -40,6 +40,8 @@ interface CheckoutFormProps {
     sub?: string;
     name?: string;
   } | null;
+  sharedCapacity?: boolean;
+  sharedRemaining?: number;
 }
 
 export function CheckoutForm({
@@ -54,10 +56,15 @@ export function CheckoutForm({
   feeFixedPerTicket,
   customFields,
   user,
+  sharedCapacity = false,
+  sharedRemaining = 0,
 }: CheckoutFormProps) {
   const [quantities, setQuantities] = useState<Record<string, number>>(() => {
+    // In shared mode the event pool is the constraint; a tier is "available"
+    // only when the shared pool has room.
+    if (sharedCapacity && sharedRemaining <= 0) return {};
     // Default: 1 of the first available tier
-    const first = tiers.find((t) => t.remaining_quantity > 0);
+    const first = tiers.find((t) => (sharedCapacity ? sharedRemaining > 0 : t.remaining_quantity > 0));
     return first ? { [first.id]: 1 } : {};
   });
   const [email, setEmail] = useState(user?.email ?? "");
@@ -287,7 +294,9 @@ export function CheckoutForm({
         <div className="space-y-3" data-testid="checkout-tiers">
           {tiers.map((tier) => {
             const qty = quantities[tier.id] ?? 0;
-            const soldOut = tier.remaining_quantity === 0;
+            const soldOut = sharedCapacity
+              ? sharedRemaining <= 0
+              : tier.remaining_quantity === 0;
 
             return (
               <div
@@ -340,14 +349,27 @@ export function CheckoutForm({
                     <button
                       type="button"
                       onClick={() => {
-                        const maxAllowed = tier.max_per_order
-                          ? Math.min(tier.remaining_quantity, tier.max_per_order)
+                        // In shared mode the tier pool isn't the real constraint —
+                        // cap the running total across all tiers at sharedRemaining.
+                        const tierCap = sharedCapacity
+                          ? sharedRemaining - (totalItems - qty)
                           : tier.remaining_quantity;
+                        const maxAllowed = tier.max_per_order
+                          ? Math.min(tierCap, tier.max_per_order)
+                          : tierCap;
                         // Jump straight to the minimum when going from 0.
                         const target = qty === 0 ? (tier.min_per_order ?? 1) : qty + 1;
                         setQty(tier.id, Math.min(maxAllowed, target));
                       }}
-                      disabled={qty >= (tier.max_per_order ? Math.min(tier.remaining_quantity, tier.max_per_order) : tier.remaining_quantity)}
+                      disabled={
+                        qty >=
+                        (() => {
+                          const tierCap = sharedCapacity
+                            ? sharedRemaining - (totalItems - qty)
+                            : tier.remaining_quantity;
+                          return tier.max_per_order ? Math.min(tierCap, tier.max_per_order) : tierCap;
+                        })()
+                      }
                       className="w-8 h-8 rounded-lg bg-gray-200 flex items-center justify-center text-gray-700 hover:bg-orange-100 transition-colors disabled:opacity-30"
                       data-testid={`checkout-tier-increase-${tier.id}`}
                       aria-label={`Increase ${tier.name} quantity`}

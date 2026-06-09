@@ -16,6 +16,7 @@ export default async function CheckoutPage({ params }: { params: Promise<{ event
     .select(`
       id, title, slug, currency, status, pass_processing_fee, charge_ticket_tax,
       entry_type, custom_fields,
+      shared_capacity, total_capacity, total_tickets_sold,
       platform_fee_percent, platform_fee_fixed,
       ticket_tiers (id, name, description, price, currency, remaining_quantity, min_per_order, max_per_order),
       event_occurrences (id, starts_at, ends_at, label)
@@ -51,6 +52,13 @@ export default async function CheckoutPage({ params }: { params: Promise<{ event
     label: o.label,
   }));
 
+  // Shared-capacity pool: the EVENT pool is the constraint in shared mode.
+  const sharedCapacity = !!(event as any).shared_capacity;
+  const sharedRemaining = Math.max(
+    0,
+    ((event as any).total_capacity ?? 0) - ((event as any).total_tickets_sold ?? 0)
+  );
+
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4">
       <div className="max-w-lg mx-auto">
@@ -67,6 +75,8 @@ export default async function CheckoutPage({ params }: { params: Promise<{ event
           feeFixedPerTicket={event.platform_fee_fixed != null ? Number(event.platform_fee_fixed) : 1.50}
           customFields={event.custom_fields ?? []}
           user={user}
+          sharedCapacity={sharedCapacity}
+          sharedRemaining={sharedRemaining}
         />
       </div>
     </div>

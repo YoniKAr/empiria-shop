@@ -20,9 +20,10 @@ interface TicketWidgetProps {
     ctaLabel?: string
     entryType?: string
     externalUrl?: string | null
+    sharedCapacity?: boolean
 }
 
-export function TicketWidget({ tiers, eventId, currency = "cad", ctaLabel, entryType, externalUrl }: TicketWidgetProps) {
+export function TicketWidget({ tiers, eventId, currency = "cad", ctaLabel, entryType, externalUrl, sharedCapacity }: TicketWidgetProps) {
     // External events: link out instead of the ticket UI.
     if (entryType === "external") {
         const hasSafeUrl = !!externalUrl && isSafeUrl(externalUrl)
@@ -58,10 +59,10 @@ export function TicketWidget({ tiers, eventId, currency = "cad", ctaLabel, entry
         )
     }
 
-    return <TicketedWidget tiers={tiers} eventId={eventId} currency={currency} ctaLabel={ctaLabel} />
+    return <TicketedWidget tiers={tiers} eventId={eventId} currency={currency} ctaLabel={ctaLabel} sharedCapacity={sharedCapacity} />
 }
 
-function TicketedWidget({ tiers, eventId, currency = "cad", ctaLabel }: { tiers: TicketTier[]; eventId: string; currency?: string; ctaLabel?: string }) {
+function TicketedWidget({ tiers, eventId, currency = "cad", ctaLabel, sharedCapacity }: { tiers: TicketTier[]; eventId: string; currency?: string; ctaLabel?: string; sharedCapacity?: boolean }) {
     const [selectedTier, setSelectedTier] = useState<string | null>(
         tiers[0]?.id ?? null
     )
@@ -129,7 +130,7 @@ function TicketedWidget({ tiers, eventId, currency = "cad", ctaLabel }: { tiers:
                                             <span className="text-xs text-red-500 font-medium">
                                                 Sold Out
                                             </span>
-                                        ) : (
+                                        ) : sharedCapacity ? null : (
                                             <span className="text-xs text-gray-500">
                                                 {tier.available} left
                                             </span>
@@ -158,9 +159,16 @@ function TicketedWidget({ tiers, eventId, currency = "cad", ctaLabel }: { tiers:
                                     {quantity}
                                 </span>
                                 <button
-                                    onClick={() =>
-                                        setQuantity(Math.min(selected.available, quantity + 1))
-                                    }
+                                    onClick={() => {
+                                        // Running total across all selected tiers. This widget
+                                        // selects a single tier, so otherSelected is 0.
+                                        const totalSelectedQty = quantity
+                                        const otherSelected = totalSelectedQty - quantity
+                                        const cap = sharedCapacity
+                                            ? Math.max(0, selected.available - otherSelected)
+                                            : selected.available
+                                        setQuantity(Math.min(cap, quantity + 1))
+                                    }}
                                     className="w-8 h-8 rounded-lg bg-gray-200 flex items-center justify-center text-gray-700 hover:bg-orange-100 transition-colors"
                                     aria-label="Increase quantity"
                                 >

@@ -104,6 +104,10 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
         ? event.what_to_expect
         : [];
 
+    // Shared-capacity pool: in shared mode the EVENT pool is the constraint, not
+    // per-tier remaining_quantity (which is seeded to equal the pool).
+    const sharedRemaining = Math.max(0, ((event as any).total_capacity ?? 0) - ((event as any).total_tickets_sold ?? 0));
+
     // Map ticket_tiers to TicketWidget shape
     const tiers = [...(event.ticket_tiers || [])]
         .sort((a: any, b: any) => a.price - b.price)
@@ -112,7 +116,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
             name: tier.name,
             description: tier.description ?? '',
             price: tier.price ?? 0,
-            available: tier.remaining_quantity ?? tier.available ?? 0,
+            available: (event as any).shared_capacity ? sharedRemaining : (tier.remaining_quantity ?? 0),
         }));
 
     // Resolve cover image to a full URL
@@ -322,6 +326,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                             ctaLabel={event.cta_label}
                             entryType={event.entry_type}
                             externalUrl={event.external_url}
+                            sharedCapacity={!!(event as any).shared_capacity}
                         />
                     )}
                 </div>

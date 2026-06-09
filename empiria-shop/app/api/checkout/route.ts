@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
 
     const { data: event, error: eventError } = await supabase
       .from('events')
-      .select('id, title, slug, organizer_id, platform_fee_percent, platform_fee_fixed, pass_processing_fee, currency, status, total_capacity, total_tickets_sold, seating_type, seating_config, source_app, charge_ticket_tax, custom_fields, entry_type')
+      .select('id, title, slug, organizer_id, platform_fee_percent, platform_fee_fixed, pass_processing_fee, currency, status, shared_capacity, total_capacity, total_tickets_sold, seating_type, seating_config, source_app, charge_ticket_tax, custom_fields, entry_type')
       .eq('id', eventId)
       .single();
 
@@ -170,7 +170,10 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      if (tier.remaining_quantity < selection.quantity) {
+      // In shared-capacity mode the per-tier remaining_quantity is seeded to equal
+      // the event pool and is NOT the real constraint — the event pool is checked
+      // after this loop. Skip the per-tier check in shared mode.
+      if (!event.shared_capacity && tier.remaining_quantity < selection.quantity) {
         return NextResponse.json(
           { error: `Only ${tier.remaining_quantity} "${tier.name}" tickets remaining` },
           { status: 400 }
@@ -208,6 +211,19 @@ export async function POST(request: NextRequest) {
         },
         quantity: selection.quantity,
       });
+    }
+
+    // Shared-capacity pool check: the EVENT pool is the constraint in shared mode.
+    // (The DB trigger remains the final atomic guard.)
+    if (event.shared_capacity) {
+      const sharedRemaining = Math.max(0, (event.total_capacity ?? 0) - (event.total_tickets_sold ?? 0));
+      const totalRequested = validatedSelections.reduce((s, sel) => s + sel.quantity, 0);
+      if (totalRequested > sharedRemaining) {
+        return NextResponse.json(
+          { error: `Only ${sharedRemaining} tickets remaining for this event.` },
+          { status: 400 }
+        );
+      }
     }
 
     // 6-fields. Validate per-ticket required custom field answers server-side.
