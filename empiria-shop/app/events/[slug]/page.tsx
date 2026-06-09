@@ -57,38 +57,45 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
         ? 'Empiria Events'
         : (ownerProfile?.full_name || 'Empiria Events');
 
-    // Fetch gallery images
-    const safeOrganizerId = event.organizer_id?.replace(/\|/g, '_');
+    // Gallery images: prefer the stored gallery_images column; otherwise fall
+    // back to listing the storage bucket (for older events created before the
+    // column was populated).
+    let galleryUrls: string[] = Array.isArray((event as any).gallery_images)
+        ? ((event as any).gallery_images as string[]).filter(Boolean)
+        : [];
 
-    let galleryUrls: string[] = [];
-    const possiblePaths = [
-        `${String(event.id)}`,
-        `${event.slug}`,
-        safeOrganizerId ? `${safeOrganizerId}/${String(event.id)}` : '',
-        safeOrganizerId ? `${safeOrganizerId}/${event.slug}` : '',
-        safeOrganizerId || '',
-        ''
-    ].filter(Boolean);
+    if (galleryUrls.length === 0) {
+        const safeOrganizerId = event.organizer_id?.replace(/\|/g, '_');
 
-    for (const folder of possiblePaths) {
-        if (!folder) continue;
-        const { data: files } = await supabase.storage
-            .from('events_gallery')
-            .list(folder, { limit: 50 });
+        const possiblePaths = [
+            `${String(event.id)}`,
+            `${event.slug}`,
+            safeOrganizerId ? `${safeOrganizerId}/${String(event.id)}` : '',
+            safeOrganizerId ? `${safeOrganizerId}/${event.slug}` : '',
+            safeOrganizerId || '',
+            ''
+        ].filter(Boolean);
 
-        const urls = (files ?? [])
-            .filter((f: any) => f.name && !f.name.startsWith('.') && f.id)
-            .map((f: any) => {
-                const path = folder ? `${folder}/${f.name}` : f.name;
-                const { data } = supabase.storage
-                    .from('events_gallery')
-                    .getPublicUrl(path);
-                return data.publicUrl;
-            });
+        for (const folder of possiblePaths) {
+            if (!folder) continue;
+            const { data: files } = await supabase.storage
+                .from('events_gallery')
+                .list(folder, { limit: 50 });
 
-        if (urls.length > 0) {
-            galleryUrls = urls;
-            break;
+            const urls = (files ?? [])
+                .filter((f: any) => f.name && !f.name.startsWith('.') && f.id)
+                .map((f: any) => {
+                    const path = folder ? `${folder}/${f.name}` : f.name;
+                    const { data } = supabase.storage
+                        .from('events_gallery')
+                        .getPublicUrl(path);
+                    return data.publicUrl;
+                });
+
+            if (urls.length > 0) {
+                galleryUrls = urls;
+                break;
+            }
         }
     }
 
