@@ -5,6 +5,8 @@ import { Suspense, useState, useEffect } from 'react';
 import Image from 'next/image';
 import MovieCard from '@/app/components/MovieCard';
 import GifftCalendar from './GifftCalendar';
+import SponsorSections from '@/app/components/SponsorSections';
+import type { SponsorSection } from '@/lib/eventFields';
 
 const GIFFT_SLIDES = [
   '/gifft/slide-1.jpg',
@@ -20,6 +22,7 @@ interface City {
   banner_url?: string;
   is_active: boolean;
   display_order: number;
+  sponsor_sections?: SponsorSection[] | null;
 }
 
 interface MovieDetail {
@@ -375,6 +378,11 @@ function GifftContentInner({ cities, movies, featured, sponsors }: GifftContentP
           )}
         </div>
       </div>
+
+      {/* City sponsor sections (just above the footer) */}
+      {selectedCity && (
+        <SponsorSections sections={(selectedCity.sponsor_sections ?? []) as SponsorSection[]} />
+      )}
     </>
   );
 }
