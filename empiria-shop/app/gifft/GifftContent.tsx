@@ -118,7 +118,7 @@ function GifftContentInner({ cities, movies, featured, sponsors }: GifftContentP
   return (
     <>
       {/* Hero Section — slideshow */}
-      <section className="relative overflow-hidden min-h-[60vh] flex items-center bg-slate-900">
+      <section className="relative overflow-hidden min-h-[85vh] flex items-center bg-slate-900">
         {/* Slideshow background */}
         <div className="absolute inset-0">
           {GIFFT_SLIDES.map((src, i) => (
@@ -138,9 +138,6 @@ function GifftContentInner({ cities, movies, featured, sponsors }: GifftContentP
         </div>
 
         <div className="relative z-10 w-full max-w-7xl mx-auto px-4 sm:px-6 py-20 md:py-28 text-center">
-          <span className="inline-block bg-[#F15A29]/15 text-[#F15A29] text-xs font-bold uppercase tracking-[0.2em] px-4 py-1.5 rounded-full mb-6 border border-[#F15A29]/30">
-            Film Festival
-          </span>
           {/* GIFFT logo */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
