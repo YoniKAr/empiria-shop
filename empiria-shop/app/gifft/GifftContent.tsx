@@ -122,7 +122,7 @@ function GifftContentInner({ cities, movies, featured, sponsors }: GifftContentP
   return (
     <>
       {/* Hero Section — slideshow (full-bleed under the floating navbar) */}
-      <section className="relative overflow-hidden min-h-[68vh] flex items-center bg-slate-900">
+      <section className="relative overflow-hidden min-h-screen flex items-center bg-slate-900">
         {/* Slideshow background */}
         <div className="absolute inset-0">
           {GIFFT_SLIDES.map((src, i) => (
@@ -141,7 +141,7 @@ function GifftContentInner({ cities, movies, featured, sponsors }: GifftContentP
           <div className="absolute inset-0 bg-gradient-to-t from-slate-900/95 via-slate-900/65 to-slate-900/55" />
         </div>
 
-        <div className="relative z-10 w-full max-w-7xl mx-auto px-4 sm:px-6 py-16 md:py-20 text-center">
+        <div className="relative z-10 w-full max-w-7xl mx-auto px-4 sm:px-6 py-20 md:py-28 text-center">
           {/* GIFFT logo */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
@@ -163,6 +163,23 @@ function GifftContentInner({ cities, movies, featured, sponsors }: GifftContentP
             alt="Title Sponsors"
             className="mx-auto mt-10 w-full max-w-6xl h-auto drop-shadow"
           />
+        </div>
+
+        {/* Scroll cue */}
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10 flex flex-col items-center gap-1.5 animate-pulse">
+          <span className="text-[11px] font-medium uppercase tracking-widest text-white/70">
+            Scroll to see the movies
+          </span>
+          <svg
+            className="w-5 h-5 text-white/80"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+            aria-hidden="true"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
         </div>
       </section>
 
