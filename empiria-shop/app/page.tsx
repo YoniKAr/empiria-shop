@@ -71,7 +71,7 @@ export default async function ShopHome() {
 
     return (
         <div className="min-h-screen bg-white font-sans text-slate-900">
-            <Navbar />
+            <Navbar overlay />
             <HomeContent events={events} featuredEvents={featuredEvents} categories={(categories || []) as { id: string; name: string }[]} />
             <Footer />
         </div>

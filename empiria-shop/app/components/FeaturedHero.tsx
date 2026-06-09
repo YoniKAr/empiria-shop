@@ -53,7 +53,7 @@ export default function FeaturedHero({ featuredEvents, query, setQuery }: Featur
 
   return (
     <div
-      className="relative h-screen w-full overflow-hidden -mt-16 pt-16"
+      className="relative h-screen w-full overflow-hidden"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
     >
