@@ -122,31 +122,19 @@ function GifftContentInner({ cities, movies, featured, sponsors }: GifftContentP
         {/* Slideshow background */}
         <div className="absolute inset-0">
           {GIFFT_SLIDES.map((src, i) => (
-            <div
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
               key={src}
+              src={src}
+              alt=""
               aria-hidden="true"
-              className={`absolute inset-0 transition-opacity duration-1000 ease-in-out ${
+              className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-1000 ease-in-out ${
                 i === slide ? 'opacity-100' : 'opacity-0'
               }`}
-            >
-              {/* Blurred fill for the empty space around the full image */}
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={src}
-                alt=""
-                className="absolute inset-0 w-full h-full object-cover scale-110 blur-2xl"
-              />
-              {/* The full image, never cropped */}
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={src}
-                alt=""
-                className="absolute inset-0 w-full h-full object-contain"
-              />
-            </div>
+            />
           ))}
           {/* Dark overlay for legibility */}
-          <div className="absolute inset-0 bg-slate-900/45" />
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-900/95 via-slate-900/65 to-slate-900/55" />
         </div>
 
         <div className="relative z-10 w-full max-w-7xl mx-auto px-4 sm:px-6 py-20 md:py-28 text-center">
@@ -155,14 +143,22 @@ function GifftContentInner({ cities, movies, featured, sponsors }: GifftContentP
           <img
             src="/gifft/gifft-logo-white.png"
             alt="GIFFT"
-            className="mx-auto h-16 md:h-24 w-auto mb-6 drop-shadow-lg"
+            className="mx-auto h-28 md:h-44 w-auto mb-8 drop-shadow-lg"
           />
-          <p className="text-xl md:text-2xl text-white/80 mb-3 font-medium">
+          <p className="text-2xl md:text-4xl text-white mb-3 font-semibold">
             Greek International Film Festival Tour of Canada
           </p>
-          <p className="text-base text-white/60 max-w-lg mx-auto">
+          <p className="text-lg md:text-xl text-white/70 max-w-2xl mx-auto">
             Discover movies playing in cities across Canada
           </p>
+
+          {/* Title sponsors */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/gifft/title-sponsors.png"
+            alt="Title Sponsors"
+            className="mx-auto mt-8 w-full max-w-2xl h-auto drop-shadow"
+          />
           {/* Slide indicators */}
           <div className="flex items-center justify-center gap-2 mt-8">
             {GIFFT_SLIDES.map((_, i) => (
