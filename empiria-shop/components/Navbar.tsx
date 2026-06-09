@@ -5,7 +5,7 @@ import Image from 'next/image';
 import UserMenu from './UserMenu';
 import CurrencySelector from './CurrencySelector';
 
-export default async function Navbar({ floating = false }: { floating?: boolean }) {
+export default async function Navbar({ overlay = false }: { overlay?: boolean }) {
   const session = await getSafeSession();
   const user = session?.user;
 
@@ -23,20 +23,9 @@ export default async function Navbar({ floating = false }: { floating?: boolean 
   }
 
   return (
-    <nav
-      className={
-        floating
-          ? 'fixed top-4 left-1/2 z-50 w-[94%] max-w-5xl -translate-x-1/2'
-          : 'sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-100'
-      }
-    >
-      <div
-        className={
-          floating
-            ? 'flex items-center justify-between rounded-2xl bg-white/90 backdrop-blur-md px-5 py-2 shadow-lg border border-gray-100'
-            : 'max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between'
-        }
-      >
+    <>
+    <nav className="fixed top-4 left-1/2 z-50 w-[94%] max-w-5xl -translate-x-1/2">
+      <div className="flex items-center justify-between rounded-2xl bg-white/90 backdrop-blur-md px-5 py-2 shadow-lg border border-gray-100">
         <div className="flex items-center gap-8">
           <Link href="/" className="flex items-center gap-2">
             <Image
@@ -75,5 +64,8 @@ export default async function Navbar({ floating = false }: { floating?: boolean 
         </div>
       </div>
     </nav>
+    {/* In-flow spacer so page content sits below the floating pill (skipped when a page wants its hero under the navbar) */}
+    {!overlay && <div aria-hidden="true" className="h-20" />}
+    </>
   );
 }

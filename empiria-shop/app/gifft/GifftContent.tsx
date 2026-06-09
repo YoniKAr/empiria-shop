@@ -4,6 +4,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { Suspense, useState, useEffect } from 'react';
 import Image from 'next/image';
 import MovieCard from '@/app/components/MovieCard';
+import GifftCalendar from './GifftCalendar';
 
 const GIFFT_SLIDES = [
   '/gifft/slide-1.jpg',
@@ -75,6 +76,9 @@ function GifftContentInner({ cities, movies, featured, sponsors }: GifftContentP
 
   const selectedCity = cities.find((c) => c.slug === selectedCitySlug) || null;
 
+  // Movies view: grid or week calendar
+  const [view, setView] = useState<'grid' | 'calendar'>('grid');
+
   // Hero slideshow
   const [slide, setSlide] = useState(0);
   useEffect(() => {
@@ -118,7 +122,7 @@ function GifftContentInner({ cities, movies, featured, sponsors }: GifftContentP
   return (
     <>
       {/* Hero Section — slideshow (full-bleed under the floating navbar) */}
-      <section className="relative overflow-hidden min-h-screen flex items-center bg-slate-900">
+      <section className="relative overflow-hidden min-h-[68vh] flex items-center bg-slate-900">
         {/* Slideshow background */}
         <div className="absolute inset-0">
           {GIFFT_SLIDES.map((src, i) => (
@@ -137,7 +141,7 @@ function GifftContentInner({ cities, movies, featured, sponsors }: GifftContentP
           <div className="absolute inset-0 bg-gradient-to-t from-slate-900/95 via-slate-900/65 to-slate-900/55" />
         </div>
 
-        <div className="relative z-10 w-full max-w-7xl mx-auto px-4 sm:px-6 py-20 md:py-28 text-center">
+        <div className="relative z-10 w-full max-w-7xl mx-auto px-4 sm:px-6 py-16 md:py-20 text-center">
           {/* GIFFT logo */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
@@ -283,11 +287,36 @@ function GifftContentInner({ cities, movies, featured, sponsors }: GifftContentP
 
         {/* All Movies */}
         <div>
-          <h2 className="text-2xl font-bold text-slate-900 mb-6 font-[family-name:var(--font-space-grotesk)]">
-            {selectedCity ? `Movies in ${selectedCity.name}` : 'All Movies'}
-          </h2>
+          <div className="flex items-center justify-between mb-6 gap-4 flex-wrap">
+            <h2 className="text-2xl font-bold text-slate-900 font-[family-name:var(--font-space-grotesk)]">
+              {selectedCity ? `Movies in ${selectedCity.name}` : 'All Movies'}
+            </h2>
+            {/* Grid / Calendar toggle */}
+            <div className="inline-flex rounded-full bg-gray-100 p-1">
+              <button
+                type="button"
+                onClick={() => setView('grid')}
+                className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${
+                  view === 'grid' ? 'bg-white text-slate-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                Grid
+              </button>
+              <button
+                type="button"
+                onClick={() => setView('calendar')}
+                className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${
+                  view === 'calendar' ? 'bg-white text-slate-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                Calendar
+              </button>
+            </div>
+          </div>
 
-          {filteredMovies.length > 0 ? (
+          {view === 'calendar' ? (
+            <GifftCalendar movies={filteredMovies} />
+          ) : filteredMovies.length > 0 ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-5">
               {filteredMovies.map((movie) => {
                 const detail = getMovieDetail(movie);
