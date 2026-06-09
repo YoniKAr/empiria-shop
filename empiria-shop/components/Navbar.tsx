@@ -5,7 +5,7 @@ import Image from 'next/image';
 import UserMenu from './UserMenu';
 import CurrencySelector from './CurrencySelector';
 
-export default async function Navbar() {
+export default async function Navbar({ floating = false }: { floating?: boolean }) {
   const session = await getSafeSession();
   const user = session?.user;
 
@@ -23,8 +23,20 @@ export default async function Navbar() {
   }
 
   return (
-    <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-100">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+    <nav
+      className={
+        floating
+          ? 'fixed top-4 left-1/2 z-50 w-[94%] max-w-5xl -translate-x-1/2'
+          : 'sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-100'
+      }
+    >
+      <div
+        className={
+          floating
+            ? 'flex items-center justify-between rounded-2xl bg-white/90 backdrop-blur-md px-5 py-2 shadow-lg border border-gray-100'
+            : 'max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between'
+        }
+      >
         <div className="flex items-center gap-8">
           <Link href="/" className="flex items-center gap-2">
             <Image

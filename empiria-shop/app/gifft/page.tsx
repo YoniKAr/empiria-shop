@@ -44,7 +44,7 @@ export default async function GifftPage() {
 
   return (
     <div className="min-h-screen bg-white font-sans text-slate-900">
-      <Navbar />
+      <Navbar floating />
       <GifftContent
         cities={(cities || []) as any[]}
         movies={(movies || []) as any[]}

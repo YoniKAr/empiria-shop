@@ -118,7 +118,7 @@ function GifftContentInner({ cities, movies, featured, sponsors }: GifftContentP
   return (
     <>
       {/* Hero Section — slideshow (full-bleed under the floating navbar) */}
-      <section className="relative overflow-hidden min-h-screen flex items-center bg-slate-900 -mt-16">
+      <section className="relative overflow-hidden min-h-screen flex items-center bg-slate-900">
         {/* Slideshow background */}
         <div className="absolute inset-0">
           {GIFFT_SLIDES.map((src, i) => (
@@ -157,13 +157,13 @@ function GifftContentInner({ cities, movies, featured, sponsors }: GifftContentP
           <img
             src="/gifft/title-sponsors.png"
             alt="Title Sponsors"
-            className="mx-auto mt-10 w-full max-w-4xl h-auto drop-shadow"
+            className="mx-auto mt-10 w-full max-w-6xl h-auto drop-shadow"
           />
         </div>
       </section>
 
       {/* City Tabs */}
-      <div className="sticky top-16 z-40 bg-white border-b border-gray-100">
+      <div className="sticky top-20 z-40 bg-white border-b border-gray-100">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div
             className="flex gap-1 overflow-x-auto py-3 scrollbar-hide"
