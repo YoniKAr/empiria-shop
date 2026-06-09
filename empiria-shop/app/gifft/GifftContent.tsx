@@ -122,19 +122,31 @@ function GifftContentInner({ cities, movies, featured, sponsors }: GifftContentP
         {/* Slideshow background */}
         <div className="absolute inset-0">
           {GIFFT_SLIDES.map((src, i) => (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
+            <div
               key={src}
-              src={src}
-              alt=""
               aria-hidden="true"
-              className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-1000 ease-in-out ${
+              className={`absolute inset-0 transition-opacity duration-1000 ease-in-out ${
                 i === slide ? 'opacity-100' : 'opacity-0'
               }`}
-            />
+            >
+              {/* Blurred fill for the empty space around the full image */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={src}
+                alt=""
+                className="absolute inset-0 w-full h-full object-cover scale-110 blur-2xl"
+              />
+              {/* The full image, never cropped */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={src}
+                alt=""
+                className="absolute inset-0 w-full h-full object-contain"
+              />
+            </div>
           ))}
           {/* Dark overlay for legibility */}
-          <div className="absolute inset-0 bg-gradient-to-t from-slate-900/95 via-slate-900/70 to-slate-900/55" />
+          <div className="absolute inset-0 bg-slate-900/45" />
         </div>
 
         <div className="relative z-10 w-full max-w-7xl mx-auto px-4 sm:px-6 py-20 md:py-28 text-center">
