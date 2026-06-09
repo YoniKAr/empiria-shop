@@ -178,12 +178,6 @@ export default function MovieDetailContent({
                     {movie.language}
                   </span>
                 )}
-                {movie.rating && (
-                  <span className="inline-flex items-center gap-1.5 bg-white/10 text-white/80 text-sm px-3 py-1.5 rounded-full">
-                    <Star className="w-3.5 h-3.5" />
-                    {movie.rating}
-                  </span>
-                )}
                 {movie.subtitles && (
                   <span className="inline-flex items-center gap-1.5 bg-white/10 text-white/80 text-sm px-3 py-1.5 rounded-full">
                     Subtitles: {movie.subtitles}
@@ -230,6 +224,16 @@ export default function MovieDetailContent({
                       dangerouslySetInnerHTML={{ __html: sanitizeRichText(description) }}
                     />
                   )}
+                </div>
+              )}
+
+              {/* Rating */}
+              {movie.rating && (
+                <div className="mt-4">
+                  <p className="text-xs text-white/40 uppercase tracking-widest font-medium mb-1">Rating</p>
+                  <span className="inline-flex items-center gap-1.5 bg-white/10 text-white/80 text-sm px-3 py-1.5 rounded-full">
+                    <Star className="w-3.5 h-3.5" /> {movie.rating}
+                  </span>
                 </div>
               )}
             </div>
