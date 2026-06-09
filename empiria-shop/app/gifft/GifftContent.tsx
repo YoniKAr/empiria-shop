@@ -117,8 +117,8 @@ function GifftContentInner({ cities, movies, featured, sponsors }: GifftContentP
 
   return (
     <>
-      {/* Hero Section — slideshow */}
-      <section className="relative overflow-hidden min-h-[85vh] flex items-center bg-slate-900">
+      {/* Hero Section — slideshow (full-bleed under the floating navbar) */}
+      <section className="relative overflow-hidden min-h-screen flex items-center bg-slate-900 -mt-16">
         {/* Slideshow background */}
         <div className="absolute inset-0">
           {GIFFT_SLIDES.map((src, i) => (
@@ -157,22 +157,8 @@ function GifftContentInner({ cities, movies, featured, sponsors }: GifftContentP
           <img
             src="/gifft/title-sponsors.png"
             alt="Title Sponsors"
-            className="mx-auto mt-8 w-full max-w-2xl h-auto drop-shadow"
+            className="mx-auto mt-10 w-full max-w-4xl h-auto drop-shadow"
           />
-          {/* Slide indicators */}
-          <div className="flex items-center justify-center gap-2 mt-8">
-            {GIFFT_SLIDES.map((_, i) => (
-              <button
-                key={i}
-                type="button"
-                aria-label={`Go to slide ${i + 1}`}
-                onClick={() => setSlide(i)}
-                className={`h-1.5 rounded-full transition-all ${
-                  i === slide ? 'w-6 bg-[#F15A29]' : 'w-1.5 bg-white/40 hover:bg-white/60'
-                }`}
-              />
-            ))}
-          </div>
         </div>
       </section>
 
