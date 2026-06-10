@@ -1,5 +1,5 @@
 import QRCodeLib from 'qrcode';
-import { resend } from '@/lib/resend';
+import { sendEmail } from '@/lib/mailer';
 import { generateApplePass, generateGoogleWalletLink } from './wallet';
 import { CtaLabel } from '@/lib/eventFields';
 import { render as ticketsTpl } from '@/designs/email-templates/order-confirmation-tickets';
@@ -95,8 +95,6 @@ export async function sendOrderConfirmationEmail(data: OrderEmailData) {
   const pick = ({ buy_tickets: ticketsTpl, register: registrationTpl, rsvp: rsvpTpl } as const)[(data.ctaLabel as CtaLabel) ?? 'buy_tickets'] ?? ticketsTpl;
   const { subject, html } = pick(data, walletResults);
 
-  const fromEmail = 'Empiria <tickets@empiriaindia.com>';
-
   // Build wallet .pkpass attachments
   const walletAttachments = walletResults
     .filter((w) => w.applePass)
@@ -106,8 +104,7 @@ export async function sendOrderConfirmationEmail(data: OrderEmailData) {
       contentType: 'application/vnd.apple.pkpass' as const,
     }));
 
-  const { error } = await resend.emails.send({
-    from: fromEmail,
+  await sendEmail({
     to: data.to,
     subject,
     html,
@@ -116,13 +113,8 @@ export async function sendOrderConfirmationEmail(data: OrderEmailData) {
         filename: a.filename,
         content: a.content,
         contentType: 'image/png' as const,
-        contentId: a.cid,
       })),
       ...walletAttachments,
     ],
   });
-
-  if (error) {
-    throw new Error(`Resend API error: ${JSON.stringify(error)}`);
-  }
 }
