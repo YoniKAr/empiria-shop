@@ -307,6 +307,12 @@ async function handleCheckoutCompleted(session: any) {
           amountCents = Math.round((splitBaseCents * split.percentage) / 100);
         }
 
+        // Accumulate the INTENDED allocation regardless of transfer success.
+        // This keeps the last split's remainder based on intended allocations,
+        // so a failed intermediate transfer leaves that recipient unpaid
+        // (money stays on the platform) without overpaying the last split.
+        totalTransferred += amountCents;
+
         let transferId: string | null = null;
         if (amountCents > 0) {
           try {
@@ -323,7 +329,6 @@ async function handleCheckoutCompleted(session: any) {
               },
             });
             transferId = transfer.id;
-            totalTransferred += amountCents;
             console.log(
               `[Webhook] Transfer created: ${amountCents} cents (${split.percentage}%) to ${split.recipient_stripe_id}`
             );
@@ -354,7 +359,7 @@ async function handleCheckoutCompleted(session: any) {
     let elevsoftTransferData: { id: string; amount: number } | null = null;
 
     if (elevsoftStripeId && elevsoftPercent > 0) {
-      const elevsoftAmount = Math.max(0, isPlatformEvent ? platformFee : platformFee * (elevsoftPercent / 100));
+      const elevsoftAmount = Math.max(0, isPlatformEvent ? platformTakeHome : platformTakeHome * (elevsoftPercent / 100));
       const elevsoftCents = Math.round(elevsoftAmount * 100);
 
       if (elevsoftCents > 0) {
