@@ -460,7 +460,7 @@ export async function POST(request: NextRequest) {
 
     // 7. Calculate fees (single source of truth: lib/fees.ts)
     const currency = event.currency || 'cad';
-    const feePercent = Number(event.platform_fee_percent) || DEFAULT_FEE_PERCENT;
+    const feePercent = event.platform_fee_percent != null ? Number(event.platform_fee_percent) : DEFAULT_FEE_PERCENT;
     const feeFixedPerTicket = event.platform_fee_fixed != null ? Number(event.platform_fee_fixed) : DEFAULT_FIXED_PER_TICKET;
     const passProcessingFee = event.pass_processing_fee === true;
 
@@ -476,6 +476,14 @@ export async function POST(request: NextRequest) {
       feePercent,
       feeFixedPerTicket,
     });
+
+    // Stripe rejects $0 sessions. A fully-discounted or all-free order can't be charged here.
+    if (fees.customerTotal <= 0) {
+      return NextResponse.json(
+        { error: 'This order total is $0 — free checkout isn’t available through payment.' },
+        { status: 400 }
+      );
+    }
 
     // Build Stripe line items summing exactly to fees.customerTotal.
     const lineItems: Array<{
