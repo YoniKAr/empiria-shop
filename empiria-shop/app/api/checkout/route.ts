@@ -8,6 +8,7 @@ import { getSafeSession } from '@/lib/auth0';
 import { stripe } from '@/lib/stripe';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { toStripeAmount } from '@/lib/utils';
+import { computeFees, DEFAULT_FEE_PERCENT, DEFAULT_FIXED_PER_TICKET } from '@/lib/fees';
 
 interface TierSelection {
   tierId: string;
@@ -139,16 +140,6 @@ export async function POST(request: NextRequest) {
     let subtotal = 0;
     const chargeTicketTax = event.charge_ticket_tax === true;
 
-    const lineItems: Array<{
-      price_data: {
-        currency: string;
-        tax_behavior?: 'exclusive' | 'inclusive' | 'unspecified';
-        product_data: { name: string; description?: string; tax_code?: string };
-        unit_amount: number;
-      };
-      quantity: number;
-    }> = [];
-
     const tierMap = new Map(ticketTiers.map((t) => [t.id, t]));
     const validatedSelections: Array<{ tierId: string; quantity: number; unitPrice: number; tierName: string }> = [];
 
@@ -196,20 +187,6 @@ export async function POST(request: NextRequest) {
         quantity: selection.quantity,
         unitPrice: tier.price,
         tierName: tier.name,
-      });
-
-      lineItems.push({
-        price_data: {
-          currency: event.currency || 'cad',
-          ...(chargeTicketTax && { tax_behavior: 'exclusive' as const }),
-          product_data: {
-            name: `${tier.name} — ${event.title}`,
-            ...(tier.description && { description: tier.description }),
-            ...(chargeTicketTax && { tax_code: 'txcd_20060003' }),
-          },
-          unit_amount: toStripeAmount(tier.price, event.currency || 'cad'),
-        },
-        quantity: selection.quantity,
       });
     }
 
@@ -481,99 +458,82 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 7. Calculate fees
+    // 7. Calculate fees (single source of truth: lib/fees.ts)
     const currency = event.currency || 'cad';
-    const feePercent = Number(event.platform_fee_percent) || 3.5;
-    const feeFixedPerTicket = event.platform_fee_fixed != null ? Number(event.platform_fee_fixed) : 1.50;
+    const feePercent = Number(event.platform_fee_percent) || DEFAULT_FEE_PERCENT;
+    const feeFixedPerTicket = event.platform_fee_fixed != null ? Number(event.platform_fee_fixed) : DEFAULT_FIXED_PER_TICKET;
     const passProcessingFee = event.pass_processing_fee === true;
 
-    const totalTickets = validatedSelections.reduce((sum: number, s: { quantity: number }) => sum + s.quantity, 0);
-    // The fixed per-ticket fee only applies to PAID tickets — free tickets (price 0)
-    // incur no fee, even on events that mix free and paid tiers.
-    const paidTickets = validatedSelections.reduce(
-      (sum: number, s: { quantity: number; unitPrice: number }) => sum + (s.unitPrice > 0 ? s.quantity : 0),
-      0
-    );
+    const totalTickets = validatedSelections.reduce((sum, s) => sum + s.quantity, 0);
+    const paidTickets = validatedSelections.reduce((sum, s) => sum + (s.unitPrice > 0 ? s.quantity : 0), 0);
 
-    // Platform fee (service fee) - includes Stripe fees within it
-    const platformFee = Math.round((subtotal * (feePercent / 100) + (feeFixedPerTicket * paidTickets)) * 100) / 100;
+    const fees = computeFees({
+      base: subtotal,
+      discount: discountAmount,
+      paidTickets,
+      chargeTicketTax,
+      passProcessingFee,
+      feePercent,
+      feeFixedPerTicket,
+    });
 
-    // Tax rates
-    const STRIPE_PERCENT = 0.029;
-    const STRIPE_FIXED = 0.30;
-    const PLATFORM_HST_RATE = 0.13;
+    // Build Stripe line items summing exactly to fees.customerTotal.
+    const lineItems: Array<{
+      price_data: { currency: string; product_data: { name: string; description?: string }; unit_amount: number };
+      quantity: number;
+    }> = [];
 
-    // Ticket tax: when Stripe Tax is enabled, Stripe calculates it automatically
-    // at checkout based on buyer/event location — we set it to 0 in our calculation.
-    // When disabled, no tax is charged.
-    const ticketTaxRate = 0;
-    const ticketTax = 0;
-
-    let customerTotal: number;
-    let stripeFeeEstimate: number;
-    let netPlatform: number;
-    let platformHST: number;
-    let organizerPayout: number;
-
-    if (passProcessingFee) {
-      // PASS MODE: customer pays ticket price + service fee + HST on fee + ticket tax
-      // Algebraic solution for circular dependency (Stripe fee depends on total, HST depends on Stripe fee)
-      // Total = [S(1 + R_t) + 1.13P - STRIPE_FIXED * PLATFORM_HST_RATE] / (1 + STRIPE_PERCENT * PLATFORM_HST_RATE)
-      const rawTotal = (subtotal * (1 + ticketTaxRate) + (1 + PLATFORM_HST_RATE) * platformFee - STRIPE_FIXED * PLATFORM_HST_RATE) / (1 + STRIPE_PERCENT * PLATFORM_HST_RATE);
-      customerTotal = Math.round((rawTotal - discountAmount) * 100) / 100;
-      stripeFeeEstimate = Math.round((STRIPE_PERCENT * customerTotal + STRIPE_FIXED) * 100) / 100;
-      netPlatform = Math.round((platformFee - stripeFeeEstimate) * 100) / 100;
-      platformHST = Math.round(netPlatform * PLATFORM_HST_RATE * 100) / 100;
-      // Organizer absorbs the discount: payout = subtotal - discount
-      organizerPayout = Math.round((subtotal + ticketTax - discountAmount) * 100) / 100;
-    } else {
-      // ABSORB MODE: customer pays only ticket price + ticket tax - discount
-      customerTotal = Math.round((subtotal + ticketTax - discountAmount) * 100) / 100;
-      stripeFeeEstimate = Math.round((STRIPE_PERCENT * customerTotal + STRIPE_FIXED) * 100) / 100;
-      netPlatform = Math.round((platformFee - stripeFeeEstimate) * 100) / 100;
-      platformHST = Math.round(netPlatform * PLATFORM_HST_RATE * 100) / 100;
-      // Organizer absorbs the discount: payout = subtotal - discount - fees
-      organizerPayout = Math.round((subtotal + ticketTax - discountAmount - platformFee - platformHST) * 100) / 100;
-    }
-
-    // Ensure non-negative
-    organizerPayout = Math.max(0, organizerPayout);
-    netPlatform = Math.max(0, netPlatform);
-    platformHST = Math.max(0, platformHST);
-
-    // Add service fee line items (only in pass mode)
-    // Fee items are marked non-taxable (txcd_00000000) so Stripe Tax doesn't
-    // double-tax them — the platform always charges 13% HST on the fee.
-    if (passProcessingFee && platformFee > 0) {
-      lineItems.push({
-        price_data: {
-          currency,
-          ...(chargeTicketTax && { tax_behavior: 'exclusive' as const }),
-          product_data: {
-            name: 'Service Fee',
-            description: 'Platform service fee (includes payment processing)',
-            ...(chargeTicketTax && { tax_code: 'txcd_00000000' }),
-          },
-          unit_amount: toStripeAmount(platformFee, currency),
-        },
-        quantity: 1,
-      });
-
-      if (platformHST > 0) {
+    if (discountAmount <= 0) {
+      for (const sel of validatedSelections) {
         lineItems.push({
           price_data: {
             currency,
-            ...(chargeTicketTax && { tax_behavior: 'exclusive' as const }),
-            product_data: {
-              name: 'HST on Service Fee (13%)',
-              description: 'Harmonized Sales Tax (13%) on service fee',
-              ...(chargeTicketTax && { tax_code: 'txcd_00000000' }),
-            },
-            unit_amount: toStripeAmount(platformHST, currency),
+            product_data: { name: `${sel.tierName} — ${event.title}` },
+            unit_amount: toStripeAmount(sel.unitPrice, currency),
           },
+          quantity: sel.quantity,
+        });
+      }
+    } else {
+      // Bake the discount into per-unit ticket lines (last unit absorbs the cent remainder)
+      // so sum(ticket lines) === fees.effBase exactly. No Stripe coupon.
+      const baseCents = Math.round(subtotal * 100);
+      const discountCents = Math.round(discountAmount * 100);
+      const units: Array<{ name: string; cents: number }> = [];
+      for (const sel of validatedSelections) {
+        for (let i = 0; i < sel.quantity; i++) {
+          units.push({ name: `${sel.tierName} — ${event.title}`, cents: Math.round(sel.unitPrice * 100) });
+        }
+      }
+      let allocated = 0;
+      for (let i = 0; i < units.length; i++) {
+        const d = i === units.length - 1 ? discountCents - allocated : Math.round(discountCents * (units[i].cents / baseCents));
+        if (i < units.length - 1) allocated += d;
+        const net = Math.max(0, units[i].cents - d);
+        lineItems.push({
+          price_data: { currency, product_data: { name: units[i].name }, unit_amount: net },
           quantity: 1,
         });
       }
+    }
+
+    if (fees.customerTax > 0) {
+      lineItems.push({
+        price_data: { currency, product_data: { name: 'Tax (HST 13%)' }, unit_amount: toStripeAmount(fees.customerTax, currency) },
+        quantity: 1,
+      });
+    }
+    if (passProcessingFee && fees.platformFee > 0) {
+      lineItems.push({
+        price_data: { currency, product_data: { name: 'Service fee', description: 'Platform service fee' }, unit_amount: toStripeAmount(fees.platformFee, currency) },
+        quantity: 1,
+      });
+    }
+    if (passProcessingFee && fees.stripeOffset > 0) {
+      lineItems.push({
+        price_data: { currency, product_data: { name: 'Processing fee', description: 'Secure card processing' }, unit_amount: toStripeAmount(fees.stripeOffset, currency) },
+        quantity: 1,
+      });
     }
 
     // 7b. Check for multi-organizer revenue splits
@@ -597,25 +557,29 @@ export async function POST(request: NextRequest) {
       user_email: customerEmail || '',
       user_name: contactName || user?.name || '',
       tier_selections: JSON.stringify(validatedSelections),
-      platform_fee: platformFee.toFixed(2),
+      subtotal: subtotal.toFixed(2),
+      eff_base: fees.effBase.toFixed(2),
+      paid_tickets: paidTickets.toString(),
+      total_tickets: totalTickets.toString(),
       platform_fee_percent: feePercent.toString(),
       platform_fee_fixed: feeFixedPerTicket.toString(),
-      organizer_payout: organizerPayout.toFixed(2),
-      subtotal: subtotal.toFixed(2),
-      customer_total: customerTotal.toFixed(2),
-      processing_fee_amount: '0',
+      platform_fee: fees.platformFee.toFixed(2),
+      hst_on_base: fees.hstOnBase.toFixed(2),
+      hst_on_fee: fees.hstOnFee.toFixed(2),
+      hst_total: fees.hstTotal.toFixed(2),
+      customer_tax: fees.customerTax.toFixed(2),
+      stripe_offset: fees.stripeOffset.toFixed(2),
+      stripe_fee_estimate: fees.stripeFeeEstimate.toFixed(2),
+      customer_total: fees.customerTotal.toFixed(2),
+      organizer_payout: fees.organizerPayout.toFixed(2),
+      empiria_keep: fees.empiriaKeep.toFixed(2),
       pass_processing_fee: passProcessingFee.toString(),
-      total_tickets: totalTickets.toString(),
-      source_app: 'shop',
-      occurrence_id: occurrenceId || '',
+      charge_ticket_tax: chargeTicketTax.toString(),
+      discount_amount: discountAmount.toFixed(2),
       coupon_id: couponId || '',
       coupon_code: couponCode_validated || '',
-      discount_amount: discountAmount.toFixed(2),
-      ticket_tax: ticketTax.toFixed(2),
-      platform_hst: platformHST.toFixed(2),
-      stripe_fee_estimate: stripeFeeEstimate.toFixed(2),
-      net_platform: netPlatform.toFixed(2),
-      charge_ticket_tax: chargeTicketTax.toString(),
+      source_app: 'shop',
+      occurrence_id: occurrenceId || '',
     };
 
     // Include transfer_group and organizer metadata for webhook processing
@@ -640,18 +604,6 @@ export async function POST(request: NextRequest) {
     // 10. Create Stripe Checkout Session
     const appBaseUrl = process.env.APP_BASE_URL || 'https://shop.empiriaindia.com';
 
-    // Create an ad-hoc Stripe coupon for the discount (if applicable)
-    let stripeDiscounts: Array<{ coupon: string }> | undefined;
-    if (discountAmount > 0) {
-      const stripeCoupon = await stripe.coupons.create({
-        amount_off: toStripeAmount(discountAmount, currency),
-        currency,
-        name: `Promo: ${couponCode_validated}`,
-        duration: 'once',
-      });
-      stripeDiscounts = [{ coupon: stripeCoupon.id }];
-    }
-
     let checkoutSession;
 
     // Unified checkout: all charges land on platform account.
@@ -661,8 +613,6 @@ export async function POST(request: NextRequest) {
       mode: 'payment',
       line_items: lineItems,
       ...(customerEmail && { customer_email: customerEmail }),
-      ...(chargeTicketTax && { automatic_tax: { enabled: true } }),
-      ...(stripeDiscounts && { discounts: stripeDiscounts }),
       payment_intent_data: {
         transfer_group: transferGroup,
         metadata,
