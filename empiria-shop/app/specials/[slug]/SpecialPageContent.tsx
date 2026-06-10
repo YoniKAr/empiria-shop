@@ -189,7 +189,9 @@ export function SpecialPageContent({ page, events }: SpecialPageContentProps) {
                 const currency = event.currency || "cad";
                 const symbol = getCurrencySymbol(currency);
 
-                const occs = event.event_occurrences || [];
+                const occs = [...(event.event_occurrences || [])].sort(
+                  (a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime()
+                );
                 const startAt = occs[0]?.starts_at || undefined;
 
                 return (

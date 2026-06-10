@@ -72,7 +72,7 @@ export default async function CheckoutPage({ params }: { params: Promise<{ event
           currency={event.currency || 'cad'}
           passProcessingFee={Boolean(event.pass_processing_fee)}
           chargeTicketTax={Boolean(event.charge_ticket_tax)}
-          feePercent={Number(event.platform_fee_percent) || DEFAULT_FEE_PERCENT}
+          feePercent={event.platform_fee_percent != null ? Number(event.platform_fee_percent) : DEFAULT_FEE_PERCENT}
           feeFixedPerTicket={event.platform_fee_fixed != null ? Number(event.platform_fee_fixed) : DEFAULT_FIXED_PER_TICKET}
           customFields={event.custom_fields ?? []}
           user={user}

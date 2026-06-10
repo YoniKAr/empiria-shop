@@ -77,7 +77,9 @@ export default function EventsGrid({ events, query, setQuery, categories }: Even
                             const currency = event.currency || 'cad';
                             const symbol = getCurrencySymbol(currency);
 
-                            const occs = (event as any).event_occurrences || [];
+                            const occs = [...((event as any).event_occurrences || [])].sort(
+                                (a: any, b: any) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime()
+                            );
                             const startAt = occs[0]?.starts_at || event.start_at || undefined;
 
                             return (

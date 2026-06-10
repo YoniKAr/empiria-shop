@@ -212,13 +212,14 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
     if (similarEvents.length > 0) {
         const orgIds = [...new Set(similarEvents.map((e: any) => e.organizer_id).filter(Boolean))];
         const { data: profiles } = orgIds.length > 0
-            ? await supabase.from('users').select('auth0_id, full_name').in('auth0_id', orgIds)
+            ? await supabase.from('users').select('auth0_id, full_name, role').in('auth0_id', orgIds)
             : { data: [] };
         const pMap: Record<string, string> = {};
-        (profiles || []).forEach((p: any) => { pMap[p.auth0_id] = p.full_name; });
+        const rMap: Record<string, string> = {};
+        (profiles || []).forEach((p: any) => { pMap[p.auth0_id] = p.full_name; rMap[p.auth0_id] = p.role; });
         similarEvents = similarEvents.map((e: any) => ({
             ...e,
-            organizer_name: e.source_app === 'admin' ? 'Empiria Events' : (pMap[e.organizer_id] || 'Empiria Events'),
+            organizer_name: rMap[e.organizer_id] === 'admin' ? 'Empiria Events' : (pMap[e.organizer_id] || 'Empiria Events'),
         }));
     }
 
@@ -364,7 +365,9 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                                 const prices = se.ticket_tiers?.map((t: any) => t.price) || [];
                                 const minPrice = prices.length > 0 ? Math.min(...prices) : 0;
                                 const sym = getCurrencySymbol(se.currency || 'cad');
-                                const occs = se.event_occurrences || [];
+                                const occs = [...(se.event_occurrences || [])].sort(
+                                    (a: any, b: any) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime()
+                                );
                                 const startAt = occs[0]?.starts_at || undefined;
 
                                 return (

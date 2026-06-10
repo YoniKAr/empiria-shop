@@ -374,7 +374,7 @@ export async function POST(request: NextRequest) {
             .select('seat_label')
             .eq('event_id', eventId)
             .not('seat_label', 'is', null)
-            .in('status', ['valid', 'checked_in']);
+            .in('status', ['valid', 'used']);
 
           const soldLabels = new Set(
             (soldTickets || []).map((t: any) => t.seat_label).filter(Boolean)
@@ -416,7 +416,7 @@ export async function POST(request: NextRequest) {
             .select('seat_label')
             .eq('event_id', eventId)
             .not('seat_label', 'is', null)
-            .in('status', ['valid', 'checked_in']);
+            .in('status', ['valid', 'used']);
 
           const soldLabels = new Set(
             (soldTickets || []).map((t: any) => t.seat_label).filter(Boolean)

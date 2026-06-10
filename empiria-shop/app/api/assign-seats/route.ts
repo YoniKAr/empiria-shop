@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
       .select('seat_label')
       .eq('event_id', eventId)
       .not('seat_label', 'is', null)
-      .in('status', ['valid', 'checked_in']);
+      .in('status', ['valid', 'used']);
 
     if (soldError) {
       return NextResponse.json(
