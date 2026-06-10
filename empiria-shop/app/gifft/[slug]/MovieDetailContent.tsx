@@ -18,6 +18,7 @@ interface MovieDetail {
   language?: string;
   subtitles?: string;
   rating?: string;
+  pamphlet_url?: string;
 }
 
 interface Occurrence {
@@ -263,12 +264,26 @@ export default function MovieDetailContent({
         </div>
       )}
 
+      {/* Pamphlet Section */}
+      {movie.pamphlet_url && /^https?:\/\//i.test(movie.pamphlet_url) && (
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
+          <a
+            href={movie.pamphlet_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 bg-[#F15A29] hover:bg-[#e07d15] text-white font-bold text-sm px-6 py-3 rounded-full transition-colors shadow-sm"
+          >
+            <Globe className="w-4 h-4" /> Download Pamphlet
+          </a>
+        </div>
+      )}
+
       {/* Showings Section */}
       {futureOccurrences.length > 0 && (
         <div className="border-t border-gray-100">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 py-12">
             <h2 className="text-2xl font-bold text-slate-900 mb-6 font-[family-name:var(--font-space-grotesk)]">
-              <span className="text-[#F15A29]">Upcoming</span> Showings
+              <span className="text-[#F15A29]">Upcoming</span> Screenings
             </h2>
             <div className="flex flex-col gap-4">
               {futureOccurrences.map((occ: any) => (
@@ -327,7 +342,7 @@ export default function MovieDetailContent({
       {futureOccurrences.length === 0 && (
         <div className="border-t border-gray-100">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 py-12 text-center">
-            <p className="text-gray-500 mb-4">No upcoming showings scheduled yet.</p>
+            <p className="text-gray-500 mb-4">No upcoming screenings scheduled yet.</p>
             <Link
               href={`/checkout/${event.id}`}
               className="inline-block bg-[#F15A29] hover:bg-[#e07d15] text-white font-bold text-sm px-8 py-3 rounded-full transition-colors shadow-sm"

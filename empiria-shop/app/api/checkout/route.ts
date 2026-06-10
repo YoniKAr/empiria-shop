@@ -103,24 +103,30 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 4. Fetch organizer's Stripe Connect account (skip for platform-owned events)
-    const isPlatformEvent = event.source_app === 'admin';
+    // 4. Resolve the event owner. An event is "platform-owned" only when its owner is
+    // an admin/platform account — NOT merely because it was created via the admin app.
+    // Admins can create events on behalf of real organizers, who must still be paid.
+    const { data: ownerData } = await supabase
+      .from('users')
+      .select('role, stripe_account_id, stripe_onboarding_completed, full_name')
+      .eq('auth0_id', event.organizer_id)
+      .single();
+
+    const isPlatformEvent = ownerData?.role === 'admin';
     let organizer: { stripe_account_id: string | null; stripe_onboarding_completed: boolean | null; full_name: string | null } | null = null;
 
     if (!isPlatformEvent) {
-      const { data: orgData, error: orgError } = await supabase
-        .from('users')
-        .select('stripe_account_id, stripe_onboarding_completed, full_name')
-        .eq('auth0_id', event.organizer_id)
-        .single();
-
-      if (orgError || !orgData?.stripe_account_id || !orgData.stripe_onboarding_completed) {
+      if (!ownerData?.stripe_account_id || !ownerData.stripe_onboarding_completed) {
         return NextResponse.json(
           { error: 'This event\'s organizer has not completed payment setup. Please contact the organizer.' },
           { status: 400 }
         );
       }
-      organizer = orgData;
+      organizer = {
+        stripe_account_id: ownerData.stripe_account_id,
+        stripe_onboarding_completed: ownerData.stripe_onboarding_completed,
+        full_name: ownerData.full_name,
+      };
     }
 
     // 5. Fetch selected ticket tiers
@@ -544,12 +550,39 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // 7b. Check for multi-organizer revenue splits
-    const { data: splits } = await supabase
-      .from('revenue_splits')
-      .select('recipient_user_id, recipient_stripe_id, percentage, description')
+    // 7b. Check for multi-organizer revenue splits (co-organizers with a revenue share)
+    const { data: coOrganizerRows } = await supabase
+      .from('event_organizers')
+      .select('user_id, revenue_percentage, description, users:user_id(stripe_account_id)')
       .eq('event_id', eventId)
-      .eq('source_type', 'net_revenue');
+      .gt('revenue_percentage', 0);
+
+    // Map co-organizers to the shape the payout pipeline expects (only those with a
+    // connected Stripe account can actually receive a transfer).
+    const splits = (coOrganizerRows || [])
+      .map((row: any) => ({
+        recipient_user_id: row.user_id,
+        recipient_stripe_id: row.users?.stripe_account_id ?? null,
+        percentage: Number(row.revenue_percentage),
+        description: row.description,
+      }))
+      .filter((s) => !!s.recipient_stripe_id);
+
+    // When there are co-organizer splits, the primary organizer must also receive their
+    // share. Append them LAST so the webhook's remainder logic gives them their cut plus
+    // any rounding drift and any share that couldn't be paid to a co-organizer (no Stripe).
+    if (!isPlatformEvent && organizer?.stripe_account_id && splits.length > 0) {
+      const coOrgPctTotal = (coOrganizerRows || []).reduce(
+        (sum: number, r: any) => sum + Number(r.revenue_percentage || 0),
+        0
+      );
+      splits.push({
+        recipient_user_id: event.organizer_id,
+        recipient_stripe_id: organizer.stripe_account_id,
+        percentage: Math.max(0, 100 - coOrgPctTotal),
+        description: 'Primary organizer',
+      });
+    }
 
     const hasMultiSplit = splits && splits.length > 0;
     const transferGroup = `evt_${eventId.slice(0, 8)}_${Date.now()}`;

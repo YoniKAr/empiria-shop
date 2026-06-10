@@ -52,11 +52,27 @@ export default async function ShopHome() {
         const profileMap: Record<string, string> = {};
         (profiles || []).forEach((p: any) => { profileMap[p.auth0_id] = p.full_name; });
 
+        // Batch-fetch visible co-organizer counts per event.
+        const eventIds = realEvents.map((e: any) => e.id);
+        const { data: coOrgRows } = eventIds.length > 0
+            ? await supabase
+                .from('event_organizers')
+                .select('event_id')
+                .in('event_id', eventIds)
+                .eq('is_visible', true)
+            : { data: [] };
+
+        const coHostCountMap: Record<string, number> = {};
+        (coOrgRows || []).forEach((r: any) => {
+            coHostCountMap[r.event_id] = (coHostCountMap[r.event_id] || 0) + 1;
+        });
+
         events = realEvents.map((e: any) => ({
             ...e,
             organizer_name: e.source_app === 'admin'
                 ? 'Empiria Events'
                 : (profileMap[e.organizer_id] || 'Empiria Events'),
+            co_host_count: coHostCountMap[e.id] || 0,
         }));
     }
 

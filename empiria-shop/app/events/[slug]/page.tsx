@@ -44,18 +44,36 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
     const heroEndAt = firstOcc?.ends_at || event.end_at || heroStartAt;
     const categoryName = (event as any).categories?.name || 'Event';
 
-    // Look up the event owner's name from the users table
+    // Look up the event owner's profile from the users table
     const { data: ownerProfile } = event.organizer_id
         ? await supabase
             .from('users')
-            .select('full_name')
+            .select('full_name, role, avatar_url')
             .eq('auth0_id', event.organizer_id)
             .single()
         : { data: null };
 
-    const organizer = event.source_app === 'admin'
+    // Role-based primary name: admin-owned events show "Empiria Events", but an
+    // event an admin created ON BEHALF of a real organizer (owner role !== admin)
+    // shows that organizer's name.
+    const organizer = ownerProfile?.role === 'admin'
         ? 'Empiria Events'
         : (ownerProfile?.full_name || 'Empiria Events');
+
+    // Fetch visible co-organizers (additional hosts shown publicly).
+    const { data: coOrganizerRows } = await supabase
+        .from('event_organizers')
+        .select('sort_order, users:user_id(full_name, avatar_url)')
+        .eq('event_id', event.id)
+        .eq('is_visible', true)
+        .order('sort_order', { ascending: true });
+
+    const coOrganizers = (coOrganizerRows || [])
+        .map((row: any) => ({
+            name: row.users?.full_name || null,
+            avatarUrl: row.users?.avatar_url || null,
+        }))
+        .filter((c: { name: string | null }) => !!c.name) as { name: string; avatarUrl?: string | null }[];
 
     // Gallery images: prefer the stored gallery_images column; otherwise fall
     // back to listing the storage bucket (for older events created before the
@@ -241,6 +259,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                         city={event.city}
                         addressText={event.address_text}
                         organizer={organizer}
+                        coOrganizers={coOrganizers}
                         galleryUrls={galleryUrls}
                         whatToExpect={whatToExpect}
                         trailerUrl={(event as any).trailer_url || ''}
@@ -362,6 +381,8 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                                         minPrice={minPrice}
                                         currencySymbol={sym}
                                         organizerName={se.organizer_name}
+                                        // TODO: surface co-host count on similar-event cards
+                                        // (batch-fetch event_organizers visible counts like app/page.tsx).
                                     />
                                 );
                             })}

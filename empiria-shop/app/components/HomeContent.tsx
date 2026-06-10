@@ -17,6 +17,7 @@ interface Event {
   event_occurrences?: { starts_at: string }[];
   start_at?: string;
   organizer_name?: string;
+  co_host_count?: number;
 }
 
 interface FeaturedEvent {

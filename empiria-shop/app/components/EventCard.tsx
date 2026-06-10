@@ -16,6 +16,8 @@ export interface EventCardProps {
     attendeesCount?: number;
     attendeeAvatars?: string[];
     organizerName?: string;
+    /** Number of additional VISIBLE co-organizers (hosts) on this event. */
+    coHostCount?: number;
 }
 
 export function EventCard({
@@ -31,6 +33,7 @@ export function EventCard({
     minPrice,
     currencySymbol,
     organizerName,
+    coHostCount = 0,
 }: EventCardProps) {
     const eventDate = startAt ? new Date(startAt) : null;
     const month = eventDate?.toLocaleDateString('en-US', { month: 'short' }).toUpperCase();
@@ -138,6 +141,11 @@ export function EventCard({
                             <span className="text-[12px] text-gray-600 font-medium line-clamp-1">
                                 {organizerName || 'Empiria Events'}
                             </span>
+                            {coHostCount > 0 && (
+                                <span className="text-[11px] text-gray-400 font-medium flex-shrink-0">
+                                    +{coHostCount} co-host{coHostCount > 1 ? 's' : ''}
+                                </span>
+                            )}
                         </div>
 
                         {/* View Details Link */}

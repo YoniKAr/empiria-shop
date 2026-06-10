@@ -13,6 +13,7 @@ interface EventDetailsProps {
     city: string
     addressText?: string
     organizer: string
+    coOrganizers?: { name: string; avatarUrl?: string | null }[]
     galleryUrls?: string[]
     whatToExpect?: string[]
     trailerUrl?: string
@@ -26,6 +27,7 @@ export function EventDetails({
     city,
     addressText,
     organizer,
+    coOrganizers = [],
     galleryUrls = [],
     whatToExpect = [],
     trailerUrl,
@@ -165,6 +167,28 @@ export function EventDetails({
                     <div>
                         <p className="text-xs text-gray-500 uppercase tracking-wider font-medium mb-1">Organized by</p>
                         <p className="text-sm text-gray-900 font-medium">{organizer}</p>
+                        {coOrganizers.length > 0 && (
+                            <div className="mt-3 flex flex-col gap-2">
+                                {coOrganizers.map((co, i) => (
+                                    <div key={`${co.name}-${i}`} className="flex items-center gap-2">
+                                        {co.avatarUrl ? (
+                                            <Image
+                                                src={co.avatarUrl}
+                                                alt={co.name}
+                                                width={20}
+                                                height={20}
+                                                className="w-5 h-5 rounded-full object-cover flex-shrink-0"
+                                            />
+                                        ) : (
+                                            <span className="w-5 h-5 rounded-full bg-orange-50 text-[#F15A29] text-[10px] font-semibold flex items-center justify-center flex-shrink-0">
+                                                {co.name.charAt(0).toUpperCase()}
+                                            </span>
+                                        )}
+                                        <span className="text-sm text-gray-700">{co.name}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
