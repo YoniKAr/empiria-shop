@@ -101,22 +101,20 @@ async function handleCheckoutCompleted(session: any) {
     unitPrice: number;
     tierName: string;
   }>;
-  const subtotal = parseFloat(metadata.subtotal);
-  const platformFee = parseFloat(metadata.platform_fee);
-  const feePercent = parseFloat(metadata.platform_fee_percent) || 0;
-  const feeFixed = parseFloat(metadata.platform_fee_fixed) || 0;
-  const organizerPayout = parseFloat(metadata.organizer_payout);
-  const customerTotal = parseFloat(metadata.customer_total || metadata.subtotal);
-  const processingFeeAmount = parseFloat(metadata.processing_fee_amount || '0');
+  const subtotal = parseFloat(metadata.subtotal || '0');
+  const effBase = parseFloat(metadata.eff_base || metadata.subtotal || '0');
+  const platformFee = parseFloat(metadata.platform_fee || '0');
+  const hstOnBase = parseFloat(metadata.hst_on_base || '0');
+  const hstOnFee = parseFloat(metadata.hst_on_fee || '0');
+  const customerTotal = parseFloat(metadata.customer_total || '0');
+  const stripeOffset = parseFloat(metadata.stripe_offset || '0');
+  const feePercent = parseFloat(metadata.platform_fee_percent || '0');
+  const feeFixed = parseFloat(metadata.platform_fee_fixed || '0');
   const passProcessingFee = metadata.pass_processing_fee === 'true';
-  const totalTickets = parseInt(metadata.total_tickets || '0', 10);
-  const ticketTax = parseFloat(metadata.ticket_tax || '0');
-  const platformHSTEstimate = parseFloat(metadata.platform_hst || '0');
   const chargeTicketTax = metadata.charge_ticket_tax === 'true';
-
-  // Coupon/discount metadata
-  const couponId = metadata.coupon_id || null;
+  const totalTickets = parseInt(metadata.total_tickets || '0', 10);
   const discountAmount = parseFloat(metadata.discount_amount || '0');
+  const couponId = metadata.coupon_id || null;
   const couponCode = metadata.coupon_code || '';
 
   // Seat selections for seat_map mode
@@ -180,30 +178,24 @@ async function handleCheckoutCompleted(session: any) {
       console.log(`[Webhook] Using estimated Stripe fee: $${stripeFee}`);
     }
 
-    // Constants
-    const PLATFORM_HST_RATE = 0.13;
+    // Empiria's margin is fixed at platformFee + hstOnFee (hstOnFee is remitted).
+    const empiriaKeep = Math.round((platformFee + hstOnFee) * 100) / 100;
 
-    // Calculate actual net platform revenue with real Stripe fee
-    const actualNetPlatform = Math.max(0, platformFee - stripeFee);
-    const actualPlatformHST = Math.round(actualNetPlatform * PLATFORM_HST_RATE * 100) / 100;
-    const actualTakeHome = Math.round((actualNetPlatform - actualPlatformHST) * 100) / 100;
-
-    // When Stripe Tax is enabled (charge_ticket_tax), the actual tax amount
-    // is calculated by Stripe at checkout. Read it from the session object.
-    let actualTicketTax = ticketTax;
-    if (chargeTicketTax && session.total_details && typeof (session.total_details as any).amount_tax === 'number') {
-      actualTicketTax = (session.total_details as any).amount_tax / 100;
-    }
-
+    // Organizer payout.
     let actualOrganizerPayout: number;
     if (passProcessingFee) {
-      // Pass mode: organizer gets full ticket revenue + ticket tax - discount (organizer absorbs discount)
-      actualOrganizerPayout = subtotal + actualTicketTax - discountAmount;
+      // Guaranteed: ticket revenue + ticket tax (discount already baked into effBase).
+      actualOrganizerPayout = effBase + hstOnBase;
     } else {
-      // Absorb mode: organizer absorbs service fee + HST + discount
-      actualOrganizerPayout = subtotal + actualTicketTax - discountAmount - platformFee - actualPlatformHST;
+      // Absorb: organizer bears platform fee, its HST, and the real Stripe fee.
+      actualOrganizerPayout = customerTotal - stripeFee - platformFee - hstOnFee;
     }
-    actualOrganizerPayout = Math.max(0, actualOrganizerPayout);
+    actualOrganizerPayout = Math.max(0, Math.round(actualOrganizerPayout * 100) / 100);
+
+    // Platform take-home (revenue): platformFee, less any actual-vs-estimated Stripe gap in pass mode.
+    const stripeGap = passProcessingFee ? Math.max(0, Math.round((stripeFee - stripeOffset) * 100) / 100) : 0;
+    const platformTakeHome = Math.max(0, Math.round((platformFee - stripeGap) * 100) / 100);
+    const actualTicketTax = Math.round(hstOnBase * 100) / 100; // tax remitted with the ticket sale
 
     // 1. Create the order (initial payout_breakdown — transfer IDs added after transfers)
     const { data: order, error: orderError } = await supabase
@@ -220,43 +212,36 @@ async function handleCheckoutCompleted(session: any) {
         organizer_payout_amount: actualOrganizerPayout,
         processing_fee_amount: 0,
         ticket_tax_amount: actualTicketTax,
-        platform_fee_tax_amount: actualPlatformHST,
+        platform_fee_tax_amount: hstOnFee,
         stripe_fee_amount: stripeFee,
-        net_platform_revenue: actualNetPlatform,
+        net_platform_revenue: platformTakeHome,
         total_tickets: totalTickets,
         currency: session.currency || 'cad',
         buyer_email: userEmail || null,
         buyer_name: userName || null,
         payout_breakdown: {
-          version: 4,
+          version: 5,
           subtotal,
+          eff_base: effBase,
           customer_total: customerTotal,
-          processing_fee: 0,
           pass_processing_fee: passProcessingFee,
+          charge_ticket_tax: chargeTicketTax,
           total_tickets: totalTickets,
           platform_fee_fixed_semantics: 'per_ticket',
-          ticket_tax: actualTicketTax,
-          charge_ticket_tax: chargeTicketTax,
-          discount_amount: discountAmount,
-          coupon_code: couponCode,
-          platform_hst: actualPlatformHST,
-          net_platform: actualNetPlatform,
-          platform_take_home: actualTakeHome,
-          stripe_fee: stripeFee,
           platform_fee_percent: feePercent,
           platform_fee_fixed: feeFixed,
           platform_fee: platformFee,
+          hst_on_base: hstOnBase,
+          hst_on_fee: hstOnFee,
+          empiria_keep: empiriaKeep,
+          stripe_offset: stripeOffset,
+          stripe_fee: stripeFee,
+          stripe_gap: stripeGap,
+          platform_take_home: platformTakeHome,
+          discount_amount: discountAmount,
+          coupon_code: couponCode,
           organizer_payout: actualOrganizerPayout,
           transfer_group: metadata.transfer_group || null,
-          splits: parsedSplits
-            ? parsedSplits.map((s) => ({
-                user_id: s.recipient_user_id,
-                stripe_id: s.recipient_stripe_id,
-                percentage: s.percentage,
-                amount: Math.round(actualOrganizerPayout * (s.percentage / 100) * 100) / 100,
-                description: s.description,
-              }))
-            : null,
         },
         status: 'completed',
         source_app: metadata.source_app || 'shop',
@@ -369,18 +354,7 @@ async function handleCheckoutCompleted(session: any) {
     let elevsoftTransferData: { id: string; amount: number } | null = null;
 
     if (elevsoftStripeId && elevsoftPercent > 0) {
-      let elevsoftAmount: number;
-
-      if (isPlatformEvent) {
-        // Platform events: Elevsoft gets 100% of take-home (platform IS Elevsoft for these)
-        elevsoftAmount = actualTakeHome;
-      } else {
-        // Organizer events: Elevsoft gets elevsoftPercent% of take-home
-        // Take-home = net platform revenue - platform HST
-        elevsoftAmount = actualTakeHome * (elevsoftPercent / 100);
-      }
-
-      elevsoftAmount = Math.max(0, elevsoftAmount);
+      const elevsoftAmount = Math.max(0, isPlatformEvent ? platformFee : platformFee * (elevsoftPercent / 100));
       const elevsoftCents = Math.round(elevsoftAmount * 100);
 
       if (elevsoftCents > 0) {
@@ -412,27 +386,29 @@ async function handleCheckoutCompleted(session: any) {
       .update({
         elevsoft_amount: elevsoftTransferData?.amount || 0,
         payout_breakdown: {
-          version: 4,
+          version: 5,
           subtotal,
+          eff_base: effBase,
           customer_total: customerTotal,
-          processing_fee: 0,
           pass_processing_fee: passProcessingFee,
+          charge_ticket_tax: chargeTicketTax,
           total_tickets: totalTickets,
           platform_fee_fixed_semantics: 'per_ticket',
-          ticket_tax: actualTicketTax,
-          charge_ticket_tax: chargeTicketTax,
-          discount_amount: discountAmount,
-          coupon_code: couponCode,
-          platform_hst: actualPlatformHST,
-          net_platform: actualNetPlatform,
-          platform_take_home: actualTakeHome,
-          stripe_fee: stripeFee,
           platform_fee_percent: feePercent,
           platform_fee_fixed: feeFixed,
           platform_fee: platformFee,
+          hst_on_base: hstOnBase,
+          hst_on_fee: hstOnFee,
+          empiria_keep: empiriaKeep,
+          stripe_offset: stripeOffset,
+          stripe_fee: stripeFee,
+          stripe_gap: stripeGap,
+          platform_take_home: platformTakeHome,
+          discount_amount: discountAmount,
+          coupon_code: couponCode,
           organizer_payout: actualOrganizerPayout,
-          organizer_transfer_id: organizerTransferId,
           transfer_group: metadata.transfer_group || null,
+          organizer_transfer_id: organizerTransferId,
           splits: splitTransferDetails.length > 0 ? splitTransferDetails : null,
           elevsoft_transfer: elevsoftTransferData ? {
             stripe_transfer_id: elevsoftTransferData.id,
@@ -628,10 +604,10 @@ async function handleCheckoutCompleted(session: any) {
           })),
           total: customerTotal,
           convenienceFee: passProcessingFee ? platformFee : 0,
-          convenienceFeeHST: passProcessingFee ? actualPlatformHST : 0,
+          convenienceFeeHST: passProcessingFee ? hstOnFee : 0,
           ticketTax: actualTicketTax,
-          discountAmount: discountAmount,
-          couponCode: couponCode,
+          discountAmount,
+          couponCode,
           currency: session.currency || 'cad',
           tickets: allTickets,
           receiptUrl,
