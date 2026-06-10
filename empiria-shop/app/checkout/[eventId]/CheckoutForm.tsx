@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ShieldCheck, Minus, Plus, Loader2 } from "lucide-react";
 import type { CustomField } from "@/lib/eventFields";
+import { computeFees } from "@/lib/fees";
 
 interface Tier {
   id: string;
@@ -119,37 +120,16 @@ export function CheckoutForm({
     discountAmount = Math.round(discountAmount * 100) / 100;
   }
 
-  // Fee calculation — mirrors server-side logic in checkout route
-  const STRIPE_PERCENT = 0.029;
-  const STRIPE_FIXED = 0.30;
-  const PLATFORM_HST_RATE = 0.13;
-
-  // Platform fee (service fee) - includes Stripe fees within it
-  const platformFee = subtotal > 0
-    ? Math.round((subtotal * (feePercent / 100) + (feeFixedPerTicket * paidItems)) * 100) / 100
-    : 0;
-
-  // When Stripe Tax is enabled, ticket tax is calculated at checkout by Stripe
-  // based on buyer/event location. We show 0 here and note it's calculated at checkout.
-  const ticketTaxRate = 0;
-  const ticketTax = 0;
-
-  let customerTotal: number;
-  let convenienceFee = 0;
-  let convenienceFeeHST = 0;
-
-  if (passProcessingFee && subtotal > 0) {
-    // PASS MODE: customer pays ticket + fee + HST on fee (+ Stripe Tax at checkout) - discount
-    const rawTotal = (subtotal + (1 + PLATFORM_HST_RATE) * platformFee - STRIPE_FIXED * PLATFORM_HST_RATE) / (1 + STRIPE_PERCENT * PLATFORM_HST_RATE);
-    customerTotal = Math.round((rawTotal - discountAmount) * 100) / 100;
-    const stripeFeeEstimate = Math.round((STRIPE_PERCENT * customerTotal + STRIPE_FIXED) * 100) / 100;
-    const netPlatform = Math.max(0, Math.round((platformFee - stripeFeeEstimate) * 100) / 100);
-    convenienceFee = platformFee;
-    convenienceFeeHST = Math.round(netPlatform * PLATFORM_HST_RATE * 100) / 100;
-  } else {
-    // ABSORB MODE: customer pays only ticket price - discount (+ Stripe Tax at checkout)
-    customerTotal = Math.round((subtotal - discountAmount) * 100) / 100;
-  }
+  const fees = computeFees({
+    base: subtotal,
+    discount: discountAmount,
+    paidTickets: paidItems,
+    chargeTicketTax,
+    passProcessingFee,
+    feePercent,
+    feeFixedPerTicket,
+  });
+  const customerTotal = fees.customerTotal;
 
   const formatPrice = (amount: number) => {
     if (amount === 0) return "FREE";
@@ -262,35 +242,15 @@ export function CheckoutForm({
   };
 
   return (
-    <div data-testid="checkout-form">
-      {/* Order Summary */}
-      <div className="bg-white p-6 rounded-xl shadow-sm mb-6">
-        <h2
-          className="text-xl font-bold mb-1"
-          data-testid="checkout-event-title"
-        >
-          {eventTitle}
-        </h2>
-        {selectedOccurrence && (
-          <p className="text-sm text-gray-500 mb-4">
-            {new Date(selectedOccurrence.starts_at).toLocaleDateString(
-              "en-US",
-              {
-                weekday: "short",
-                month: "short",
-                day: "numeric",
-                year: "numeric",
-              }
-            )}{" "}
-            &middot;{" "}
-            {new Date(selectedOccurrence.starts_at).toLocaleTimeString(
-              "en-US",
-              { hour: "numeric", minute: "2-digit", hour12: true }
-            )}
-          </p>
-        )}
-
-        {/* Tier selection */}
+    <div
+      data-testid="checkout-form"
+      className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6 items-start"
+    >
+      {/* LEFT COLUMN */}
+      <div className="space-y-6">
+      {/* Tier selection */}
+      <div className="bg-white p-6 rounded-xl shadow-sm">
+        <h2 className="text-lg font-bold mb-4">Select Tickets</h2>
         <div className="space-y-3" data-testid="checkout-tiers">
           {tiers.map((tier) => {
             const qty = quantities[tier.id] ?? 0;
@@ -382,72 +342,10 @@ export function CheckoutForm({
             );
           })}
         </div>
-
-        {/* Totals */}
-        {totalItems > 0 && (
-          <div className="mt-4 pt-4 border-t border-gray-200">
-            <div className="flex justify-between text-sm text-gray-600 mb-1">
-              <span>
-                {totalItems} ticket{totalItems > 1 ? "s" : ""}
-              </span>
-              <span>{formatPrice(subtotal)}</span>
-            </div>
-            {discountAmount > 0 && (
-              <div className="flex justify-between text-sm text-green-600 mb-1">
-                <span>Discount ({couponCode})</span>
-                <span>-{formatPrice(discountAmount)}</span>
-              </div>
-            )}
-            {passProcessingFee && convenienceFee > 0 && (
-              <div
-                className="flex justify-between text-sm text-gray-500 mb-1"
-                data-testid="checkout-convenience-fee"
-              >
-                <span>Service Fee</span>
-                <span>{formatPrice(convenienceFee)}</span>
-              </div>
-            )}
-            {passProcessingFee && convenienceFeeHST > 0 && (
-              <div
-                className="flex justify-between text-sm text-gray-500 mb-1"
-                data-testid="checkout-convenience-fee-hst"
-              >
-                <span>HST on Service Fee</span>
-                <span>{formatPrice(convenienceFeeHST)}</span>
-              </div>
-            )}
-            {chargeTicketTax && (
-              <div
-                className="flex justify-between text-sm text-gray-500 mb-1"
-                data-testid="checkout-ticket-tax"
-              >
-                <span>Sales Tax</span>
-                <span className="text-xs italic">Calculated at checkout</span>
-              </div>
-            )}
-            <div
-              className="flex justify-between font-bold text-lg"
-              data-testid="checkout-total"
-            >
-              <span>{chargeTicketTax ? 'Subtotal' : 'Total'}</span>
-              <span>{formatPrice(customerTotal)}</span>
-            </div>
-            {chargeTicketTax && (
-              <p className="text-xs text-gray-400 mt-1">
-                Applicable sales tax will be added at checkout based on your location
-              </p>
-            )}
-            {!chargeTicketTax && passProcessingFee && convenienceFeeHST > 0 && (
-              <p className="text-xs text-gray-400 mt-1">
-                Taxes are included in the total
-              </p>
-            )}
-          </div>
-        )}
       </div>
 
       {/* Coupon Code */}
-      <div className="bg-white p-6 rounded-xl shadow-sm mb-6">
+      <div className="bg-white p-6 rounded-xl shadow-sm">
         <h3 className="font-bold text-sm mb-3">Promo Code</h3>
         {couponApplied ? (
           <div className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg">
@@ -493,7 +391,7 @@ export function CheckoutForm({
 
       {/* Per-ticket custom fields */}
       {customFields.length > 0 && totalItems > 0 && (
-        <div className="bg-white p-6 rounded-xl shadow-sm mb-6" data-testid="checkout-custom-fields">
+        <div className="bg-white p-6 rounded-xl shadow-sm" data-testid="checkout-custom-fields">
           <h3 className="font-bold border-b pb-2 mb-4">Attendee Details</h3>
           <div className="space-y-6">
             {tiers
@@ -623,31 +521,104 @@ export function CheckoutForm({
             {error}
           </div>
         )}
+      </div>
+      </div>
 
-        <div className="pt-4">
-          <button
-            type="button"
-            onClick={handleSubmit}
-            disabled={loading || totalItems === 0}
-            className="w-full bg-black text-white py-4 rounded-xl font-bold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-            data-testid="checkout-submit"
+      {/* RIGHT COLUMN — Order Summary */}
+      <div className="lg:sticky lg:top-6 self-start">
+        <div className="bg-white p-6 rounded-xl shadow-sm">
+          <h2
+            className="text-xl font-bold mb-1"
+            data-testid="checkout-event-title"
           >
-            {loading ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Redirecting to payment…
-              </>
-            ) : (
-              "Continue to Payment"
-            )}
-          </button>
-        </div>
+            {eventTitle}
+          </h2>
+          {selectedOccurrence && (
+            <p className="text-sm text-gray-500">
+              {new Date(selectedOccurrence.starts_at).toLocaleDateString(
+                "en-US",
+                {
+                  weekday: "short",
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                }
+              )}{" "}
+              &middot;{" "}
+              {new Date(selectedOccurrence.starts_at).toLocaleTimeString(
+                "en-US",
+                { hour: "numeric", minute: "2-digit", hour12: true }
+              )}
+            </p>
+          )}
 
-        <div className="flex items-center justify-center gap-2 mt-4">
-          <ShieldCheck className="w-3.5 h-3.5 text-gray-400" />
-          <p className="text-xs text-gray-400">
-            Secure checkout powered by Stripe
-          </p>
+          {/* Totals breakdown */}
+          {totalItems > 0 && (
+            <div className="mt-4 pt-4 border-t border-gray-200 space-y-1.5">
+              <div className="flex justify-between text-sm text-gray-600">
+                <span>{totalItems} ticket{totalItems > 1 ? "s" : ""}</span>
+                <span>{formatPrice(subtotal)}</span>
+              </div>
+              {discountAmount > 0 && (
+                <div className="flex justify-between text-sm text-green-600">
+                  <span>Promo ({couponCode})</span>
+                  <span>-{formatPrice(discountAmount)}</span>
+                </div>
+              )}
+              {fees.customerTax > 0 && (
+                <div className="flex justify-between text-sm text-gray-600" data-testid="checkout-ticket-tax">
+                  <span>Tax (HST 13%)</span>
+                  <span>{formatPrice(fees.customerTax)}</span>
+                </div>
+              )}
+              {passProcessingFee && fees.platformFee > 0 && (
+                <div className="flex justify-between text-sm text-gray-600" data-testid="checkout-convenience-fee">
+                  <span className="inline-flex items-center gap-1">Service fee
+                    <span title="Covers the Empiria platform service." className="text-gray-400 cursor-help">&#9432;</span>
+                  </span>
+                  <span>{formatPrice(fees.platformFee)}</span>
+                </div>
+              )}
+              {passProcessingFee && fees.stripeOffset > 0 && (
+                <div className="flex justify-between text-sm text-gray-600" data-testid="checkout-processing-fee">
+                  <span className="inline-flex items-center gap-1">Processing fee
+                    <span title="Secure card processing." className="text-gray-400 cursor-help">&#9432;</span>
+                  </span>
+                  <span>{formatPrice(fees.stripeOffset)}</span>
+                </div>
+              )}
+              <div className="flex justify-between font-bold text-lg pt-2 border-t border-gray-100" data-testid="checkout-total">
+                <span>Total</span>
+                <span>{formatPrice(customerTotal)}</span>
+              </div>
+            </div>
+          )}
+
+          <div className="pt-4">
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={loading || totalItems === 0}
+              className="w-full bg-black text-white py-4 rounded-xl font-bold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              data-testid="checkout-submit"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Redirecting to payment…
+                </>
+              ) : (
+                "Continue to Payment"
+              )}
+            </button>
+          </div>
+
+          <div className="flex items-center justify-center gap-2 mt-4">
+            <ShieldCheck className="w-3.5 h-3.5 text-gray-400" />
+            <p className="text-xs text-gray-400">
+              Secure checkout powered by Stripe
+            </p>
+          </div>
         </div>
       </div>
     </div>

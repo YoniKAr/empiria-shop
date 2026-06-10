@@ -2,6 +2,7 @@ import { getSafeSession } from '@/lib/auth0';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { CheckoutForm } from './CheckoutForm';
 import { redirect } from 'next/navigation';
+import { DEFAULT_FEE_PERCENT, DEFAULT_FIXED_PER_TICKET } from '@/lib/fees';
 
 export default async function CheckoutPage({ params }: { params: Promise<{ eventId: string }> }) {
   const { eventId } = await params;
@@ -61,7 +62,7 @@ export default async function CheckoutPage({ params }: { params: Promise<{ event
 
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4">
-      <div className="max-w-lg mx-auto">
+      <div className="max-w-5xl mx-auto">
         <h1 className="text-2xl font-bold mb-6">Checkout</h1>
         <CheckoutForm
           eventId={event.id}
@@ -71,8 +72,8 @@ export default async function CheckoutPage({ params }: { params: Promise<{ event
           currency={event.currency || 'cad'}
           passProcessingFee={Boolean(event.pass_processing_fee)}
           chargeTicketTax={Boolean(event.charge_ticket_tax)}
-          feePercent={Number(event.platform_fee_percent) || 3.5}
-          feeFixedPerTicket={event.platform_fee_fixed != null ? Number(event.platform_fee_fixed) : 1.50}
+          feePercent={Number(event.platform_fee_percent) || DEFAULT_FEE_PERCENT}
+          feeFixedPerTicket={event.platform_fee_fixed != null ? Number(event.platform_fee_fixed) : DEFAULT_FIXED_PER_TICKET}
           customFields={event.custom_fields ?? []}
           user={user}
           sharedCapacity={sharedCapacity}
