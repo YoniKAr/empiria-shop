@@ -76,11 +76,12 @@ export default async function ShopHome() {
         }));
     }
 
-    // Fetch active categories for filter buttons
+    // Fetch active categories that are enabled for the landing page filter buttons
     const { data: categories } = await supabase
         .from('categories')
         .select('id, name')
         .eq('is_active', true)
+        .eq('show_on_landing', true)
         .order('name');
 
     const featuredEvents = (rawFeatured || []) as any[];
