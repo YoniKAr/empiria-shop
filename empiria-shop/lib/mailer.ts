@@ -1,7 +1,7 @@
-import { SES, SendRawEmailCommand } from '@aws-sdk/client-ses';
+import { SESv2Client, SendEmailCommand } from '@aws-sdk/client-sesv2';
 import nodemailer from 'nodemailer';
 
-const ses = new SES({
+const sesClient = new SESv2Client({
   region: process.env.AWS_SES_REGION || 'us-east-1',
   credentials: {
     accessKeyId: process.env.AWS_SES_ACCESS_KEY_ID || '',
@@ -9,7 +9,7 @@ const ses = new SES({
   },
 });
 
-const transporter = nodemailer.createTransport({ SES: { ses, aws: { SendRawEmailCommand } } });
+const transporter = nodemailer.createTransport({ SES: { sesClient, SendEmailCommand } });
 
 export const EMAIL_FROM = process.env.EMAIL_FROM || 'Empiria <info@empiria.events>';
 
@@ -20,7 +20,7 @@ export async function sendEmail(opts: {
   html: string;
   from?: string;
   replyTo?: string;
-  attachments?: Array<{ filename: string; content: string | Buffer; contentType?: string }>;
+  attachments?: Array<{ filename: string; content: string | Buffer; contentType?: string; cid?: string }>;
 }) {
   return transporter.sendMail({
     from: opts.from || EMAIL_FROM,
@@ -32,6 +32,7 @@ export async function sendEmail(opts: {
       filename: a.filename,
       content: typeof a.content === 'string' ? Buffer.from(a.content, 'base64') : a.content,
       contentType: a.contentType,
+      cid: a.cid,
     })),
   });
 }

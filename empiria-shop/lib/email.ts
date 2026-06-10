@@ -113,6 +113,7 @@ export async function sendOrderConfirmationEmail(data: OrderEmailData) {
         filename: a.filename,
         content: a.content,
         contentType: 'image/png' as const,
+        cid: a.cid,
       })),
       ...walletAttachments,
     ],
