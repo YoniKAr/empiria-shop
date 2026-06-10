@@ -206,7 +206,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
 
     return (
         <div className="min-h-screen bg-white">
-            <Navbar />
+            <Navbar overlay />
 
             {/* EventHero banner */}
             <EventHero
