@@ -1,6 +1,7 @@
 'use client';
 
 import { Search } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { getCurrencySymbol } from '@/lib/utils';
 import { EventCard } from './EventCard';
 
@@ -24,10 +25,25 @@ interface EventsGridProps {
     events: Event[];
     query: string;
     setQuery: (q: string) => void;
-    categories: { id: string; name: string }[];
+    categories: { id: string; name: string; slug: string }[];
+    activeCategory: string | null;
 }
 
-export default function EventsGrid({ events, query, setQuery, categories }: EventsGridProps) {
+export default function EventsGrid({ events, query, setQuery, categories, activeCategory }: EventsGridProps) {
+    const router = useRouter();
+
+    // Category selection drives a server-side query via the ?category=<slug> param.
+    // "All" clears the param. Selecting a category also clears any active search.
+    const selectCategory = (slug: string | null) => {
+        setQuery('');
+        const href = slug ? `/?category=${encodeURIComponent(slug)}#events-section` : '/#events-section';
+        router.push(href);
+    };
+
+    const activeCategoryName = activeCategory
+        ? categories.find((c) => c.slug === activeCategory)?.name ?? null
+        : null;
+
     const filtered = query.trim()
         ? events.filter((event) => {
               const q = query.toLowerCase();
@@ -48,26 +64,51 @@ export default function EventsGrid({ events, query, setQuery, categories }: Even
                     <h2 className="text-2xl font-bold text-[#F15A29]">
                         {query.trim()
                             ? `Results for "${query}" (${filtered.length})`
-                            : 'Upcoming Events'}
+                            : activeCategoryName
+                                ? activeCategoryName
+                                : 'Upcoming Events'}
                     </h2>
                     <div className="flex gap-2">
-                        {['All', ...categories.map(c => c.name)].map((filter) => (
-                            <button
-                                key={filter}
-                                onClick={() => setQuery(filter === 'All' ? '' : filter)}
-                                className="px-4 py-1.5 rounded-full border border-gray-200 text-sm font-medium hover:border-[#F15A29] hover:text-[#F15A29] transition-colors bg-white"
-                            >
-                                {filter}
-                            </button>
-                        ))}
+                        {[{ name: 'All', slug: null as string | null }, ...categories].map((cat) => {
+                            const isActive = cat.slug === null
+                                ? !activeCategory
+                                : cat.slug === activeCategory;
+                            return (
+                                <button
+                                    key={cat.name}
+                                    onClick={() => selectCategory(cat.slug)}
+                                    className={`px-4 py-1.5 rounded-full border text-sm font-medium transition-colors ${
+                                        isActive
+                                            ? 'border-[#F15A29] bg-[#F15A29] text-white'
+                                            : 'border-gray-200 text-slate-700 hover:border-[#F15A29] hover:text-[#F15A29] bg-white'
+                                    }`}
+                                >
+                                    {cat.name}
+                                </button>
+                            );
+                        })}
                     </div>
                 </div>
 
                 {filtered.length === 0 ? (
                     <div className="text-center py-20 text-muted-foreground">
                         <Search className="mx-auto mb-4 w-10 h-10 opacity-30" />
-                        <p className="text-lg font-medium">No events found for &quot;{query}&quot;</p>
-                        <p className="text-sm mt-1">Try a different search term.</p>
+                        {query.trim() ? (
+                            <>
+                                <p className="text-lg font-medium">No events found for &quot;{query}&quot;</p>
+                                <p className="text-sm mt-1">Try a different search term.</p>
+                            </>
+                        ) : activeCategoryName ? (
+                            <>
+                                <p className="text-lg font-medium">No events in {activeCategoryName}</p>
+                                <p className="text-sm mt-1">Try a different category.</p>
+                            </>
+                        ) : (
+                            <>
+                                <p className="text-lg font-medium">No upcoming events</p>
+                                <p className="text-sm mt-1">Check back soon.</p>
+                            </>
+                        )}
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">

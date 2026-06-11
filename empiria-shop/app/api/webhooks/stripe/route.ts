@@ -50,6 +50,16 @@ export async function POST(request: NextRequest) {
       console.warn('[Webhook] Payment failed:', paymentIntent.id);
       break;
     }
+    case 'charge.refunded': {
+      const charge = event.data.object;
+      await handleChargeRefunded(charge);
+      break;
+    }
+    case 'charge.dispute.created': {
+      const dispute = event.data.object;
+      await handleDisputeCreated(dispute);
+      break;
+    }
     default:
       // Unhandled event type — that's fine
       break;
@@ -567,18 +577,16 @@ async function handleCheckoutCompleted(session: any) {
           discount_amount: discountAmount,
         });
 
-        // Increment current_uses on the coupon (fetch-then-update pattern)
-        const { data: couponData } = await supabase
-          .from('coupons')
-          .select('current_uses')
-          .eq('id', couponId)
-          .single();
-
-        if (couponData) {
-          await supabase
-            .from('coupons')
-            .update({ current_uses: couponData.current_uses + 1 })
-            .eq('id', couponId);
+        // Atomically increment current_uses (capped at max_uses) via DB function.
+        // Returns false if capacity was already reached.
+        const { data: incremented, error: incErr } = await supabase.rpc(
+          'increment_coupon_usage',
+          { p_coupon_id: couponId }
+        );
+        if (incErr) {
+          console.error('[Webhook] increment_coupon_usage failed:', incErr);
+        } else if (incremented === false) {
+          console.warn(`[Webhook] Coupon ${couponCode} (${couponId}) at capacity — usage not incremented`);
         }
 
         console.log(`[Webhook] Coupon usage tracked: ${couponCode} (${couponId})`);
@@ -627,4 +635,244 @@ async function handleCheckoutCompleted(session: any) {
   } catch (error) {
     console.error('[Webhook] Critical error processing checkout:', error);
   }
+}
+
+// ──────────────────────────────────────────────────
+// REFUNDS & DISPUTES
+//
+// Money is pushed out to organizers / co-organizers / Elevsoft via
+// stripe.transfers.create on the platform charge. A refund or dispute on the
+// platform charge does NOT automatically claw those transfers back, so we must
+// reverse them explicitly with stripe.transfers.createReversal.
+//
+// IDEMPOTENCY (Stripe retries webhooks): we persist reversal bookkeeping inside
+// orders.payout_breakdown — a cumulative `refunded_amount`, a set of processed
+// `refund_ids`, and a per-reversal Stripe idempotencyKey on createReversal. We
+// only reverse the *newly* refunded delta and skip refunds/disputes already
+// recorded, so a transfer is never reversed twice.
+// ──────────────────────────────────────────────────
+
+// Collect every outbound transfer id recorded on the order's payout_breakdown.
+function collectOutboundTransfers(
+  pb: any
+): Array<{ id: string; label: string }> {
+  const out: Array<{ id: string; label: string }> = [];
+  if (pb?.organizer_transfer_id) {
+    out.push({ id: pb.organizer_transfer_id, label: 'organizer' });
+  }
+  if (Array.isArray(pb?.splits)) {
+    for (const s of pb.splits) {
+      if (s?.stripe_transfer_id) {
+        out.push({ id: s.stripe_transfer_id, label: `split_${s.user_id || s.stripe_id || ''}` });
+      }
+    }
+  }
+  if (pb?.elevsoft_transfer?.stripe_transfer_id) {
+    out.push({ id: pb.elevsoft_transfer.stripe_transfer_id, label: 'elevsoft' });
+  }
+  return out;
+}
+
+async function handleChargeRefunded(charge: any) {
+  const supabase = getSupabaseAdmin();
+  const paymentIntentId =
+    typeof charge.payment_intent === 'string'
+      ? charge.payment_intent
+      : charge.payment_intent?.id;
+
+  if (!paymentIntentId) {
+    console.warn('[Webhook] charge.refunded with no payment_intent — acking');
+    return;
+  }
+
+  // Look up the order by payment intent.
+  const { data: order } = await supabase
+    .from('orders')
+    .select('id, status, payout_breakdown, total_amount')
+    .eq('stripe_payment_intent_id', paymentIntentId)
+    .maybeSingle();
+
+  if (!order) {
+    console.log('[Webhook] charge.refunded: no order for PI', paymentIntentId, '— acking');
+    return;
+  }
+
+  const pb: any = order.payout_breakdown || {};
+
+  // Stripe amounts are in cents. amount_refunded is CUMULATIVE on the charge.
+  const chargeAmountCents: number = charge.amount || 0;
+  const cumulativeRefundedCents: number = charge.amount_refunded || 0;
+  const alreadyReversedCents: number = Math.round((pb.refunded_amount || 0) * 100);
+
+  // Newly refunded delta we have not yet processed.
+  const newlyRefundedCents = Math.max(0, cumulativeRefundedCents - alreadyReversedCents);
+
+  if (newlyRefundedCents <= 0 || chargeAmountCents <= 0) {
+    console.log('[Webhook] charge.refunded: nothing new to reverse for order', order.id);
+    return;
+  }
+
+  // Proportion of the ORIGINAL charge represented by this new refund delta.
+  const proportion = newlyRefundedCents / chargeAmountCents;
+
+  // Identify a stable id for idempotency keys (latest refund id if available).
+  const refundList = charge.refunds?.data;
+  const latestRefundId: string =
+    (Array.isArray(refundList) && refundList.length > 0 && refundList[0]?.id) ||
+    charge.id;
+
+  const processedRefundIds: string[] = Array.isArray(pb.refund_ids) ? pb.refund_ids : [];
+
+  // Reverse each outbound transfer proportionally to the new refund delta.
+  // Per-transfer original amount comes from payout_breakdown: organizer_payout
+  // for the organizer transfer, split.amount for each split, elevsoft amount for
+  // Elevsoft. We reverse that share × proportion; createReversal caps at the
+  // transfer's remaining reversible balance.
+  const transfers = collectOutboundTransfers(pb);
+  for (const t of transfers) {
+    let originalCents = 0;
+    if (t.label === 'organizer') {
+      originalCents = Math.round((pb.organizer_payout || 0) * 100);
+    } else if (t.label === 'elevsoft') {
+      originalCents = Math.round((pb.elevsoft_transfer?.amount || 0) * 100);
+    } else if (Array.isArray(pb.splits)) {
+      const match = pb.splits.find(
+        (s: any) => s.stripe_transfer_id === t.id
+      );
+      originalCents = Math.round(((match?.amount) || 0) * 100);
+    }
+    const amountToReverse = Math.round(originalCents * proportion);
+    if (amountToReverse <= 0) continue;
+    try {
+      await stripe.transfers.createReversal(
+        t.id,
+        { amount: amountToReverse },
+        { idempotencyKey: `rev_${latestRefundId}_${t.id}` }
+      );
+      console.log(`[Webhook] Reversed ${amountToReverse} cents on transfer ${t.id} (${t.label})`);
+    } catch (err) {
+      console.error(`[Webhook] Failed to reverse transfer ${t.id} (${t.label}):`, err);
+    }
+  }
+
+  const fullyRefunded = cumulativeRefundedCents >= chargeAmountCents;
+
+  // Persist reversal bookkeeping (cumulative refunded + processed refund ids).
+  const updatedPb = {
+    ...pb,
+    refunded_amount: Math.round(cumulativeRefundedCents) / 100,
+    refund_ids: Array.isArray(refundList)
+      ? Array.from(new Set([...processedRefundIds, ...refundList.map((r: any) => r.id)]))
+      : Array.from(new Set([...processedRefundIds, latestRefundId])),
+  };
+
+  if (fullyRefunded) {
+    // Mark order refunded, refund its tickets, and restore inventory.
+    await supabase
+      .from('orders')
+      .update({ status: 'refunded', payout_breakdown: updatedPb })
+      .eq('id', order.id);
+
+    // Refund only currently-valid tickets, mirroring the admin void path's
+    // pattern of restoring inventory for the rows we actually transition.
+    const { data: tix } = await supabase
+      .from('tickets')
+      .select('id, tier_id, event_id, status')
+      .eq('order_id', order.id);
+    const refundable = (tix ?? []).filter((t: any) => t.status === 'valid');
+    const ids = refundable.map((t: any) => t.id);
+    if (ids.length > 0) {
+      await supabase.from('tickets').update({ status: 'refunded' }).in('id', ids);
+    }
+
+    // Restore inventory via atomic RPCs (inventory trigger is INSERT-only).
+    const byTier = new Map<string, number>();
+    const byEvent = new Map<string, number>();
+    for (const t of refundable) {
+      byTier.set(t.tier_id, (byTier.get(t.tier_id) ?? 0) + 1);
+      byEvent.set(t.event_id, (byEvent.get(t.event_id) ?? 0) + 1);
+    }
+    for (const [tierId, n] of byTier) {
+      await supabase.rpc('admin_restore_tier_inventory', { p_tier_id: tierId, p_n: n });
+    }
+    for (const [eventId, n] of byEvent) {
+      await supabase.rpc('admin_decrement_event_sold', { p_event_id: eventId, p_n: n });
+    }
+    console.log(`[Webhook] Order ${order.id} fully refunded; ${ids.length} tickets refunded, inventory restored`);
+  } else {
+    // Partial refund: reverse transfers proportionally but leave tickets/inventory.
+    await supabase
+      .from('orders')
+      .update({ payout_breakdown: updatedPb })
+      .eq('id', order.id);
+    console.log(`[Webhook] Order ${order.id} partially refunded (${newlyRefundedCents} cents new); transfers reversed proportionally`);
+  }
+}
+
+async function handleDisputeCreated(dispute: any) {
+  const supabase = getSupabaseAdmin();
+  const paymentIntentId =
+    typeof dispute.payment_intent === 'string'
+      ? dispute.payment_intent
+      : dispute.payment_intent?.id;
+
+  if (!paymentIntentId) {
+    console.warn('[Webhook] charge.dispute.created with no payment_intent — acking');
+    return;
+  }
+
+  const { data: order } = await supabase
+    .from('orders')
+    .select('id, status, payout_breakdown')
+    .eq('stripe_payment_intent_id', paymentIntentId)
+    .maybeSingle();
+
+  if (!order) {
+    console.log('[Webhook] charge.dispute.created: no order for PI', paymentIntentId, '— acking');
+    return;
+  }
+
+  const pb: any = order.payout_breakdown || {};
+
+  // Idempotency: skip if this dispute was already handled.
+  if (pb.dispute_id === dispute.id) {
+    console.log('[Webhook] Dispute', dispute.id, 'already handled for order', order.id);
+    return;
+  }
+
+  // Reverse ALL outbound transfers in full — the platform is now debited the
+  // disputed amount and connected accounts must not keep those funds.
+  const transfers = collectOutboundTransfers(pb);
+  for (const t of transfers) {
+    try {
+      // No amount → reverses the full remaining transfer balance.
+      await stripe.transfers.createReversal(
+        t.id,
+        {},
+        { idempotencyKey: `disp_${dispute.id}_${t.id}` }
+      );
+      console.log(`[Webhook] Dispute ${dispute.id}: fully reversed transfer ${t.id} (${t.label})`);
+    } catch (err) {
+      console.error(`[Webhook] Dispute reversal failed for transfer ${t.id} (${t.label}):`, err);
+    }
+  }
+
+  // Record the dispute on the order. Do NOT change order status — there is no
+  // 'disputed' enum value; we only annotate payout_breakdown.
+  // NOTE: charge.dispute.closed (if won, re-transfer funds to recipients) is a
+  // follow-up not handled here.
+  const updatedPb = {
+    ...pb,
+    dispute_id: dispute.id,
+    dispute: {
+      id: dispute.id,
+      status: dispute.status,
+      amount: (dispute.amount || 0) / 100,
+    },
+  };
+  await supabase
+    .from('orders')
+    .update({ payout_breakdown: updatedPb })
+    .eq('id', order.id);
+  console.log(`[Webhook] Dispute ${dispute.id} recorded for order ${order.id}; all transfers reversed`);
 }
