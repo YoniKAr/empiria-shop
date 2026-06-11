@@ -16,6 +16,8 @@ import {
   CreditCard,
   Wallet,
   QrCode,
+  Tag,
+  Users,
 } from "lucide-react";
 import type { CustomField } from "@/lib/eventFields";
 import { computeFees } from "@/lib/fees";
@@ -650,8 +652,11 @@ export function CheckoutForm({
         {/* LEFT COLUMN */}
         <div className="space-y-6">
           {/* Tier selection */}
-          <div className="bg-white p-6 rounded-xl shadow-sm">
-            <h2 className="text-lg font-bold mb-4">Select Tickets</h2>
+          <div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-black/5">
+            <h2 className="mb-4 flex items-center gap-2 text-lg font-bold text-gray-900">
+            <Ticket className="h-4 w-4 text-[#F15A29]" />
+            Select Tickets
+          </h2>
             <div className="space-y-3" data-testid="checkout-tiers">
               {tiers.map((tier) => {
                 const qty = quantities[tier.id] ?? 0;
@@ -746,8 +751,11 @@ export function CheckoutForm({
           </div>
 
           {/* Coupon Code */}
-          <div className="bg-white p-6 rounded-xl shadow-sm">
-            <h3 className="font-bold text-sm mb-3">Promo Code</h3>
+          <div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-black/5">
+            <h3 className="mb-3 flex items-center gap-2 text-sm font-bold text-gray-900">
+              <Tag className="h-3.5 w-3.5 text-[#F15A29]" />
+              Promo Code
+            </h3>
             {couponApplied ? (
               <div className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg">
                 <div>
@@ -773,7 +781,7 @@ export function CheckoutForm({
                   value={couponCode}
                   onChange={(e) => { setCouponCode(e.target.value.toUpperCase()); setCouponError(null); }}
                   placeholder="Enter promo code"
-                  className="flex-1 border p-3 rounded-lg text-sm uppercase"
+                  className="flex-1 rounded-lg border border-gray-300 p-3 text-sm uppercase text-gray-900 outline-none transition focus:border-[#F15A29] focus:ring-2 focus:ring-[#F15A29]/20"
                 />
                 <button
                   type="button"
@@ -792,8 +800,11 @@ export function CheckoutForm({
 
           {/* Per-ticket custom fields */}
           {customFields.length > 0 && totalItems > 0 && (
-            <div className="bg-white p-6 rounded-xl shadow-sm" data-testid="checkout-custom-fields">
-              <h3 className="font-bold border-b pb-2 mb-4">Attendee Details</h3>
+            <div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-black/5" data-testid="checkout-custom-fields">
+              <h3 className="mb-4 flex items-center gap-2 border-b border-gray-100 pb-2 font-bold text-gray-900">
+                <Users className="h-4 w-4 text-[#F15A29]" />
+                Attendee Details
+              </h3>
               <div className="space-y-6">
                 {tiers
                   .filter((t) => (quantities[t.id] ?? 0) > 0)
@@ -814,13 +825,13 @@ export function CheckoutForm({
                               const value = answers[ticketKey]?.[field.id] ?? "";
                               return (
                                 <div key={field.id}>
-                                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                                  <label className="block text-xs font-semibold uppercase tracking-wide text-gray-700 mb-1.5">
                                     {field.label}
                                     {field.required && <span className="text-red-500"> *</span>}
                                   </label>
                                   {field.type === "dropdown" ? (
                                     <select
-                                      className="w-full border p-3 rounded-lg text-sm bg-white"
+                                      className="w-full rounded-lg border border-gray-300 p-3 text-gray-900 outline-none transition focus:border-[#F15A29] focus:ring-2 focus:ring-[#F15A29]/20 text-sm bg-white"
                                       value={value}
                                       onChange={(e) => setAnswer(ticketKey, field.id, e.target.value)}
                                       data-testid={`checkout-field-${ticketKey}-${field.id}`}
@@ -835,7 +846,7 @@ export function CheckoutForm({
                                   ) : (
                                     <input
                                       type="text"
-                                      className="w-full border p-3 rounded-lg text-sm"
+                                      className="w-full rounded-lg border border-gray-300 p-3 text-gray-900 outline-none transition focus:border-[#F15A29] focus:ring-2 focus:ring-[#F15A29]/20 text-sm"
                                       value={value}
                                       onChange={(e) => setAnswer(ticketKey, field.id, e.target.value)}
                                       data-testid={`checkout-field-${ticketKey}-${field.id}`}
@@ -854,8 +865,11 @@ export function CheckoutForm({
           )}
 
           {/* Contact Form */}
-          <div className="bg-white p-6 rounded-xl shadow-sm">
-            <h3 className="font-bold border-b pb-2 mb-4">Contact Information</h3>
+          <div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-black/5">
+            <h3 className="mb-4 flex items-center gap-2 border-b border-gray-100 pb-2 font-bold text-gray-900">
+              <Mail className="h-4 w-4 text-[#F15A29]" />
+              Contact Information
+            </h3>
 
             {!user && (
               <div className="bg-blue-50 text-blue-800 p-4 rounded-lg mb-4 text-sm flex justify-between items-center">
@@ -869,12 +883,12 @@ export function CheckoutForm({
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                  <label className="block text-xs font-semibold uppercase tracking-wide text-gray-700 mb-1.5">
                     First Name
                   </label>
                   <input
                     type="text"
-                    className="w-full border p-3 rounded-lg"
+                    className="w-full rounded-lg border border-gray-300 p-3 text-gray-900 outline-none transition focus:border-[#F15A29] focus:ring-2 focus:ring-[#F15A29]/20"
                     value={firstName}
                     onChange={(e) => setFirstName(e.target.value)}
                     placeholder="First Name"
@@ -882,12 +896,12 @@ export function CheckoutForm({
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                  <label className="block text-xs font-semibold uppercase tracking-wide text-gray-700 mb-1.5">
                     Last Name
                   </label>
                   <input
                     type="text"
-                    className="w-full border p-3 rounded-lg"
+                    className="w-full rounded-lg border border-gray-300 p-3 text-gray-900 outline-none transition focus:border-[#F15A29] focus:ring-2 focus:ring-[#F15A29]/20"
                     value={lastName}
                     onChange={(e) => setLastName(e.target.value)}
                     placeholder="Last Name"
@@ -897,18 +911,18 @@ export function CheckoutForm({
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                <label className="block text-xs font-semibold uppercase tracking-wide text-gray-700 mb-1.5">
                   Email Address
                 </label>
                 <input
                   type="email"
-                  className="w-full border p-3 rounded-lg"
+                  className="w-full rounded-lg border border-gray-300 p-3 text-gray-900 outline-none transition focus:border-[#F15A29] focus:ring-2 focus:ring-[#F15A29]/20"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="you@example.com"
                   data-testid="checkout-email"
                 />
-                <p className="text-xs text-gray-400 mt-1">
+                <p className="mt-1 text-xs text-gray-600">
                   Your tickets will be sent here.
                 </p>
               </div>
@@ -927,7 +941,7 @@ export function CheckoutForm({
 
         {/* RIGHT COLUMN — Order Summary */}
         <div className="lg:sticky lg:top-6 self-start">
-          <div className="bg-white p-6 rounded-xl shadow-sm">
+          <div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-black/5">
             <h2
               className="text-xl font-bold mb-1"
               data-testid="checkout-event-title"
@@ -969,7 +983,7 @@ export function CheckoutForm({
                 type="button"
                 onClick={goToReview}
                 disabled={totalItems === 0}
-                className="group w-full bg-black text-white py-4 rounded-xl font-bold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-colors hover:bg-gray-800"
+                className="group flex w-full items-center justify-center gap-2 rounded-xl bg-[#F15A29] py-4 font-bold text-white shadow-sm transition-all hover:bg-[#d6420f] hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
                 data-testid="checkout-review-button"
               >
                 Review order
@@ -978,8 +992,8 @@ export function CheckoutForm({
             </div>
 
             <div className="flex items-center justify-center gap-2 mt-4">
-              <ShieldCheck className="w-3.5 h-3.5 text-gray-400" />
-              <p className="text-xs text-gray-400">
+              <ShieldCheck className="w-3.5 h-3.5 text-gray-500" />
+              <p className="text-xs text-gray-500">
                 Secure checkout powered by Stripe
               </p>
             </div>
