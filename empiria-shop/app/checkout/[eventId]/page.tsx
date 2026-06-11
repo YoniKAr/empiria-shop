@@ -30,6 +30,19 @@ export default async function CheckoutPage({ params }: { params: Promise<{ event
     redirect('/');
   }
 
+  // Only attendees (and guests) can purchase. Bounce organizer/non-profit/admin accounts
+  // back to the event page (the checkout API also blocks them server-side).
+  if (user?.sub) {
+    const { data: buyer } = await supabase
+      .from('users')
+      .select('role')
+      .eq('auth0_id', user.sub)
+      .single();
+    if (buyer?.role && buyer.role !== 'attendee') {
+      redirect(`/events/${event.slug}`);
+    }
+  }
+
   // External events have no checkout — send the attendee to the event page to link out.
   if (event.entry_type === 'external') {
     redirect(`/events/${event.slug}`);

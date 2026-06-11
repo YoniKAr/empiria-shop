@@ -67,6 +67,22 @@ export async function POST(request: NextRequest) {
     const supabase = getSupabaseAdmin();
     supabaseForRelease = supabase;
 
+    // Only attendees (and not-logged-in guests) may purchase. Organizer / non-profit /
+    // admin accounts manage events and must not buy tickets on those accounts.
+    if (user?.sub) {
+      const { data: buyer } = await supabase
+        .from('users')
+        .select('role')
+        .eq('auth0_id', user.sub)
+        .single();
+      if (buyer?.role && buyer.role !== 'attendee') {
+        return NextResponse.json(
+          { error: 'Organizer and admin accounts can’t buy tickets. Please sign in with an attendee account to purchase.' },
+          { status: 403 }
+        );
+      }
+    }
+
     const { data: event, error: eventError } = await supabase
       .from('events')
       .select('id, title, slug, organizer_id, platform_fee_percent, platform_fee_fixed, pass_processing_fee, currency, status, shared_capacity, total_capacity, total_tickets_sold, seating_type, seating_config, source_app, charge_ticket_tax, custom_fields, entry_type')
