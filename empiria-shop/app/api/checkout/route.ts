@@ -9,6 +9,7 @@ import { stripe } from '@/lib/stripe';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { toStripeAmount } from '@/lib/utils';
 import { computeFees, DEFAULT_FEE_PERCENT, DEFAULT_FIXED_PER_TICKET } from '@/lib/fees';
+import { sendOrderConfirmationEmail } from '@/lib/email';
 
 interface TierSelection {
   tierId: string;
@@ -544,13 +545,191 @@ export async function POST(request: NextRequest) {
       feeFixedPerTicket,
     });
 
-    // Stripe rejects $0 sessions. A fully-discounted or all-free order can't be charged here.
+    // ── FREE ORDER ($0 total): skip Stripe entirely, issue tickets directly ──
+    // A genuinely free (or fully-discounted-to-$0) order cannot and should not go
+    // through Stripe — Stripe rejects $0 charges, and there's no fee to collect.
+    // Create the order + tickets inline (mirrors the webhook's fulfillment), then
+    // send the buyer to the success page by order id.
     if (fees.customerTotal <= 0) {
-      await releaseCouponOnFailure();
-      return NextResponse.json(
-        { error: 'This order total is $0 — free checkout isn’t available through payment.' },
-        { status: 400 }
-      );
+      const appBaseUrl = process.env.APP_BASE_URL || 'https://shop.empiriaindia.com';
+      const freeEmail = contactEmail || user?.email || '';
+      const freeUserId = user?.sub || null;
+      const freeName = contactName || user?.name || '';
+      const freeFieldResponses = (fieldResponses ?? []) as Array<{
+        tierId: string;
+        perTicket: Array<Array<{ field_id: string; label: string; value: string }>>;
+      }>;
+
+      // 1. Order row (no Stripe ids; all payout/fee fields are zero)
+      const { data: freeOrder, error: freeOrderError } = await supabase
+        .from('orders')
+        .insert({
+          user_id: freeUserId,
+          event_id: event.id,
+          stripe_payment_intent_id: null,
+          stripe_checkout_session_id: null,
+          total_amount: 0,
+          coupon_id: couponId || null,
+          discount_amount: discountAmount,
+          platform_fee_amount: 0,
+          organizer_payout_amount: 0,
+          processing_fee_amount: 0,
+          ticket_tax_amount: 0,
+          platform_fee_tax_amount: 0,
+          stripe_fee_amount: 0,
+          net_platform_revenue: 0,
+          total_tickets: totalTickets,
+          currency,
+          buyer_email: freeEmail || null,
+          buyer_name: freeName || null,
+          payout_breakdown: {
+            version: 5,
+            free_order: true,
+            subtotal,
+            eff_base: fees.effBase,
+            customer_total: 0,
+            total_tickets: totalTickets,
+            discount_amount: discountAmount,
+            coupon_code: couponCode_validated || '',
+          },
+          status: 'completed',
+          source_app: 'shop',
+        })
+        .select('id')
+        .single();
+
+      if (freeOrderError || !freeOrder) {
+        console.error('[Checkout] Failed to create free order:', freeOrderError);
+        await releaseCouponOnFailure();
+        return NextResponse.json(
+          { error: 'Could not complete your free order. Please try again.' },
+          { status: 500 }
+        );
+      }
+
+      // The reserved coupon is now consumed by this order — don't release it on catch.
+      reservedCouponId = null;
+
+      // 2. order_items + tickets (DB trigger handles inventory + QR generation)
+      const seatLabelQueue: string[] = seatSelections && seatSelections.length > 0
+        ? seatSelections.map((s: SeatSelection) => s.label)
+        : (resolvedAssignedSeats || []).map((s) => s.label);
+
+      const freeTickets: Array<{ id: string; qr_code_secret: string; tierName: string; seatLabel?: string }> = [];
+
+      for (const sel of validatedSelections) {
+        await supabase.from('order_items').insert({
+          order_id: freeOrder.id,
+          tier_id: sel.tierId,
+          quantity: sel.quantity,
+          unit_price: sel.unitPrice,
+          subtotal: sel.unitPrice * sel.quantity,
+        });
+
+        const labelsForTier: string[] = [];
+        for (let i = 0; i < sel.quantity && seatLabelQueue.length > 0; i++) {
+          labelsForTier.push(seatLabelQueue.shift()!);
+        }
+        const stagedForTier = freeFieldResponses.find((r) => r.tierId === sel.tierId);
+
+        const ticketInserts = Array.from({ length: sel.quantity }, (_, i) => ({
+          event_id: event.id,
+          tier_id: sel.tierId,
+          order_id: freeOrder.id,
+          user_id: freeUserId,
+          attendee_name: freeName,
+          attendee_email: freeEmail,
+          status: 'valid' as const,
+          occurrence_id: occurrenceId || null,
+          field_responses: stagedForTier?.perTicket?.[i] ?? [],
+          ...(labelsForTier[i] ? { seat_label: labelsForTier[i] } : {}),
+        }));
+
+        const { data: createdTickets, error: ticketError } = await supabase
+          .from('tickets')
+          .insert(ticketInserts)
+          .select('id, qr_code_secret');
+
+        if (ticketError) {
+          console.error('[Checkout] Failed to create free tickets:', ticketError);
+        } else if (createdTickets) {
+          createdTickets.forEach((t, ti) =>
+            freeTickets.push({
+              id: t.id,
+              qr_code_secret: t.qr_code_secret,
+              tierName: sel.tierName,
+              seatLabel: labelsForTier[ti] || undefined,
+            })
+          );
+        }
+      }
+
+      // 3. Release seat holds (seat_map)
+      if (seatSelections && seatSelections.length > 0) {
+        await supabase
+          .from('seat_holds')
+          .delete()
+          .eq('event_id', event.id)
+          .in('seat_id', seatSelections.map((s: SeatSelection) => s.seatId));
+      }
+
+      // 4. Record coupon usage (already reserved at checkout — record only)
+      if (couponId) {
+        await supabase.from('coupon_usages').insert({
+          coupon_id: couponId,
+          order_id: freeOrder.id,
+          user_id: freeUserId,
+          discount_amount: discountAmount,
+        });
+      }
+
+      // 5. Confirmation email (non-blocking)
+      if (freeEmail && freeTickets.length > 0) {
+        try {
+          const { data: emailEvent } = await supabase
+            .from('events')
+            .select('title, venue_name, city, location_type, meeting_link, cta_label')
+            .eq('id', event.id)
+            .single();
+          let startDate = '';
+          let endDate: string | undefined;
+          const occRes = occurrenceId
+            ? await supabase.from('event_occurrences').select('starts_at, ends_at').eq('id', occurrenceId).single()
+            : await supabase.from('event_occurrences').select('starts_at, ends_at').eq('event_id', event.id).order('starts_at', { ascending: true }).limit(1).maybeSingle();
+          if (occRes.data) {
+            startDate = occRes.data.starts_at;
+            endDate = occRes.data.ends_at ?? undefined;
+          }
+          if (emailEvent) {
+            await sendOrderConfirmationEmail({
+              to: freeEmail,
+              attendeeName: freeName,
+              orderId: freeOrder.id,
+              eventTitle: emailEvent.title,
+              eventDate: startDate,
+              eventEndDate: endDate,
+              venueName: emailEvent.venue_name || '',
+              city: emailEvent.city || '',
+              meetingLink: emailEvent.meeting_link || '',
+              locationType: emailEvent.location_type || 'physical',
+              ctaLabel: emailEvent.cta_label,
+              lineItems: validatedSelections.map((s) => ({ tierName: s.tierName, quantity: s.quantity, unitPrice: s.unitPrice })),
+              total: 0,
+              convenienceFee: 0,
+              convenienceFeeHST: 0,
+              ticketTax: 0,
+              discountAmount,
+              couponCode: couponCode_validated || '',
+              currency,
+              tickets: freeTickets,
+            });
+          }
+        } catch (emailErr) {
+          console.error('[Checkout] Free order email failed:', emailErr);
+        }
+      }
+
+      return NextResponse.json({ url: `${appBaseUrl}/checkout/success?order_id=${freeOrder.id}` });
     }
 
     // Build Stripe line items summing exactly to fees.customerTotal.

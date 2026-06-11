@@ -28,52 +28,65 @@ function safeMeetingHref(url: string | null | undefined): string | null {
 export default async function CheckoutSuccessPage({
   searchParams,
 }: {
-  searchParams: Promise<{ session_id?: string }>;
+  searchParams: Promise<{ session_id?: string; order_id?: string }>;
 }) {
-  const { session_id } = await searchParams;
+  const { session_id, order_id } = await searchParams;
 
-  if (!session_id) {
+  if (!session_id && !order_id) {
     redirect('/');
   }
 
-  // 1. Retrieve the Stripe Checkout Session
-  let checkoutSession;
-  try {
-    checkoutSession = await stripe.checkout.sessions.retrieve(session_id);
-  } catch {
-    redirect('/');
-  }
-
-  if (checkoutSession.payment_status !== 'paid') {
-    redirect('/');
-  }
-
-  const metadata = checkoutSession.metadata;
-  const eventId = metadata?.event_id;
-
-  if (!eventId) redirect('/');
-
-  // 2. Fetch order + event + tickets from Supabase
   const supabase = getSupabaseAdmin();
+  const orderSelect =
+    'id, event_id, total_amount, platform_fee_amount, organizer_payout_amount, currency, status, created_at';
+  let order: { id: string; event_id: string; total_amount: number; platform_fee_amount: number; organizer_payout_amount: number; currency: string; status: string; created_at: string } | null = null;
+  let eventId: string | undefined;
 
-  // Give the webhook a moment to process if we arrive very quickly
-  let order = null;
-  let attempts = 0;
-
-  while (!order && attempts < 5) {
+  if (order_id) {
+    // Free order — no Stripe session. Resolve directly by order id.
     const { data } = await supabase
       .from('orders')
-      .select('id, total_amount, platform_fee_amount, organizer_payout_amount, currency, status, created_at')
-      .eq('stripe_checkout_session_id', session_id)
+      .select(orderSelect)
+      .eq('id', order_id)
       .single();
+    if (!data) redirect('/');
+    order = data;
+    eventId = data.event_id;
+  } else {
+    // Paid order — verify the Stripe session, then resolve the order by session id.
+    let checkoutSession;
+    try {
+      checkoutSession = await stripe.checkout.sessions.retrieve(session_id!);
+    } catch {
+      redirect('/');
+    }
 
-    if (data) {
-      order = data;
-    } else {
-      attempts++;
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+    if (checkoutSession.payment_status !== 'paid') {
+      redirect('/');
+    }
+
+    eventId = checkoutSession.metadata?.event_id;
+    if (!eventId) redirect('/');
+
+    // Give the webhook a moment to process if we arrive very quickly
+    let attempts = 0;
+    while (!order && attempts < 5) {
+      const { data } = await supabase
+        .from('orders')
+        .select(orderSelect)
+        .eq('stripe_checkout_session_id', session_id)
+        .single();
+
+      if (data) {
+        order = data;
+      } else {
+        attempts++;
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      }
     }
   }
+
+  if (!eventId) redirect('/');
 
   // Fetch event info
   const { data: event } = await supabase
