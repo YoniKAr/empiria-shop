@@ -27,6 +27,12 @@ interface AssignedSeatSelection {
 }
 
 export async function POST(request: NextRequest) {
+  // Holds the coupon id whose reservation must be released if this request throws
+  // after reserving but before the Stripe session takes ownership. Cleared once the
+  // session is created (then the webhook owns release on expiry/failure).
+  let reservedCouponId: string | null = null;
+  // Bound to getSupabaseAdmin() once available so the catch can issue the release.
+  let supabaseForRelease: ReturnType<typeof getSupabaseAdmin> | null = null;
   try {
     // 1. Parse request body
     const body = await request.json();
@@ -59,6 +65,7 @@ export async function POST(request: NextRequest) {
 
     // 3. Fetch event + organizer info from Supabase
     const supabase = getSupabaseAdmin();
+    supabaseForRelease = supabase;
 
     const { data: event, error: eventError } = await supabase
       .from('events')
@@ -323,7 +330,39 @@ export async function POST(request: NextRequest) {
       discountAmount = Math.round(discountAmount * 100) / 100;
       couponId = coupon.id;
       couponCode_validated = coupon.code;
+
+      // Atomically RESERVE one use now (capped at max_uses) to prevent two
+      // concurrent checkouts both passing the max_uses gate above. The webhook
+      // no longer increments after payment; instead it releases this reservation
+      // on checkout.session.expired / payment_intent.payment_failed. Returns
+      // false when capacity was already reached → reject before creating Stripe.
+      const { data: reserved, error: reserveErr } = await supabase.rpc(
+        'increment_coupon_usage',
+        { p_coupon_id: couponId }
+      );
+      if (reserveErr) {
+        console.error('[Checkout] increment_coupon_usage failed:', reserveErr);
+        return NextResponse.json({ error: 'Could not apply coupon. Please try again.' }, { status: 500 });
+      }
+      if (reserved === false) {
+        return NextResponse.json({ error: 'This coupon has reached its usage limit.' }, { status: 400 });
+      }
+      // Reservation now held — mark it for release if checkout fails before the
+      // Stripe session takes ownership.
+      reservedCouponId = couponId;
     }
+
+    // Release the coupon reservation if checkout fails AFTER reserving but BEFORE
+    // a Stripe session exists (no webhook would ever fire to release it otherwise).
+    // After the Stripe session is created we clear reservedCouponId so the reservation
+    // persists into the webhook lifecycle (which releases it on expiry/failure).
+    const releaseCouponOnFailure = async () => {
+      if (reservedCouponId) {
+        const { error: relErr } = await supabase.rpc('decrement_coupon_usage', { p_coupon_id: reservedCouponId });
+        if (relErr) console.error('[Checkout] decrement_coupon_usage (release on failure) failed:', relErr);
+        reservedCouponId = null;
+      }
+    };
 
     // 6b. If seat_map mode, verify each seat has a valid hold for this session
     if (seatSelections && seatSelections.length > 0 && sessionId) {
@@ -335,6 +374,7 @@ export async function POST(request: NextRequest) {
         .gt('expires_at', new Date().toISOString());
 
       if (holdsError) {
+        await releaseCouponOnFailure();
         return NextResponse.json({ error: 'Failed to verify seat holds' }, { status: 500 });
       }
 
@@ -343,12 +383,14 @@ export async function POST(request: NextRequest) {
       for (const seat of seatSelections) {
         const holdSession = holdMap.get(seat.seatId);
         if (!holdSession) {
+          await releaseCouponOnFailure();
           return NextResponse.json(
             { error: `Your hold on seat ${seat.label} has expired. Please select it again.` },
             { status: 409 }
           );
         }
         if (holdSession !== sessionId) {
+          await releaseCouponOnFailure();
           return NextResponse.json(
             { error: `Seat ${seat.label} is held by another customer.` },
             { status: 409 }
@@ -392,12 +434,14 @@ export async function POST(request: NextRequest) {
 
           for (const seat of seatLabelsToCheck) {
             if (soldLabels.has(seat)) {
+              await releaseCouponOnFailure();
               return NextResponse.json(
                 { error: `Seat ${seat} is already sold.` },
                 { status: 409 }
               );
             }
             if (heldLabels.has(seat)) {
+              await releaseCouponOnFailure();
               return NextResponse.json(
                 { error: `Seat ${seat} is currently held by another customer.` },
                 { status: 409 }
@@ -446,6 +490,7 @@ export async function POST(request: NextRequest) {
             }
 
             if (availableLabels.length < selection.quantity) {
+              await releaseCouponOnFailure();
               return NextResponse.json(
                 { error: `Not enough seats available for ${selection.tierName}. Only ${availableLabels.length} remaining.` },
                 { status: 409 }
@@ -485,6 +530,7 @@ export async function POST(request: NextRequest) {
 
     // Stripe rejects $0 sessions. A fully-discounted or all-free order can't be charged here.
     if (fees.customerTotal <= 0) {
+      await releaseCouponOnFailure();
       return NextResponse.json(
         { error: 'This order total is $0 — free checkout isn’t available through payment.' },
         { status: 400 }
@@ -664,6 +710,11 @@ export async function POST(request: NextRequest) {
       expires_at: Math.floor(Date.now() / 1000) + 1800,
     });
 
+    // From here on, the coupon reservation is owned by the Stripe session lifecycle:
+    // it is released by the webhook on checkout.session.expired / payment_intent.payment_failed,
+    // or consumed by the completed order. So stop releasing it on this request's failures.
+    reservedCouponId = null;
+
     // Stage per-ticket custom field responses for the webhook to attach to tickets.
     // Must NOT abort the redirect — the Stripe session already exists at this point.
     if (customFields.length && fieldResponses?.length) {
@@ -676,6 +727,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ url: checkoutSession.url });
   } catch (error: unknown) {
     console.error('[Checkout API Error]', error);
+    // If we reserved a coupon use but failed before the Stripe session took
+    // ownership, release it so the slot isn't leaked.
+    if (reservedCouponId && supabaseForRelease) {
+      const { error: relErr } = await supabaseForRelease.rpc('decrement_coupon_usage', { p_coupon_id: reservedCouponId });
+      if (relErr) console.error('[Checkout] decrement_coupon_usage (catch release) failed:', relErr);
+    }
     const message = error instanceof Error ? error.message : 'Internal server error';
     return NextResponse.json({ error: message }, { status: 500 });
   }

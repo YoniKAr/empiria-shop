@@ -48,6 +48,21 @@ export async function POST(request: NextRequest) {
     case 'payment_intent.payment_failed': {
       const paymentIntent = event.data.object;
       console.warn('[Webhook] Payment failed:', paymentIntent.id);
+      // Release any coupon reservation held by this checkout.
+      await releaseCouponReservation(paymentIntent.metadata, paymentIntent.id, `pi_failed:${paymentIntent.id}`);
+      break;
+    }
+    case 'checkout.session.expired': {
+      // The checkout was abandoned / timed out — release the coupon reservation
+      // that was taken atomically at checkout time so it isn't held forever.
+      // NOTE: the Stripe webhook endpoint MUST have `checkout.session.expired`
+      // enabled for this to fire.
+      const session = event.data.object;
+      const expiredPiId =
+        typeof session.payment_intent === 'string'
+          ? session.payment_intent
+          : session.payment_intent?.id ?? null;
+      await releaseCouponReservation(session.metadata, expiredPiId, `session_expired:${session.id}`);
       break;
     }
     case 'charge.refunded': {
@@ -58,6 +73,13 @@ export async function POST(request: NextRequest) {
     case 'charge.dispute.created': {
       const dispute = event.data.object;
       await handleDisputeCreated(dispute);
+      break;
+    }
+    case 'charge.dispute.closed': {
+      // NOTE: the Stripe webhook endpoint MUST have `charge.dispute.closed`
+      // enabled for this to fire.
+      const dispute = event.data.object;
+      await handleDisputeClosed(dispute);
       break;
     }
     default:
@@ -566,32 +588,22 @@ async function handleCheckoutCompleted(session: any) {
       }
     }
 
-    // 3c. Track coupon usage
+    // 3c. Record coupon usage.
+    // The usage count (current_uses) was already RESERVED atomically at checkout
+    // time via increment_coupon_usage in app/api/checkout/route.ts, so we do NOT
+    // increment again here (that would double-count). We only record the per-order
+    // usage row for per-user limits / auditing; coupon_id is already on the order.
     if (couponId) {
       try {
-        // Record usage in coupon_usages table
         await supabase.from('coupon_usages').insert({
           coupon_id: couponId,
           order_id: order.id,
           user_id: userId,
           discount_amount: discountAmount,
         });
-
-        // Atomically increment current_uses (capped at max_uses) via DB function.
-        // Returns false if capacity was already reached.
-        const { data: incremented, error: incErr } = await supabase.rpc(
-          'increment_coupon_usage',
-          { p_coupon_id: couponId }
-        );
-        if (incErr) {
-          console.error('[Webhook] increment_coupon_usage failed:', incErr);
-        } else if (incremented === false) {
-          console.warn(`[Webhook] Coupon ${couponCode} (${couponId}) at capacity — usage not incremented`);
-        }
-
-        console.log(`[Webhook] Coupon usage tracked: ${couponCode} (${couponId})`);
+        console.log(`[Webhook] Coupon usage recorded: ${couponCode} (${couponId})`);
       } catch (couponTrackError) {
-        console.error('[Webhook] Failed to track coupon usage:', couponTrackError);
+        console.error('[Webhook] Failed to record coupon usage:', couponTrackError);
       }
     }
 
@@ -875,4 +887,235 @@ async function handleDisputeCreated(dispute: any) {
     .update({ payout_breakdown: updatedPb })
     .eq('id', order.id);
   console.log(`[Webhook] Dispute ${dispute.id} recorded for order ${order.id}; all transfers reversed`);
+}
+
+async function handleDisputeClosed(dispute: any) {
+  const supabase = getSupabaseAdmin();
+  const paymentIntentId =
+    typeof dispute.payment_intent === 'string'
+      ? dispute.payment_intent
+      : dispute.payment_intent?.id;
+
+  if (!paymentIntentId) {
+    console.warn('[Webhook] charge.dispute.closed with no payment_intent — acking');
+    return;
+  }
+
+  const { data: order } = await supabase
+    .from('orders')
+    .select('id, status, payout_breakdown, currency')
+    .eq('stripe_payment_intent_id', paymentIntentId)
+    .maybeSingle();
+
+  if (!order) {
+    console.log('[Webhook] charge.dispute.closed: no order for PI', paymentIntentId, '— acking');
+    return;
+  }
+
+  const pb: any = order.payout_breakdown || {};
+
+  // Idempotency: skip if this dispute's CLOSED outcome was already processed.
+  // (dispute.created records dispute_id; we key the closed-handling on a separate
+  // flag so the closed event still runs once even though created already ran.)
+  if (pb.dispute_closed_status && pb.dispute_id === dispute.id) {
+    console.log('[Webhook] Dispute', dispute.id, 'closed-outcome already processed for order', order.id);
+    return;
+  }
+
+  const currency = order.currency || 'cad';
+
+  // Only a WON dispute returns the funds to the platform; in that case we re-push
+  // each previously-reversed share back to its connected account using the ORIGINAL
+  // amounts recorded in payout_breakdown. Any non-won closed status (lost/warning_*)
+  // means the reversal stands — we just record the outcome.
+  if (dispute.status === 'won') {
+    // Re-transfer organizer payout.
+    const reTransfers: {
+      organizer_transfer_id?: string | null;
+      splits?: Array<{ user_id?: string; stripe_id?: string; amount: number; stripe_transfer_id: string | null }>;
+      elevsoft_transfer_id?: string | null;
+    } = {};
+
+    // Single-organizer payout (only present when there were no splits).
+    if (pb.organizer_transfer_id && pb.organizer_payout > 0) {
+      const destination = await resolveOrganizerStripeId(supabase, order.id, pb);
+      reTransfers.organizer_transfer_id = await redoTransfer({
+        amount: pb.organizer_payout,
+        currency,
+        destination,
+        disputeId: dispute.id,
+        orderId: order.id,
+        type: 'organizer_payout_redo',
+      });
+    }
+
+    // Multi-split shares.
+    if (Array.isArray(pb.splits) && pb.splits.length > 0) {
+      reTransfers.splits = [];
+      for (const s of pb.splits) {
+        const destination = s?.stripe_id || null;
+        const amount = Number(s?.amount || 0);
+        const newId = await redoTransfer({
+          amount,
+          currency,
+          destination,
+          disputeId: dispute.id,
+          orderId: order.id,
+          type: 'split_redo',
+        });
+        reTransfers.splits.push({
+          user_id: s?.user_id,
+          stripe_id: s?.stripe_id,
+          amount,
+          stripe_transfer_id: newId ?? s?.stripe_transfer_id ?? null,
+        });
+      }
+    }
+
+    // Elevsoft share.
+    if (pb.elevsoft_transfer?.stripe_transfer_id) {
+      reTransfers.elevsoft_transfer_id = await redoTransfer({
+        amount: Number(pb.elevsoft_transfer?.amount || 0),
+        currency,
+        destination: process.env.ELEVSOFT_STRIPE_ACCOUNT_ID || null,
+        disputeId: dispute.id,
+        orderId: order.id,
+        type: 'elevsoft_redo',
+      });
+    }
+
+    const updatedPb = {
+      ...pb,
+      dispute_closed_status: 'won',
+      dispute: {
+        ...(pb.dispute || {}),
+        id: dispute.id,
+        status: dispute.status,
+      },
+      dispute_redo_transfers: reTransfers,
+    };
+    await supabase
+      .from('orders')
+      .update({ payout_breakdown: updatedPb })
+      .eq('id', order.id);
+    console.log(`[Webhook] Dispute ${dispute.id} WON for order ${order.id}; reversed transfers re-pushed`);
+  } else {
+    // Lost (or any other closed status) — the reversal stands; just record it.
+    const updatedPb = {
+      ...pb,
+      dispute_closed_status: dispute.status,
+      dispute: {
+        ...(pb.dispute || {}),
+        id: dispute.id,
+        status: dispute.status,
+      },
+    };
+    await supabase
+      .from('orders')
+      .update({ payout_breakdown: updatedPb })
+      .eq('id', order.id);
+    console.log(`[Webhook] Dispute ${dispute.id} closed (${dispute.status}) for order ${order.id}; reversal stands`);
+  }
+}
+
+// Recreate an outbound transfer to a connected account after a won dispute
+// returned the funds to the platform. Guards on missing destination / amount.
+// Idempotency key `redo_<disputeId>_<recipientStripeId>` makes Stripe dedupe
+// retried events so a recipient is never paid twice for the same won dispute.
+async function redoTransfer(opts: {
+  amount: number;
+  currency: string;
+  destination: string | null;
+  disputeId: string;
+  orderId: string;
+  type: string;
+}): Promise<string | null> {
+  const { amount, currency, destination, disputeId, orderId, type } = opts;
+  if (!destination || !(amount > 0)) {
+    console.log(`[Webhook] Dispute ${disputeId}: skip re-transfer (${type}) — missing destination or amount`);
+    return null;
+  }
+  const amountCents = Math.round(amount * 100);
+  if (amountCents <= 0) return null;
+  try {
+    const transfer = await stripe.transfers.create(
+      {
+        amount: amountCents,
+        currency,
+        destination,
+        metadata: { order_id: orderId, dispute_id: disputeId, type },
+      },
+      { idempotencyKey: `redo_${disputeId}_${destination}` }
+    );
+    console.log(`[Webhook] Dispute ${disputeId}: re-transferred ${amountCents} cents to ${destination} (${type})`);
+    return transfer.id;
+  } catch (err) {
+    console.error(`[Webhook] Dispute ${disputeId}: re-transfer failed for ${destination} (${type}):`, err);
+    return null;
+  }
+}
+
+// Resolve the connected account that received the single-organizer payout.
+// The original transfer recorded its destination, so read it back from Stripe.
+async function resolveOrganizerStripeId(
+  _supabase: ReturnType<typeof getSupabaseAdmin>,
+  _orderId: string,
+  pb: any
+): Promise<string | null> {
+  try {
+    if (pb.organizer_transfer_id) {
+      const t = await stripe.transfers.retrieve(pb.organizer_transfer_id);
+      const dest = (t as any).destination;
+      return typeof dest === 'string' ? dest : dest?.id ?? null;
+    }
+  } catch (err) {
+    console.error('[Webhook] Could not resolve organizer stripe id from original transfer:', err);
+  }
+  return null;
+}
+
+// ──────────────────────────────────────────────────
+// COUPON RESERVATION RELEASE
+//
+// Coupon usage is RESERVED atomically at checkout time (increment_coupon_usage in
+// app/api/checkout/route.ts). If the checkout is abandoned (session expires) or the
+// payment fails, we must release that reservation via decrement_coupon_usage so the
+// slot is freed for someone else.
+//
+// IDEMPOTENCY: Stripe may retry these events. `checkout.session.expired` fires once
+// per session, and a given PaymentIntent only emits payment_failed for genuine
+// failures, but to avoid a double-decrement on a retried event we guard on the order:
+// if an order already exists for this PI (i.e. checkout actually completed), the
+// reservation was consumed by a real sale and must NOT be released.
+// ──────────────────────────────────────────────────
+async function releaseCouponReservation(
+  metadata: Record<string, string> | null | undefined,
+  piId: string | null,
+  context: string
+) {
+  const couponId = metadata?.coupon_id;
+  if (!couponId) return;
+
+  const supabase = getSupabaseAdmin();
+
+  // Guard: if a completed order exists for this payment, the reservation was
+  // consumed by a real sale — do NOT release it.
+  if (piId) {
+    const { data: existingOrder } = await supabase
+      .from('orders')
+      .select('id')
+      .eq('stripe_payment_intent_id', piId)
+      .maybeSingle();
+    if (existingOrder) {
+      console.log(`[Webhook] ${context}: order exists for PI ${piId} — keeping coupon reservation`);
+      return;
+    }
+  }
+
+  const { error } = await supabase.rpc('decrement_coupon_usage', { p_coupon_id: couponId });
+  if (error) {
+    console.error(`[Webhook] ${context}: decrement_coupon_usage failed:`, error);
+  } else {
+    console.log(`[Webhook] ${context}: released coupon reservation ${couponId}`);
+  }
 }
