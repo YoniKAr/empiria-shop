@@ -33,6 +33,7 @@ interface ZoneSelectorProps {
   userEmail?: string;
   userName?: string;
   occurrences?: OccurrenceOption[];
+  blockedBuyer?: boolean;
 }
 
 interface TierSelection {
@@ -73,6 +74,7 @@ export default function ZoneSelector({
   userEmail,
   userName,
   occurrences = [],
+  blockedBuyer = false,
 }: ZoneSelectorProps) {
   const migratedConfig = migrateSeatingConfig(config);
 
@@ -80,6 +82,8 @@ export default function ZoneSelector({
   const [selections, setSelections] = useState<TierSelection[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [shake, setShake] = useState(false);
+  const [showBuyBlock, setShowBuyBlock] = useState(false);
   const [selectedOccurrenceId, setSelectedOccurrenceId] = useState<string>(
     occurrences.length === 1 ? occurrences[0].id : ""
   );
@@ -157,6 +161,14 @@ export default function ZoneSelector({
   );
 
   async function handleCheckout() {
+    if (blockedBuyer) {
+      setShowBuyBlock(true);
+      setShake(true);
+      if (typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate(60);
+      setTimeout(() => setShake(false), 450);
+      return;
+    }
+
     const activeSelections = selections.filter((s) => s.quantity > 0);
 
     if (activeSelections.length === 0) {
@@ -552,7 +564,7 @@ export default function ZoneSelector({
           type="button"
           onClick={handleCheckout}
           disabled={totalItems === 0 || loading}
-          className="w-full bg-orange-600 text-white text-center py-4 rounded-xl font-bold hover:bg-orange-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          className={`w-full bg-orange-600 text-white text-center py-4 rounded-xl font-bold hover:bg-orange-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 ${shake ? "animate-shake" : ""}`}
         >
           {loading ? (
             <>
@@ -565,6 +577,12 @@ export default function ZoneSelector({
             "Checkout"
           )}
         </button>
+
+        {showBuyBlock && (
+          <p className="mt-2 text-center text-xs font-medium text-red-600">
+            Must be an attendee to buy
+          </p>
+        )}
 
         <p className="text-xs text-center text-gray-400 mt-4">
           Secure checkout powered by Stripe

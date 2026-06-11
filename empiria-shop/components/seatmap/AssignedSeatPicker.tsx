@@ -32,6 +32,7 @@ interface AssignedSeatPickerProps {
   userName?: string;
   occurrences?: OccurrenceOption[];
   allowSeatChoice: boolean;
+  blockedBuyer?: boolean;
 }
 
 interface TierQuantitySelection {
@@ -57,9 +58,12 @@ export default function AssignedSeatPicker({
   userName,
   occurrences = [],
   allowSeatChoice,
+  blockedBuyer = false,
 }: AssignedSeatPickerProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [shake, setShake] = useState(false);
+  const [showBuyBlock, setShowBuyBlock] = useState(false);
   const [selectedOccurrenceId, setSelectedOccurrenceId] = useState<string>(
     occurrences.length === 1 ? occurrences[0].id : ""
   );
@@ -219,6 +223,14 @@ export default function AssignedSeatPicker({
       }, 0);
 
   async function handleCheckout() {
+    if (blockedBuyer) {
+      setShowBuyBlock(true);
+      setShake(true);
+      if (typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate(60);
+      setTimeout(() => setShake(false), 450);
+      return;
+    }
+
     if (totalItems === 0) {
       setError("Please select at least one ticket");
       return;
@@ -621,7 +633,7 @@ export default function AssignedSeatPicker({
           type="button"
           onClick={handleCheckout}
           disabled={totalItems === 0 || loading}
-          className="w-full bg-orange-600 text-white text-center py-4 rounded-xl font-bold hover:bg-orange-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          className={`w-full bg-orange-600 text-white text-center py-4 rounded-xl font-bold hover:bg-orange-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 ${shake ? "animate-shake" : ""}`}
         >
           {loading ? (
             <>
@@ -634,6 +646,12 @@ export default function AssignedSeatPicker({
             "Checkout"
           )}
         </button>
+
+        {showBuyBlock && (
+          <p className="mt-2 text-center text-xs font-medium text-red-600">
+            Must be an attendee to buy
+          </p>
+        )}
 
         <p className="text-xs text-center text-gray-400 mt-4">
           Secure checkout powered by Stripe

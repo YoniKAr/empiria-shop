@@ -21,9 +21,10 @@ interface TicketWidgetProps {
     entryType?: string
     externalUrl?: string | null
     sharedCapacity?: boolean
+    blockedBuyer?: boolean
 }
 
-export function TicketWidget({ tiers, eventId, currency = "cad", ctaLabel, entryType, externalUrl, sharedCapacity }: TicketWidgetProps) {
+export function TicketWidget({ tiers, eventId, currency = "cad", ctaLabel, entryType, externalUrl, sharedCapacity, blockedBuyer = false }: TicketWidgetProps) {
     // External events: link out instead of the ticket UI.
     if (entryType === "external") {
         const hasSafeUrl = !!externalUrl && isSafeUrl(externalUrl)
@@ -59,14 +60,16 @@ export function TicketWidget({ tiers, eventId, currency = "cad", ctaLabel, entry
         )
     }
 
-    return <TicketedWidget tiers={tiers} eventId={eventId} currency={currency} ctaLabel={ctaLabel} sharedCapacity={sharedCapacity} />
+    return <TicketedWidget tiers={tiers} eventId={eventId} currency={currency} ctaLabel={ctaLabel} sharedCapacity={sharedCapacity} blockedBuyer={blockedBuyer} />
 }
 
-function TicketedWidget({ tiers, eventId, currency = "cad", ctaLabel, sharedCapacity }: { tiers: TicketTier[]; eventId: string; currency?: string; ctaLabel?: string; sharedCapacity?: boolean }) {
+function TicketedWidget({ tiers, eventId, currency = "cad", ctaLabel, sharedCapacity, blockedBuyer = false }: { tiers: TicketTier[]; eventId: string; currency?: string; ctaLabel?: string; sharedCapacity?: boolean; blockedBuyer?: boolean }) {
     const [selectedTier, setSelectedTier] = useState<string | null>(
         tiers[0]?.id ?? null
     )
     const [quantity, setQuantity] = useState(1)
+    const [shake, setShake] = useState(false)
+    const [showBuyBlock, setShowBuyBlock] = useState(false)
 
     const selected = tiers.find((t) => t.id === selectedTier)
     const total = selected ? selected.price * quantity : 0
@@ -192,10 +195,24 @@ function TicketedWidget({ tiers, eventId, currency = "cad", ctaLabel, sharedCapa
 
                     <Link
                         href={`/checkout/${eventId}`}
-                        className="block w-full bg-[#F15A29] text-white text-center py-4 rounded-xl font-bold text-base hover:brightness-110 active:scale-[0.98] transition-all duration-200 font-[family-name:var(--font-space-grotesk)]"
+                        onClick={(e) => {
+                            if (blockedBuyer) {
+                                e.preventDefault()
+                                setShowBuyBlock(true)
+                                setShake(true)
+                                if (typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate(60)
+                                setTimeout(() => setShake(false), 450)
+                                return
+                            }
+                        }}
+                        className={`block w-full bg-[#F15A29] text-white text-center py-4 rounded-xl font-bold text-base hover:brightness-110 active:scale-[0.98] transition-all duration-200 font-[family-name:var(--font-space-grotesk)] ${shake ? "animate-shake" : ""}`}
                     >
                         {ctaButtonText(ctaLabel)}
                     </Link>
+
+                    {showBuyBlock && (
+                        <p className="mt-2 text-center text-xs font-medium text-red-600">Must be an attendee to buy</p>
+                    )}
 
                     <div className="flex items-center justify-center gap-2 mt-4">
                         <ShieldCheck className="w-3.5 h-3.5 text-gray-400" />

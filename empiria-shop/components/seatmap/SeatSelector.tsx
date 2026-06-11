@@ -31,6 +31,7 @@ interface SeatSelectorProps {
   userEmail?: string;
   userName?: string;
   occurrences?: OccurrenceOption[];
+  blockedBuyer?: boolean;
 }
 
 interface SelectedSeat {
@@ -62,6 +63,7 @@ export default function SeatSelector({
   userEmail,
   userName,
   occurrences = [],
+  blockedBuyer = false,
 }: SeatSelectorProps) {
   const [sessionId] = useState(() => {
     if (typeof window === "undefined") return "";
@@ -84,6 +86,8 @@ export default function SeatSelector({
   const [selectedSeats, setSelectedSeats] = useState<SelectedSeat[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [shake, setShake] = useState(false);
+  const [showBuyBlock, setShowBuyBlock] = useState(false);
   const [selectedOccurrenceId, setSelectedOccurrenceId] = useState<string>(
     occurrences.length === 1 ? occurrences[0].id : ""
   );
@@ -276,6 +280,14 @@ export default function SeatSelector({
   const totalPrice = selectedSeats.reduce((sum, s) => sum + s.price, 0);
 
   async function handleCheckout() {
+    if (blockedBuyer) {
+      setShowBuyBlock(true);
+      setShake(true);
+      if (typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate(60);
+      setTimeout(() => setShake(false), 450);
+      return;
+    }
+
     if (selectedSeats.length === 0) {
       setError("Please select at least one seat");
       return;
@@ -617,7 +629,7 @@ export default function SeatSelector({
           type="button"
           onClick={handleCheckout}
           disabled={selectedSeats.length === 0 || loading}
-          className="w-full bg-orange-600 text-white text-center py-4 rounded-xl font-bold hover:bg-orange-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          className={`w-full bg-orange-600 text-white text-center py-4 rounded-xl font-bold hover:bg-orange-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 ${shake ? "animate-shake" : ""}`}
         >
           {loading ? (
             <>
@@ -630,6 +642,12 @@ export default function SeatSelector({
             "Checkout"
           )}
         </button>
+
+        {showBuyBlock && (
+          <p className="mt-2 text-center text-xs font-medium text-red-600">
+            Must be an attendee to buy
+          </p>
+        )}
 
         <p className="text-xs text-center text-gray-400 mt-4">
           Secure checkout powered by Stripe

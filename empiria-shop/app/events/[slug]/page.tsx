@@ -166,6 +166,19 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
     const session = await getSafeSession();
     const user = session?.user;
 
+    // Block non-attendee accounts (organizer/non_profit/admin) from buying.
+    // Guests (not logged in) and attendees are unaffected. Server enforces this
+    // at the checkout API + page; this flag drives the on-page UX guard.
+    let blockedBuyer = false;
+    if (user?.sub) {
+        const { data: buyerRow } = await supabase
+            .from('users')
+            .select('role')
+            .eq('auth0_id', user.sub)
+            .single();
+        blockedBuyer = !!buyerRow?.role && buyerRow.role !== 'attendee';
+    }
+
     // Fetch similar events (same category or overlapping tags)
     let similarEvents: any[] = [];
     if (event.category_id) {
@@ -282,6 +295,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                             currencySymbol={currencySymbol}
                             userEmail={user?.email}
                             userName={user?.name}
+                            blockedBuyer={blockedBuyer}
                             allowSeatChoice={seatingConfig.allow_seat_choice ?? false}
                             occurrences={futureOccurrences.map((o: any) => ({
                                 id: o.id,
@@ -299,6 +313,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                             currencySymbol={currencySymbol}
                             userEmail={user?.email}
                             userName={user?.name}
+                            blockedBuyer={blockedBuyer}
                             occurrences={futureOccurrences.map((o: any) => ({
                                 id: o.id,
                                 starts_at: o.starts_at,
@@ -315,6 +330,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                             currencySymbol={currencySymbol}
                             userEmail={user?.email}
                             userName={user?.name}
+                            blockedBuyer={blockedBuyer}
                             occurrences={futureOccurrences.map((o: any) => ({
                                 id: o.id,
                                 starts_at: o.starts_at,
@@ -331,6 +347,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                             currencySymbol={currencySymbol}
                             userEmail={user?.email}
                             userName={user?.name}
+                            blockedBuyer={blockedBuyer}
                             occurrences={futureOccurrences.map((o: any) => ({
                                 id: o.id,
                                 starts_at: o.starts_at,
@@ -347,6 +364,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                             entryType={event.entry_type}
                             externalUrl={event.external_url}
                             sharedCapacity={!!(event as any).shared_capacity}
+                            blockedBuyer={blockedBuyer}
                         />
                     )}
                 </div>
