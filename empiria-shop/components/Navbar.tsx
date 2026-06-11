@@ -11,16 +11,26 @@ export default async function Navbar({ overlay = false }: { overlay?: boolean })
 
   let userRole: string | null = null;
   let defaultCurrency: string | null = null;
+  let userFullName: string | null = null;
   if (user?.sub) {
     const supabase = getSupabaseAdmin();
     const { data: profile } = await supabase
       .from('users')
-      .select('role, default_currency')
+      .select('role, default_currency, full_name')
       .eq('auth0_id', user.sub)
       .single();
     userRole = profile?.role || null;
     defaultCurrency = profile?.default_currency || null;
+    userFullName = profile?.full_name?.trim() || null;
   }
+
+  // Greet by the real name; never show the email. Fall back to the Auth0 name (only if it
+  // isn't itself an email), then the email's local part, then a friendly default.
+  const displayName =
+    userFullName ||
+    (user?.name && !user.name.includes('@') ? user.name : '') ||
+    (user?.email ? user.email.split('@')[0] : '') ||
+    'there';
 
   return (
     <>
@@ -49,7 +59,7 @@ export default async function Navbar({ overlay = false }: { overlay?: boolean })
           <CurrencySelector defaultCurrency={defaultCurrency || undefined} />
           {user ? (
             <UserMenu
-              userName={user.name || 'User'}
+              userName={displayName}
               userPicture={user.picture || null}
               userRole={userRole}
             />
