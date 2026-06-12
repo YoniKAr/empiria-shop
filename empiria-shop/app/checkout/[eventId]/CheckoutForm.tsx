@@ -316,7 +316,7 @@ export function CheckoutForm({
         >
           <span className="inline-flex items-center gap-1">
             Service fee
-            <span title="Covers the Empiria platform service." className="text-gray-400 cursor-help">
+            <span title="Covers the Empiria platform service." className="text-gray-600 cursor-help">
               &#9432;
             </span>
           </span>
@@ -330,7 +330,7 @@ export function CheckoutForm({
         >
           <span className="inline-flex items-center gap-1">
             Processing fee
-            <span title="Secure card processing." className="text-gray-400 cursor-help">
+            <span title="Secure card processing." className="text-gray-600 cursor-help">
               &#9432;
             </span>
           </span>
@@ -362,14 +362,14 @@ export function CheckoutForm({
                       ? "bg-[#F15A29] text-white"
                       : active
                         ? "bg-gray-900 text-white"
-                        : "bg-gray-200 text-gray-500"
+                        : "bg-gray-200 text-gray-700"
                   }`}
                 >
                   {done ? <CheckCircle2 className="h-3.5 w-3.5" /> : s.n}
                 </span>
                 <span
                   className={`text-xs font-semibold tracking-wide uppercase ${
-                    active ? "text-gray-900" : done ? "text-[#F15A29]" : "text-gray-400"
+                    active ? "text-gray-900" : done ? "text-[#F15A29]" : "text-gray-600"
                   }`}
                 >
                   {s.label}
@@ -401,7 +401,7 @@ export function CheckoutForm({
             setStep("select");
             if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
           }}
-          className="group mb-5 inline-flex items-center gap-1.5 text-sm font-semibold text-gray-500 transition-colors hover:text-gray-900"
+          className="group mb-5 inline-flex items-center gap-1.5 text-sm font-semibold text-gray-700 transition-colors hover:text-gray-900"
           data-testid="checkout-back"
         >
           <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
@@ -462,7 +462,7 @@ export function CheckoutForm({
                           <div className="min-w-0">
                             <p className="truncate font-bold text-gray-900">{tier.name}</p>
                             {tier.description && (
-                              <p className="mt-0.5 truncate text-xs text-gray-400">
+                              <p className="mt-0.5 truncate text-xs text-gray-600">
                                 {tier.description}
                               </p>
                             )}
@@ -471,7 +471,7 @@ export function CheckoutForm({
                             <p className="text-sm font-semibold text-gray-900">
                               {qty} × {formatPrice(tier.price)}
                             </p>
-                            <p className="text-xs text-gray-400">
+                            <p className="text-xs text-gray-600">
                               {formatPrice(tier.price * qty)}
                             </p>
                           </div>
@@ -487,13 +487,13 @@ export function CheckoutForm({
                                   key={i}
                                   className="rounded-lg border border-gray-100 bg-gray-50/60 px-3 py-2"
                                 >
-                                  <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400">
+                                  <p className="text-[11px] font-bold uppercase tracking-wide text-gray-600">
                                     Attendee {i + 1}
                                   </p>
                                   <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
                                     {customFields.map((f) => (
                                       <span key={f.id} className="text-xs text-gray-600">
-                                        <span className="text-gray-400">{f.label}:</span>{" "}
+                                        <span className="text-gray-600">{f.label}:</span>{" "}
                                         <span className="font-medium text-gray-800">
                                           {String(a[f.id] ?? "").trim() || "—"}
                                         </span>
@@ -514,7 +514,7 @@ export function CheckoutForm({
 
             {/* Contact / delivery */}
             <div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-black/5">
-              <h3 className="mb-3 text-xs font-bold uppercase tracking-wide text-gray-400">
+              <h3 className="mb-3 text-xs font-bold uppercase tracking-wide text-gray-600">
                 Delivery
               </h3>
               <div className="flex items-start gap-3">
@@ -526,7 +526,7 @@ export function CheckoutForm({
                   <p className="truncate text-sm text-gray-600" data-testid="checkout-review-email">
                     {email}
                   </p>
-                  <p className="mt-0.5 text-xs text-gray-400">
+                  <p className="mt-0.5 text-xs text-gray-600">
                     Your tickets &amp; wallet passes will be sent here.
                   </p>
                 </div>
@@ -535,7 +535,7 @@ export function CheckoutForm({
 
             {/* What happens next */}
             <div className="rounded-2xl border border-dashed border-gray-200 p-6">
-              <h3 className="mb-4 text-xs font-bold uppercase tracking-wide text-gray-400">
+              <h3 className="mb-4 text-xs font-bold uppercase tracking-wide text-gray-600">
                 What happens next
               </h3>
               <ul className="space-y-3.5">
@@ -566,7 +566,7 @@ export function CheckoutForm({
           <div className="lg:sticky lg:top-6">
             <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/5">
               <div className="px-6 pt-6">
-                <h3 className="text-xs font-bold uppercase tracking-wide text-gray-400">
+                <h3 className="text-xs font-bold uppercase tracking-wide text-gray-600">
                   Order summary
                 </h3>
                 <div className="mt-4">
@@ -586,7 +586,7 @@ export function CheckoutForm({
                   className="flex items-end justify-between"
                   data-testid="checkout-total"
                 >
-                  <span className="text-sm font-semibold text-gray-500">Total due</span>
+                  <span className="text-sm font-semibold text-gray-700">Total due</span>
                   <span className="text-3xl font-extrabold tracking-tight text-gray-900 tabular-nums">
                     {customerTotal === 0 ? "FREE" : formatPrice(customerTotal)}
                   </span>
@@ -623,15 +623,15 @@ export function CheckoutForm({
                 </button>
 
                 <div className="mt-3 flex items-center justify-center gap-1.5">
-                  <ShieldCheck className="h-3.5 w-3.5 text-gray-400" />
-                  <p className="text-xs text-gray-400">
+                  <ShieldCheck className="h-3.5 w-3.5 text-gray-600" />
+                  <p className="text-xs text-gray-600">
                     Secure checkout powered by Stripe
                   </p>
                 </div>
               </div>
             </div>
 
-            <p className="mt-3 px-2 text-center text-[11px] leading-relaxed text-gray-400">
+            <p className="mt-3 px-2 text-center text-[11px] leading-relaxed text-gray-600">
               By paying you agree to Empiria&apos;s Terms &amp; Refund Policy. Prices in{" "}
               {currency.toUpperCase()}.
             </p>
@@ -681,7 +681,7 @@ export function CheckoutForm({
                         {tier.name}
                       </p>
                       {tier.description && (
-                        <p className="text-xs text-gray-500 mt-0.5 truncate">
+                        <p className="text-xs text-gray-700 mt-0.5 truncate">
                           {tier.description}
                         </p>
                       )}
@@ -769,7 +769,7 @@ export function CheckoutForm({
                 <button
                   type="button"
                   onClick={() => { setCouponApplied(null); setCouponCode(''); setCouponError(null); }}
-                  className="text-gray-400 hover:text-gray-600 text-sm font-medium"
+                  className="text-gray-600 hover:text-gray-600 text-sm font-medium"
                 >
                   Remove
                 </button>
@@ -949,7 +949,7 @@ export function CheckoutForm({
               {eventTitle}
             </h2>
             {selectedOccurrence && (
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-gray-700">
                 {new Date(selectedOccurrence.starts_at).toLocaleDateString(
                   "en-US",
                   {
@@ -992,8 +992,8 @@ export function CheckoutForm({
             </div>
 
             <div className="flex items-center justify-center gap-2 mt-4">
-              <ShieldCheck className="w-3.5 h-3.5 text-gray-500" />
-              <p className="text-xs text-gray-500">
+              <ShieldCheck className="w-3.5 h-3.5 text-gray-700" />
+              <p className="text-xs text-gray-700">
                 Secure checkout powered by Stripe
               </p>
             </div>

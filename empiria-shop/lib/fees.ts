@@ -46,8 +46,15 @@ export function computeFees(input: FeeInput): FeeBreakdown {
 
   if (passProcessingFee) {
     const netNeeded = round2(effBase + platformFee + hstTotal);
-    customerTotal = round2((netNeeded + STRIPE_FIXED) / (1 - STRIPE_PERCENT));
-    stripeOffset = round2(customerTotal - netNeeded);
+    if (netNeeded <= 0) {
+      // Nothing is owed (fully free order) — it never touches Stripe, so there is
+      // no processing fee to pass on. Total stays $0, not the grossed-up $0.30.
+      customerTotal = 0;
+      stripeOffset = 0;
+    } else {
+      customerTotal = round2((netNeeded + STRIPE_FIXED) / (1 - STRIPE_PERCENT));
+      stripeOffset = round2(customerTotal - netNeeded);
+    }
     customerTax = hstTotal;
   } else {
     customerTax = hstOnBase;
