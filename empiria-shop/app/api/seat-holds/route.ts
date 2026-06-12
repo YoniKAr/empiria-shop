@@ -60,8 +60,27 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) {
-      // Unique constraint violation = seat already held
+      // Unique constraint violation = a hold already exists for this seat.
       if (error.code === "23505") {
+        // If *this* session already holds it, treat as success and refresh the
+        // expiry — guards against double-fires, re-selects, and remounts.
+        const { data: existingHold } = await supabase
+          .from("seat_holds")
+          .select("*")
+          .eq("event_id", eventId)
+          .eq("seat_id", seatId)
+          .maybeSingle();
+
+        if (existingHold && existingHold.session_id === sessionId) {
+          const { data: refreshed } = await supabase
+            .from("seat_holds")
+            .update({ expires_at: expiresAt })
+            .eq("id", existingHold.id)
+            .select()
+            .single();
+          return NextResponse.json({ hold: refreshed ?? existingHold });
+        }
+
         return NextResponse.json(
           { error: "This seat is currently held by another customer" },
           { status: 409 }

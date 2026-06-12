@@ -82,9 +82,12 @@ export function useSeatHolds({
     };
   }, [eventId]);
 
-  // Release all holds on unmount
+  // Release all my holds on unmount AND on page hide (tab close / refresh /
+  // navigation away) — the unmount cleanup alone misses those, leaving ghost
+  // holds that block the same person on retry. `keepalive` lets the request
+  // survive the page teardown.
   useEffect(() => {
-    return () => {
+    const releaseMine = () => {
       const myHolds = holdsRef.current.filter(
         (h) => h.session_id === sessionId
       );
@@ -92,13 +95,16 @@ export function useSeatHolds({
         fetch("/api/seat-holds", {
           method: "DELETE",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            eventId,
-            seatId: hold.seat_id,
-            sessionId,
-          }),
+          body: JSON.stringify({ eventId, seatId: hold.seat_id, sessionId }),
+          keepalive: true,
         }).catch(() => {});
       }
+    };
+
+    window.addEventListener("pagehide", releaseMine);
+    return () => {
+      window.removeEventListener("pagehide", releaseMine);
+      releaseMine();
     };
     // Only run on unmount
     // eslint-disable-next-line react-hooks/exhaustive-deps
