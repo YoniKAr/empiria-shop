@@ -42,12 +42,13 @@ export default async function Navbar({ overlay = false }: { overlay?: boolean })
           <MobileNav />
 
           <Link href="/" className="flex items-center gap-2">
+            {/* Logo size must match the home/landing navbar (100px) — keep in sync. */}
             <Image
               src="/logo.png"
               alt="Empiria Logo"
-              width={130}
-              height={40}
-              className="object-contain w-[100px] sm:w-[130px] h-auto"
+              width={100}
+              height={33}
+              className="object-contain w-[100px] h-auto"
               priority
             />
           </Link>
