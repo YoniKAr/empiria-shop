@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import { Minus, Plus, Loader2, AlertCircle, Check } from "lucide-react";
 import StripeBadge from "@/components/StripeBadge";
+import { BlockedBuyerNotice } from "@/components/BlockedBuyerNotice";
 import type { SeatRange } from "@/lib/seatmap-types";
 
 interface TicketTier {
@@ -655,11 +656,7 @@ export default function AssignedSeatPicker({
           )}
         </button>
 
-        {showBuyBlock && (
-          <p className="mt-2 text-center text-xs font-medium text-red-600">
-            Must be an attendee to buy
-          </p>
-        )}
+        {showBuyBlock && <BlockedBuyerNotice className="mt-2" />}
 
         <StripeBadge className="mt-4" />
       </div>

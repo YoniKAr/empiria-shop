@@ -4,6 +4,7 @@ import { useState } from "react"
 import { Check, ExternalLink, Minus, Plus, Ticket } from "lucide-react"
 import Link from "next/link"
 import StripeBadge from "@/components/StripeBadge"
+import { BlockedBuyerNotice } from "@/components/BlockedBuyerNotice"
 import { ctaButtonText, isSafeUrl } from "@/lib/eventFields"
 
 interface TicketTier {
@@ -211,9 +212,7 @@ function TicketedWidget({ tiers, eventId, currency = "cad", ctaLabel, sharedCapa
                         {ctaButtonText(ctaLabel)}
                     </Link>
 
-                    {showBuyBlock && (
-                        <p className="mt-2 text-center text-xs font-medium text-red-600">Must be an attendee to buy</p>
-                    )}
+                    {showBuyBlock && <BlockedBuyerNotice className="mt-2" />}
 
                     <StripeBadge className="mt-4" />
                 </div>

@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
         .single();
       if (buyer?.role && buyer.role !== 'attendee') {
         return NextResponse.json(
-          { error: 'Organizer and admin accounts can’t buy tickets. Please sign in with an attendee account to purchase.' },
+          { error: 'You must be logged in with an attendee account to buy tickets. Log out and sign back in with an attendee account to continue.' },
           { status: 403 }
         );
       }

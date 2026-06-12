@@ -5,6 +5,7 @@ import { X, Loader2, AlertCircle, Clock, Minus, Plus } from "lucide-react";
 import SeatmapViewer from "./SeatmapViewer";
 import SchematicViewer from "./SchematicViewer";
 import StripeBadge from "@/components/StripeBadge";
+import { BlockedBuyerNotice } from "@/components/BlockedBuyerNotice";
 import { useSeatHolds } from "./useSeatHolds";
 import { computeSeatQuantityCap } from "@/lib/seat-quantity";
 import type { SeatingConfig, SectionDefinition, ZoneTier } from "@/lib/seatmap-types";
@@ -826,11 +827,7 @@ export default function SeatSelector({
           )}
         </button>
 
-        {showBuyBlock && (
-          <p className="mt-2 text-center text-xs font-medium text-red-600">
-            Must be an attendee to buy
-          </p>
-        )}
+        {showBuyBlock && <BlockedBuyerNotice className="mt-2" />}
 
         <StripeBadge className="mt-4" />
       </div>
