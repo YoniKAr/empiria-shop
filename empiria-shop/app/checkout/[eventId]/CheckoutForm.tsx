@@ -62,6 +62,8 @@ interface CheckoutFormProps {
   sharedRemaining?: number;
   /** Pre-selected occurrence (?occ=<id>, validated server-side). */
   initialOccurrenceId?: string;
+  /** Pre-selected quantities carried from the event page (?tiers=…, validated + clamped server-side). */
+  initialQuantities?: Record<string, number>;
 }
 
 export function CheckoutForm({
@@ -79,9 +81,15 @@ export function CheckoutForm({
   sharedCapacity = false,
   sharedRemaining = 0,
   initialOccurrenceId,
+  initialQuantities,
 }: CheckoutFormProps) {
   const [step, setStep] = useState<"select" | "review">("select");
   const [quantities, setQuantities] = useState<Record<string, number>>(() => {
+    // Selection carried over from the event page (already validated + clamped
+    // server-side) wins — this is what makes the event-page picks stick.
+    if (initialQuantities && Object.keys(initialQuantities).length > 0) {
+      return initialQuantities;
+    }
     // In shared mode the event pool is the constraint; a tier is "available"
     // only when the shared pool has room.
     if (sharedCapacity && sharedRemaining <= 0) return {};
@@ -710,6 +718,146 @@ export function CheckoutForm({
             </div>
           )}
 
+          {/* Contact Form */}
+          <div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-black/5">
+            <h3 className="mb-4 flex items-center gap-2 border-b border-gray-100 pb-2 font-bold text-gray-900">
+              <Mail className="h-4 w-4 text-[#F15A29]" />
+              Contact Information
+            </h3>
+
+            {!user && (
+              <div className="bg-blue-50 text-blue-800 p-4 rounded-lg mb-4 text-sm flex justify-between items-center">
+                <span>Already have an account?</span>
+                <a href="/auth/login" className="font-bold hover:underline">
+                  Sign In
+                </a>
+              </div>
+            )}
+
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wide text-gray-700 mb-1.5">
+                    First Name
+                  </label>
+                  <input
+                    type="text"
+                    className="w-full rounded-lg border border-gray-300 p-3 text-gray-900 outline-none transition focus:border-[#F15A29] focus:ring-2 focus:ring-[#F15A29]/20"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    placeholder="First Name"
+                    data-testid="checkout-first-name"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wide text-gray-700 mb-1.5">
+                    Last Name
+                  </label>
+                  <input
+                    type="text"
+                    className="w-full rounded-lg border border-gray-300 p-3 text-gray-900 outline-none transition focus:border-[#F15A29] focus:ring-2 focus:ring-[#F15A29]/20"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    placeholder="Last Name"
+                    data-testid="checkout-last-name"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wide text-gray-700 mb-1.5">
+                  Email Address
+                </label>
+                <input
+                  type="email"
+                  className="w-full rounded-lg border border-gray-300 p-3 text-gray-900 outline-none transition focus:border-[#F15A29] focus:ring-2 focus:ring-[#F15A29]/20"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  data-testid="checkout-email"
+                />
+                <p className="mt-1 text-xs text-gray-600">
+                  Your tickets will be sent here.
+                </p>
+              </div>
+            </div>
+
+            {error && (
+              <div
+                className="mt-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm"
+                data-testid="checkout-error"
+              >
+                {error}
+              </div>
+            )}
+          </div>
+
+          {/* Per-ticket custom fields */}
+          {customFields.length > 0 && totalItems > 0 && (
+            <div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-black/5" data-testid="checkout-custom-fields">
+              <h3 className="mb-4 flex items-center gap-2 border-b border-gray-100 pb-2 font-bold text-gray-900">
+                <Users className="h-4 w-4 text-[#F15A29]" />
+                Attendee Details
+              </h3>
+              <div className="space-y-6">
+                {tiers
+                  .filter((t) => (quantities[t.id] ?? 0) > 0)
+                  .flatMap((tier) =>
+                    Array.from({ length: quantities[tier.id] ?? 0 }).map((_, i) => {
+                      const ticketKey = `${tier.id}:${i}`;
+                      return (
+                        <div
+                          key={ticketKey}
+                          className="border border-gray-200 rounded-xl p-4"
+                          data-testid={`checkout-attendee-${ticketKey}`}
+                        >
+                          <p className="font-semibold text-sm text-gray-900 mb-3">
+                            {tier.name} — Attendee {i + 1}
+                          </p>
+                          <div className="space-y-3">
+                            {customFields.map((field) => {
+                              const value = answers[ticketKey]?.[field.id] ?? "";
+                              return (
+                                <div key={field.id}>
+                                  <label className="block text-xs font-semibold uppercase tracking-wide text-gray-700 mb-1.5">
+                                    {field.label}
+                                    {field.required && <span className="text-red-500"> *</span>}
+                                  </label>
+                                  {field.type === "dropdown" ? (
+                                    <select
+                                      className="w-full rounded-lg border border-gray-300 p-3 text-gray-900 outline-none transition focus:border-[#F15A29] focus:ring-2 focus:ring-[#F15A29]/20 text-sm bg-white"
+                                      value={value}
+                                      onChange={(e) => setAnswer(ticketKey, field.id, e.target.value)}
+                                      data-testid={`checkout-field-${ticketKey}-${field.id}`}
+                                    >
+                                      <option value="">Select…</option>
+                                      {(field.options ?? []).map((opt) => (
+                                        <option key={opt} value={opt}>
+                                          {opt}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  ) : (
+                                    <input
+                                      type="text"
+                                      className="w-full rounded-lg border border-gray-300 p-3 text-gray-900 outline-none transition focus:border-[#F15A29] focus:ring-2 focus:ring-[#F15A29]/20 text-sm"
+                                      value={value}
+                                      onChange={(e) => setAnswer(ticketKey, field.id, e.target.value)}
+                                      data-testid={`checkout-field-${ticketKey}-${field.id}`}
+                                    />
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+              </div>
+            </div>
+          )}
+
           {/* Tier selection */}
           <div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-black/5">
             <h2 className="mb-4 flex items-center gap-2 text-lg font-bold text-gray-900">
@@ -808,8 +956,11 @@ export function CheckoutForm({
               })}
             </div>
           </div>
+        </div>
 
-          {/* Coupon Code */}
+        {/* RIGHT COLUMN — Promo Code + Order Summary */}
+        <div className="lg:sticky lg:top-6 self-start space-y-6">
+          {/* Promo Code */}
           <div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-black/5">
             <h3 className="mb-3 flex items-center gap-2 text-sm font-bold text-gray-900">
               <Tag className="h-3.5 w-3.5 text-[#F15A29]" />
@@ -857,149 +1008,7 @@ export function CheckoutForm({
             )}
           </div>
 
-          {/* Per-ticket custom fields */}
-          {customFields.length > 0 && totalItems > 0 && (
-            <div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-black/5" data-testid="checkout-custom-fields">
-              <h3 className="mb-4 flex items-center gap-2 border-b border-gray-100 pb-2 font-bold text-gray-900">
-                <Users className="h-4 w-4 text-[#F15A29]" />
-                Attendee Details
-              </h3>
-              <div className="space-y-6">
-                {tiers
-                  .filter((t) => (quantities[t.id] ?? 0) > 0)
-                  .flatMap((tier) =>
-                    Array.from({ length: quantities[tier.id] ?? 0 }).map((_, i) => {
-                      const ticketKey = `${tier.id}:${i}`;
-                      return (
-                        <div
-                          key={ticketKey}
-                          className="border border-gray-200 rounded-xl p-4"
-                          data-testid={`checkout-attendee-${ticketKey}`}
-                        >
-                          <p className="font-semibold text-sm text-gray-900 mb-3">
-                            {tier.name} — Attendee {i + 1}
-                          </p>
-                          <div className="space-y-3">
-                            {customFields.map((field) => {
-                              const value = answers[ticketKey]?.[field.id] ?? "";
-                              return (
-                                <div key={field.id}>
-                                  <label className="block text-xs font-semibold uppercase tracking-wide text-gray-700 mb-1.5">
-                                    {field.label}
-                                    {field.required && <span className="text-red-500"> *</span>}
-                                  </label>
-                                  {field.type === "dropdown" ? (
-                                    <select
-                                      className="w-full rounded-lg border border-gray-300 p-3 text-gray-900 outline-none transition focus:border-[#F15A29] focus:ring-2 focus:ring-[#F15A29]/20 text-sm bg-white"
-                                      value={value}
-                                      onChange={(e) => setAnswer(ticketKey, field.id, e.target.value)}
-                                      data-testid={`checkout-field-${ticketKey}-${field.id}`}
-                                    >
-                                      <option value="">Select…</option>
-                                      {(field.options ?? []).map((opt) => (
-                                        <option key={opt} value={opt}>
-                                          {opt}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  ) : (
-                                    <input
-                                      type="text"
-                                      className="w-full rounded-lg border border-gray-300 p-3 text-gray-900 outline-none transition focus:border-[#F15A29] focus:ring-2 focus:ring-[#F15A29]/20 text-sm"
-                                      value={value}
-                                      onChange={(e) => setAnswer(ticketKey, field.id, e.target.value)}
-                                      data-testid={`checkout-field-${ticketKey}-${field.id}`}
-                                    />
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-              </div>
-            </div>
-          )}
-
-          {/* Contact Form */}
-          <div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-black/5">
-            <h3 className="mb-4 flex items-center gap-2 border-b border-gray-100 pb-2 font-bold text-gray-900">
-              <Mail className="h-4 w-4 text-[#F15A29]" />
-              Contact Information
-            </h3>
-
-            {!user && (
-              <div className="bg-blue-50 text-blue-800 p-4 rounded-lg mb-4 text-sm flex justify-between items-center">
-                <span>Already have an account?</span>
-                <a href="/auth/login" className="font-bold hover:underline">
-                  Sign In
-                </a>
-              </div>
-            )}
-
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wide text-gray-700 mb-1.5">
-                    First Name
-                  </label>
-                  <input
-                    type="text"
-                    className="w-full rounded-lg border border-gray-300 p-3 text-gray-900 outline-none transition focus:border-[#F15A29] focus:ring-2 focus:ring-[#F15A29]/20"
-                    value={firstName}
-                    onChange={(e) => setFirstName(e.target.value)}
-                    placeholder="First Name"
-                    data-testid="checkout-first-name"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wide text-gray-700 mb-1.5">
-                    Last Name
-                  </label>
-                  <input
-                    type="text"
-                    className="w-full rounded-lg border border-gray-300 p-3 text-gray-900 outline-none transition focus:border-[#F15A29] focus:ring-2 focus:ring-[#F15A29]/20"
-                    value={lastName}
-                    onChange={(e) => setLastName(e.target.value)}
-                    placeholder="Last Name"
-                    data-testid="checkout-last-name"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wide text-gray-700 mb-1.5">
-                  Email Address
-                </label>
-                <input
-                  type="email"
-                  className="w-full rounded-lg border border-gray-300 p-3 text-gray-900 outline-none transition focus:border-[#F15A29] focus:ring-2 focus:ring-[#F15A29]/20"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  data-testid="checkout-email"
-                />
-                <p className="mt-1 text-xs text-gray-600">
-                  Your tickets will be sent here.
-                </p>
-              </div>
-            </div>
-
-            {error && (
-              <div
-                className="mt-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm"
-                data-testid="checkout-error"
-              >
-                {error}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* RIGHT COLUMN — Order Summary */}
-        <div className="lg:sticky lg:top-6 self-start">
+          {/* Order Summary */}
           <div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-black/5">
             <h2
               className="text-xl font-bold mb-1"

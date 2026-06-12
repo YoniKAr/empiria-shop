@@ -157,6 +157,8 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
             description: tier.description ?? '',
             price: tier.price ?? 0,
             available: (event as any).shared_capacity ? sharedRemaining : (tier.remaining_quantity ?? 0),
+            minPerOrder: tier.min_per_order ?? 1,
+            maxPerOrder: tier.max_per_order ?? null,
         }));
 
     // Resolve cover image to a full URL

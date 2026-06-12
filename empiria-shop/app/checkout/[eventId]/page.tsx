@@ -9,12 +9,13 @@ export default async function CheckoutPage({
   searchParams,
 }: {
   params: Promise<{ eventId: string }>;
-  searchParams: Promise<{ occ?: string }>;
+  searchParams: Promise<{ occ?: string; tiers?: string }>;
 }) {
   const { eventId } = await params;
   // Optional ?occ=<id> pre-selects an occurrence (validated below against
-  // this event's future occurrences).
-  const { occ } = await searchParams;
+  // this event's future occurrences). Optional ?tiers=<tierId>:<qty>,…
+  // carries the event-page selection forward (validated + clamped below).
+  const { occ, tiers: tiersParam } = await searchParams;
   const session = await getSafeSession();
   const user = session?.user ?? null;
 
@@ -98,6 +99,32 @@ export default async function CheckoutPage({
     ((event as any).total_capacity ?? 0) - ((event as any).total_tickets_sold ?? 0)
   );
 
+  // ?tiers=<tierId>:<qty>,… — pre-fill checkout with the event-page selection.
+  // Each tierId must belong to THIS event; each qty is clamped to what's
+  // actually purchasable (tier remaining / shared pool / max_per_order).
+  // Anything invalid is dropped; an empty result falls back to the default
+  // (1 of the first available tier) inside CheckoutForm.
+  let initialQuantities: Record<string, number> | undefined;
+  if (tiersParam) {
+    const parsed: Record<string, number> = {};
+    // Running shared-pool budget so multi-tier selections can't exceed it.
+    let sharedLeft = sharedRemaining;
+    for (const part of tiersParam.split(',')) {
+      const [tierId, qtyRaw] = part.split(':');
+      const tier = tiers.find((t) => t.id === tierId);
+      const qty = Number.parseInt(qtyRaw ?? '', 10);
+      if (!tier || !Number.isFinite(qty) || qty <= 0) continue;
+      if (parsed[tier.id] != null) continue; // ignore duplicate tier entries
+      const pool = sharedCapacity ? sharedLeft : tier.remaining_quantity;
+      const cap = Math.min(pool, tier.max_per_order ?? Infinity);
+      if (cap < 1) continue; // nothing purchasable for this tier right now
+      const clamped = Math.max(Math.min(1, tier.min_per_order), Math.min(qty, cap));
+      parsed[tier.id] = clamped;
+      if (sharedCapacity) sharedLeft -= clamped;
+    }
+    if (Object.keys(parsed).length > 0) initialQuantities = parsed;
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4">
       <div className="max-w-5xl mx-auto">
@@ -117,6 +144,7 @@ export default async function CheckoutPage({
           sharedCapacity={sharedCapacity}
           sharedRemaining={sharedRemaining}
           initialOccurrenceId={initialOccurrenceId}
+          initialQuantities={initialQuantities}
         />
       </div>
     </div>
