@@ -16,7 +16,7 @@ export default function Footer() {
               height={40}
               style={{ height: "auto" }}
             />
-            <p className="text-[14px] text-black/50 leading-relaxed">
+            <p className="text-[14px] text-gray-700 leading-relaxed">
               A ticketing platform dedicated to promoting and celebrating
               cultures. Embracing cultures, we embrace diversity &amp; inclusion.
             </p>
@@ -26,7 +26,7 @@ export default function Footer() {
           <div className="grid grid-cols-2 md:grid-cols-3 gap-10 text-[14px]">
             {/* Company */}
             <div className="flex flex-col gap-3">
-              <span className="text-[11px] font-semibold uppercase tracking-widest text-black/30">
+              <span className="text-[11px] font-semibold uppercase tracking-widest text-gray-700">
                 Company
               </span>
               {[
@@ -48,7 +48,7 @@ export default function Footer() {
 
             {/* Platform */}
             <div className="flex flex-col gap-3">
-              <span className="text-[11px] font-semibold uppercase tracking-widest text-black/30">
+              <span className="text-[11px] font-semibold uppercase tracking-widest text-gray-700">
                 Platform
               </span>
               <Link
@@ -73,7 +73,7 @@ export default function Footer() {
 
             {/* Connect */}
             <div className="flex flex-col gap-3">
-              <span className="text-[11px] font-semibold uppercase tracking-widest text-black/30">
+              <span className="text-[11px] font-semibold uppercase tracking-widest text-gray-700">
                 Connect
               </span>
               {[
@@ -97,7 +97,7 @@ export default function Footer() {
         </div>
 
         {/* Bottom bar */}
-        <div className="flex flex-col md:flex-row items-center justify-between gap-4 pt-8 text-[12px] text-black/30">
+        <div className="flex flex-col md:flex-row items-center justify-between gap-4 pt-8 text-[12px] text-gray-700">
           <span>&copy; {new Date().getFullYear()} Empiria. All rights reserved.</span>
           <div className="flex gap-6">
             <a href={`${APEX_URL}/privacy`} className="hover:text-black transition-colors">

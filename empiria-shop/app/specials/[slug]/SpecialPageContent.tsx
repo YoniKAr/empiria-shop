@@ -151,7 +151,7 @@ export function SpecialPageContent({ page, events }: SpecialPageContentProps) {
             href={page.pamphlet_url}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 mt-4 px-5 py-2.5 bg-[#F15A29] text-white rounded-full font-medium text-sm hover:brightness-110 transition"
+            className="inline-flex items-center gap-2 mt-4 px-5 py-2.5 bg-[#F15A29] text-white rounded-full font-medium text-sm hover:bg-[#d6420f] transition"
           >
             <Download className="w-4 h-4" />
             Download Pamphlet

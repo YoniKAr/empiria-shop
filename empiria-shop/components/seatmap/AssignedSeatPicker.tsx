@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Minus, Plus, Loader2, AlertCircle, Check } from "lucide-react";
 import StripeBadge from "@/components/StripeBadge";
 import { BlockedBuyerNotice } from "@/components/BlockedBuyerNotice";
@@ -88,7 +88,6 @@ export default function AssignedSeatPicker({
   const [selectedSeats, setSelectedSeats] = useState<SeatInfo[]>([]);
   const [soldSeatLabels, setSoldSeatLabels] = useState<Set<string>>(new Set());
   const [loadingAvailability, setLoadingAvailability] = useState(false);
-  const [availabilityLoaded, setAvailabilityLoaded] = useState(false);
 
   const tierMap = new Map(tiers.map((t) => [t.id, t]));
 
@@ -135,37 +134,41 @@ export default function AssignedSeatPicker({
     return tiers.filter((t) => tierIds.has(t.id));
   }, [seatRanges, tiers]);
 
-  // Load sold seats when in seat choice mode
-  async function loadAvailability() {
-    if (availabilityLoaded) return;
+  // Load sold seats in seat-choice mode — refetched whenever the selected
+  // occurrence changes (S5): seat availability is per occurrence, so the
+  // selection is also cleared (a kept seat might be sold for the new date).
+  useEffect(() => {
+    if (!allowSeatChoice) return;
+    let cancelled = false;
+    setSelectedSeats([]);
     setLoadingAvailability(true);
-    try {
-      const response = await fetch("/api/assign-seats", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          eventId,
-          tierId: tiersFromRanges[0]?.id || "",
-          quantity: 0,
-          checkOnly: true,
-        }),
-      });
-      const data = await response.json();
-      if (data.soldSeats) {
-        setSoldSeatLabels(new Set(data.soldSeats));
+    (async () => {
+      try {
+        const response = await fetch("/api/assign-seats", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            eventId,
+            tierId: "",
+            quantity: 0,
+            checkOnly: true,
+            occurrenceId: selectedOccurrenceId || undefined,
+          }),
+        });
+        const data = await response.json();
+        if (!cancelled && data.soldSeats) {
+          setSoldSeatLabels(new Set(data.soldSeats));
+        }
+      } catch {
+        // Silently fail, seats will show as available
+      } finally {
+        if (!cancelled) setLoadingAvailability(false);
       }
-      setAvailabilityLoaded(true);
-    } catch {
-      // Silently fail, seats will show as available
-    } finally {
-      setLoadingAvailability(false);
-    }
-  }
-
-  // Load availability on mount for seat choice mode
-  if (allowSeatChoice && !availabilityLoaded && !loadingAvailability) {
-    loadAvailability();
-  }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [allowSeatChoice, eventId, selectedOccurrenceId]);
 
   // Auto-assign mode: quantity controls
   function updateTierQuantity(tierId: string, delta: number) {
@@ -299,6 +302,9 @@ export default function AssignedSeatPicker({
               eventId,
               tierId: sel.tierId,
               quantity: sel.quantity,
+              occurrenceId:
+                selectedOccurrenceId ||
+                (occurrences.length === 1 ? occurrences[0].id : undefined),
             }),
           });
 

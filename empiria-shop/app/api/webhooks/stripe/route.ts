@@ -54,8 +54,11 @@ export async function POST(request: NextRequest) {
       case 'payment_intent.payment_failed': {
         const paymentIntent = event.data.object;
         console.warn('[Webhook] Payment failed:', paymentIntent.id);
-        // Release any coupon reservation held by this checkout.
-        await releaseCouponReservation(paymentIntent.metadata, paymentIntent.id, `pi_failed:${paymentIntent.id}`);
+        // Do NOT release the coupon reservation here: a declined card is
+        // retryable within the same Checkout Session, and releasing on the
+        // first failed ATTEMPT lets another buyer take the slot while this
+        // customer retries (over-redemption). The reservation is released by
+        // `checkout.session.expired` below when the session is truly abandoned.
         break;
       }
       case 'checkout.session.expired': {
@@ -109,16 +112,34 @@ async function handleCheckoutCompleted(session: any) {
     return;
   }
 
-  // Check if order already exists (idempotency)
+  // Check if order already exists (idempotency).
+  // If the order exists AND has tickets, this is a pure retry — ack and stop.
+  // If the order exists with ZERO tickets, a previous attempt crashed between
+  // creating the order and creating the tickets (ticket/order_item insert
+  // failures now THROW → 500 → Stripe retries) — RESUME fulfillment for the
+  // existing order instead of stranding a charged customer with no tickets.
+  let resumeOrderId: string | null = null;
   const { data: existingOrder } = await supabase
     .from('orders')
     .select('id')
     .eq('stripe_checkout_session_id', session.id)
-    .single();
+    .maybeSingle();
 
   if (existingOrder) {
-    console.log('[Webhook] Order already exists for session:', session.id);
-    return;
+    const { count: existingTicketCount } = await supabase
+      .from('tickets')
+      .select('id', { count: 'exact', head: true })
+      .eq('order_id', existingOrder.id);
+
+    if ((existingTicketCount ?? 0) > 0) {
+      console.log('[Webhook] Order already exists for session:', session.id);
+      return;
+    }
+
+    console.warn(
+      `[Webhook] Order ${existingOrder.id} exists with ZERO tickets for session ${session.id} — resuming fulfillment`
+    );
+    resumeOrderId = existingOrder.id;
   }
 
   // Load staged per-ticket custom field responses (if any) for this session.
@@ -257,8 +278,15 @@ async function handleCheckoutCompleted(session: any) {
     // kept in payout_breakdown.platform_event_notional_payout for traceability).
     const orderOrganizerPayout = isPlatformEvent ? 0 : actualOrganizerPayout;
 
-    // 1. Create the order (initial payout_breakdown — transfer IDs added after transfers)
-    const { data: order, error: orderError } = await supabase
+    // 1. Create the order (initial payout_breakdown — transfer IDs added after
+    //    transfers). When RESUMING a ticketless order from a failed prior
+    //    attempt, the order row already exists — reuse it.
+    let order: { id: string };
+    if (resumeOrderId) {
+      order = { id: resumeOrderId };
+      console.log('[Webhook] Reusing existing order:', order.id);
+    } else {
+    const { data: newOrder, error: orderError } = await supabase
       .from('orders')
       .insert({
         user_id: userId,
@@ -310,12 +338,14 @@ async function handleCheckoutCompleted(session: any) {
       .select('id')
       .single();
 
-    if (orderError || !order) {
+    if (orderError || !newOrder) {
       console.error('[Webhook] Failed to create order:', orderError);
-      throw orderError;
+      throw orderError ?? new Error('Order insert returned no row');
     }
+    order = newOrder;
 
     console.log('[Webhook] Order created:', order.id);
+    }
 
     // ⚠️ FULFILLMENT ORDER (crash-safety): order → TICKETS (+order_items) →
     // transfers LAST → final order update. A crash after tickets loses only
@@ -358,7 +388,12 @@ async function handleCheckoutCompleted(session: any) {
       }
     }
 
-    // 3. Create order_items and tickets for each tier selection
+    // 3. Create order_items and tickets for ALL tier selections.
+    // Both inserts are SINGLE batched statements: a failure leaves ZERO rows
+    // (statement-level atomicity), and any insert error THROWS → the POST
+    // returns 500 → Stripe retries → the zero-ticket resume path above
+    // re-runs fulfillment. (Previously errors were console.error'd and the
+    // webhook returned 200: customer charged, no tickets, no retry.)
     const allTickets: Array<{ id: string; qr_code_secret: string; tierName: string; seatLabel?: string }> = [];
 
     // Build a queue of seat labels for distributing across tickets
@@ -366,27 +401,43 @@ async function handleCheckoutCompleted(session: any) {
       ? seatSelections.map((s) => s.label)
       : assignedSeats || [];
 
-    for (const selection of tierSelections) {
-      // Create order item
-      const { error: itemError } = await supabase.from('order_items').insert({
-        order_id: order.id,
-        tier_id: selection.tierId,
-        quantity: selection.quantity,
-        unit_price: selection.unitPrice,
-        subtotal: selection.unitPrice * selection.quantity,
-      });
-
-      if (itemError) {
-        console.error('[Webhook] Failed to create order_item:', itemError);
+    // When resuming, clear order_items from the failed prior attempt so the
+    // batched re-insert below cannot duplicate line items.
+    if (resumeOrderId) {
+      const { error: staleItemsError } = await supabase
+        .from('order_items')
+        .delete()
+        .eq('order_id', order.id);
+      if (staleItemsError) {
+        console.error('[Webhook] Failed to clear stale order_items on resume:', staleItemsError);
+        throw staleItemsError;
       }
+    }
 
-      // Create individual tickets (one per quantity)
-      // The DB trigger `handle_new_ticket_purchase` will:
-      //   - Validate inventory
-      //   - Decrement remaining_quantity on ticket_tiers
-      //   - Increment total_tickets_sold on events
-      //   - Auto-generate qr_code_secret via default gen_random_uuid()
+    const orderItemInserts = tierSelections.map((selection) => ({
+      order_id: order.id,
+      tier_id: selection.tierId,
+      quantity: selection.quantity,
+      unit_price: selection.unitPrice,
+      subtotal: selection.unitPrice * selection.quantity,
+    }));
 
+    const { error: itemError } = await supabase.from('order_items').insert(orderItemInserts);
+    if (itemError) {
+      console.error('[Webhook] Failed to create order_items:', itemError);
+      throw itemError;
+    }
+
+    // Create individual tickets (one per quantity, all tiers in one statement)
+    // The DB trigger `handle_new_ticket_purchase` will:
+    //   - Validate inventory
+    //   - Decrement remaining_quantity on ticket_tiers
+    //   - Increment total_tickets_sold on events
+    //   - Auto-generate qr_code_secret via default gen_random_uuid()
+    const ticketInserts: Array<Record<string, unknown>> = [];
+    const ticketMeta: Array<{ tierName: string; seatLabel?: string }> = [];
+
+    for (const selection of tierSelections) {
       // For seat_map / assigned_seating mode, pop seat labels from the queue (ordered to match tiers)
       const labelsForThisTier: string[] = [];
       for (let i = 0; i < selection.quantity && seatLabelQueue.length > 0; i++) {
@@ -396,40 +447,45 @@ async function handleCheckoutCompleted(session: any) {
       // Per-tier staged custom field responses; index resets per tier.
       const stagedForTier = stagedResponses.find((s) => s.tierId === selection.tierId);
 
-      const ticketInserts = Array.from({ length: selection.quantity }, (_, i) => ({
-        event_id: eventId,
-        tier_id: selection.tierId,
-        order_id: order.id,
-        user_id: userId,
-        attendee_name: userName,
-        attendee_email: userEmail,
-        status: 'valid' as const,
-        occurrence_id: occurrenceId,
-        field_responses: stagedForTier?.perTicket?.[i] ?? [],
-        ...(labelsForThisTier[i] ? { seat_label: labelsForThisTier[i] } : {}),
-      }));
-
-      const { data: tickets, error: ticketError } = await supabase
-        .from('tickets')
-        .insert(ticketInserts)
-        .select('id, qr_code_secret');
-
-      if (ticketError) {
-        console.error('[Webhook] Failed to create tickets:', ticketError);
-      } else {
-        console.log(`[Webhook] Created ${tickets?.length} tickets for tier ${selection.tierName}`);
-        if (tickets) {
-          for (let ti = 0; ti < tickets.length; ti++) {
-            const t = tickets[ti];
-            allTickets.push({
-              id: t.id,
-              qr_code_secret: t.qr_code_secret,
-              tierName: selection.tierName,
-              seatLabel: labelsForThisTier[ti] || undefined,
-            });
-          }
-        }
+      for (let i = 0; i < selection.quantity; i++) {
+        ticketInserts.push({
+          event_id: eventId,
+          tier_id: selection.tierId,
+          order_id: order.id,
+          user_id: userId,
+          attendee_name: userName,
+          attendee_email: userEmail,
+          status: 'valid' as const,
+          occurrence_id: occurrenceId,
+          field_responses: stagedForTier?.perTicket?.[i] ?? [],
+          ...(labelsForThisTier[i] ? { seat_label: labelsForThisTier[i] } : {}),
+        });
+        ticketMeta.push({
+          tierName: selection.tierName,
+          seatLabel: labelsForThisTier[i] || undefined,
+        });
       }
+    }
+
+    const { data: tickets, error: ticketError } = await supabase
+      .from('tickets')
+      .insert(ticketInserts)
+      .select('id, qr_code_secret');
+
+    if (ticketError || !tickets) {
+      console.error('[Webhook] Failed to create tickets:', ticketError);
+      throw ticketError ?? new Error('Ticket insert returned no rows');
+    }
+
+    console.log(`[Webhook] Created ${tickets.length} tickets for order ${order.id}`);
+    for (let ti = 0; ti < tickets.length; ti++) {
+      const t = tickets[ti];
+      allTickets.push({
+        id: t.id,
+        qr_code_secret: t.qr_code_secret,
+        tierName: ticketMeta[ti]?.tierName ?? '',
+        seatLabel: ticketMeta[ti]?.seatLabel,
+      });
     }
 
     // 3a. Clean up staged custom field responses after tickets are created
@@ -463,13 +519,25 @@ async function handleCheckoutCompleted(session: any) {
     // usage row for per-user limits / auditing; coupon_id is already on the order.
     if (couponId) {
       try {
-        await supabase.from('coupon_usages').insert({
-          coupon_id: couponId,
-          order_id: order.id,
-          user_id: userId,
-          discount_amount: discountAmount,
-        });
-        console.log(`[Webhook] Coupon usage recorded: ${couponCode} (${couponId})`);
+        // On RESUME the usage row may already exist from the prior attempt —
+        // don't double-record it.
+        const { data: existingUsage } = resumeOrderId
+          ? await supabase
+              .from('coupon_usages')
+              .select('id')
+              .eq('coupon_id', couponId)
+              .eq('order_id', order.id)
+              .maybeSingle()
+          : { data: null };
+        if (!existingUsage) {
+          await supabase.from('coupon_usages').insert({
+            coupon_id: couponId,
+            order_id: order.id,
+            user_id: userId,
+            discount_amount: discountAmount,
+          });
+          console.log(`[Webhook] Coupon usage recorded: ${couponCode} (${couponId})`);
+        }
       } catch (couponTrackError) {
         console.error('[Webhook] Failed to record coupon usage:', couponTrackError);
       }
@@ -1169,13 +1237,13 @@ async function resolveOrganizerStripeId(
 // COUPON RESERVATION RELEASE
 //
 // Coupon usage is RESERVED atomically at checkout time (increment_coupon_usage in
-// app/api/checkout/route.ts). If the checkout is abandoned (session expires) or the
-// payment fails, we must release that reservation via decrement_coupon_usage so the
-// slot is freed for someone else.
+// app/api/checkout/route.ts). If the checkout is abandoned (`checkout.session.expired`)
+// we release that reservation via decrement_coupon_usage so the slot is freed for
+// someone else. We deliberately do NOT release on payment_intent.payment_failed —
+// declines are retryable within the same session (see the case above).
 //
 // IDEMPOTENCY: Stripe may retry these events. `checkout.session.expired` fires once
-// per session, and a given PaymentIntent only emits payment_failed for genuine
-// failures, but to avoid a double-decrement on a retried event we guard on the order:
+// per session, but to avoid a double-decrement on a retried event we guard on the order:
 // if an order already exists for this PI (i.e. checkout actually completed), the
 // reservation was consumed by a real sale and must NOT be released.
 // ──────────────────────────────────────────────────

@@ -12,11 +12,12 @@ interface SeatmapViewerProps {
   availability?: Record<string, number>;
   /** Called when a zone is clicked (zone mode) */
   onZoneClick?: (zoneId: string) => void;
-  /** Set of sold seat IDs (seat mode) */
+  /** Set of sold seat LABELS (seat mode) — tickets store seat labels, so sold
+   *  status is keyed by `seat.label`. Holds below stay keyed by config seat ID. */
   soldSeats?: Set<string>;
-  /** Set of seat IDs held by current session */
+  /** Set of config seat IDs held by current session */
   myHeldSeats?: Set<string>;
-  /** Set of seat IDs held by others */
+  /** Set of config seat IDs held by others */
   otherHeldSeats?: Set<string>;
   /** Called when a seat is clicked (seat mode) */
   onSeatClick?: (seatId: string, sectionId: string, label: string) => void;
@@ -106,9 +107,10 @@ export default function SeatmapViewer({
     return () => ro.disconnect();
   }, []);
 
+  // Sold is keyed by seat LABEL (tickets store labels); holds by config seat ID.
   const getSeatColor = useCallback(
-    (seatId: string) => {
-      if (soldSeats.has(seatId)) return { fill: "#9ca3af80", stroke: "#6b7280" }; // gray - sold
+    (seatId: string, seatLabel: string) => {
+      if (soldSeats.has(seatLabel)) return { fill: "#9ca3af80", stroke: "#6b7280" }; // gray - sold
       if (myHeldSeats.has(seatId)) return { fill: "#3b82f680", stroke: "#2563eb" }; // blue - my hold
       if (otherHeldSeats.has(seatId)) return { fill: "#f59e0b80", stroke: "#d97706" }; // yellow - other hold
       return { fill: "#22c55e80", stroke: "#16a34a" }; // green - available
@@ -413,8 +415,8 @@ export default function SeatmapViewer({
       // Seat radius: native radius (from spacing) projected to canvas px, clamped.
       const r = Math.max(3, Math.min(16, nativeSeatRadius(section.points, section.seats.length) * scale));
       for (const seat of section.seats) {
-        const colors = getSeatColor(seat.id);
-        const isSold = soldSeats.has(seat.id);
+        const colors = getSeatColor(seat.id, seat.label);
+        const isSold = soldSeats.has(seat.label);
         const isHeldByOther = otherHeldSeats.has(seat.id);
         const isClickable = !isSold && !isHeldByOther;
         const p = proj(seat.x, seat.y);

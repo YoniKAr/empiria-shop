@@ -26,10 +26,10 @@ export default async function CheckoutPage({
     .from('events')
     .select(`
       id, title, slug, currency, status, pass_processing_fee, charge_ticket_tax,
-      entry_type, custom_fields,
+      entry_type, custom_fields, seating_type, seating_config,
       shared_capacity, total_capacity, total_tickets_sold,
       platform_fee_percent, platform_fee_fixed,
-      ticket_tiers (id, name, description, price, currency, remaining_quantity, min_per_order, max_per_order),
+      ticket_tiers (id, name, description, price, currency, remaining_quantity, min_per_order, max_per_order, is_hidden),
       event_occurrences (id, starts_at, ends_at, label, is_cancelled)
     `)
     .eq('id', eventId)
@@ -58,7 +58,24 @@ export default async function CheckoutPage({
     redirect(`/events/${event.slug}`);
   }
 
-  const tiers = (event.ticket_tiers ?? []).map((t: any) => ({
+  // S3: seated events pick their seats/zones on the dedicated seats page —
+  // landing here directly (e.g. GIFFT "Get Tickets" links) would sell seat_map
+  // tickets with NO seats. Carry ?occ= so the chosen showtime isn't dropped.
+  const SEATED = ['seat_map', 'assigned_seating', 'zone_map', 'zone_admission'];
+  const rawSeatingConfig = (event as any).seating_config;
+  const hasSeatingConfig =
+    rawSeatingConfig &&
+    typeof rawSeatingConfig === 'object' &&
+    (rawSeatingConfig.image_url !== undefined ||
+      rawSeatingConfig.seat_ranges !== undefined ||
+      rawSeatingConfig.zones !== undefined);
+  if (SEATED.includes((event as any).seating_type) && hasSeatingConfig) {
+    redirect(`/checkout/${event.id}/seats${occ ? `?occ=${encodeURIComponent(occ)}` : ''}`);
+  }
+
+  const tiers = (event.ticket_tiers ?? [])
+    .filter((t: any) => !t.is_hidden) // S7: hidden tiers are not publicly purchasable
+    .map((t: any) => ({
     id: t.id,
     name: t.name,
     description: t.description,
@@ -118,7 +135,10 @@ export default async function CheckoutPage({
       const pool = sharedCapacity ? sharedLeft : tier.remaining_quantity;
       const cap = Math.min(pool, tier.max_per_order ?? Infinity);
       if (cap < 1) continue; // nothing purchasable for this tier right now
-      const clamped = Math.max(Math.min(1, tier.min_per_order), Math.min(qty, cap));
+      // Floor at the tier's min_per_order (capped so an unreachable minimum
+      // can't exceed availability). The old `Math.min(1, min_per_order)` was a
+      // constant 1 — deep links could undercut the order minimum (S13).
+      const clamped = Math.max(Math.min(tier.min_per_order, cap), Math.min(qty, cap));
       parsed[tier.id] = clamped;
       if (sharedCapacity) sharedLeft -= clamped;
     }

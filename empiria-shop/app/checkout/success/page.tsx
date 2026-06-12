@@ -4,14 +4,16 @@
 // ──────────────────────────────────────────────────
 
 import { getSupabaseAdmin } from '@/lib/supabase';
+import { getSafeSession } from '@/lib/auth0';
 import { stripe } from '@/lib/stripe';
 import { formatCurrency } from '@/lib/utils';
 import { generateQRCodeDataURL } from '@/lib/qrcode';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { CheckCircle2, Calendar, MapPin, ArrowRight, Video } from 'lucide-react';
+import { CheckCircle2, Calendar, MapPin, ArrowRight, Video, Lock } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
+import AutoRefresh from './AutoRefresh';
 import { PROFILE_URL } from '@/lib/urls';
 
 // Only allow http(s) meeting links as clickable anchors — blocks
@@ -39,8 +41,8 @@ export default async function CheckoutSuccessPage({
 
   const supabase = getSupabaseAdmin();
   const orderSelect =
-    'id, event_id, total_amount, platform_fee_amount, organizer_payout_amount, currency, status, created_at';
-  let order: { id: string; event_id: string; total_amount: number; platform_fee_amount: number; organizer_payout_amount: number; currency: string; status: string; created_at: string } | null = null;
+    'id, event_id, user_id, total_amount, platform_fee_amount, organizer_payout_amount, currency, status, created_at';
+  let order: { id: string; event_id: string; user_id: string | null; total_amount: number; platform_fee_amount: number; organizer_payout_amount: number; currency: string; status: string; created_at: string } | null = null;
   let eventId: string | undefined;
 
   if (order_id) {
@@ -51,6 +53,52 @@ export default async function CheckoutSuccessPage({
       .eq('id', order_id)
       .single();
     if (!data) redirect('/');
+
+    // ── Access gate: a bare UUID in the URL must not expose ticket QRs. ──
+    // Logged-in orders: the session user must OWN the order. Guest free
+    // orders (user_id null): only show within 30 minutes of purchase (the
+    // immediate post-checkout window); after that, point at email/login.
+    const session = await getSafeSession();
+    const viewerSub = session?.user?.sub ?? null;
+    const isOwner = !!data.user_id && data.user_id === viewerSub;
+    const isFreshGuestOrder =
+      !data.user_id &&
+      Date.now() - new Date(data.created_at).getTime() < 30 * 60 * 1000;
+
+    if (!isOwner && !isFreshGuestOrder) {
+      return (
+        <div className="min-h-screen bg-gray-50">
+          <Navbar />
+          <div className="max-w-xl mx-auto px-4 sm:px-6 py-20 text-center">
+            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-5">
+              <Lock className="w-8 h-8 text-gray-500" />
+            </div>
+            <h1 className="text-2xl font-extrabold mb-3">This order is protected</h1>
+            <p className="text-gray-700 mb-8">
+              To keep your tickets safe, this page is only available right after
+              checkout. Log in to view your tickets, or find them in your
+              confirmation email.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <a
+                href="/auth/login"
+                className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-black text-white rounded-xl font-bold hover:bg-gray-800 transition-colors"
+              >
+                Log in to view tickets
+              </a>
+              <Link
+                href="/"
+                className="inline-flex items-center justify-center gap-2 px-6 py-3 border border-gray-200 rounded-xl font-bold text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                Explore Events <ArrowRight size={16} />
+              </Link>
+            </div>
+          </div>
+          <Footer />
+        </div>
+      );
+    }
+
     order = data;
     eventId = data.event_id;
   } else {
@@ -96,21 +144,12 @@ export default async function CheckoutSuccessPage({
     .eq('id', eventId)
     .single();
 
-  // Fetch first occurrence for display
-  const { data: successOcc } = await supabase
-    .from('event_occurrences')
-    .select('starts_at')
-    .eq('event_id', eventId)
-    .order('starts_at', { ascending: true })
-    .limit(1)
-    .maybeSingle();
-
   // Fetch tickets for this order + generate QR codes server-side
   let tickets: any[] = [];
   if (order) {
     const { data: ticketData } = await supabase
       .from('tickets')
-      .select('id, qr_code_secret, attendee_name, attendee_email, status, seat_label, tier_id, ticket_tiers(name, price)')
+      .select('id, qr_code_secret, attendee_name, attendee_email, status, seat_label, tier_id, occurrence_id, ticket_tiers(name, price)')
       .eq('order_id', order.id)
       .order('purchase_date', { ascending: true });
 
@@ -121,6 +160,32 @@ export default async function CheckoutSuccessPage({
         qrDataUrl: await generateQRCodeDataURL(ticket.qr_code_secret, { width: 200 }),
       }))
     );
+  }
+
+  // Show the PURCHASED occurrence: tickets carry the occurrence_id the buyer
+  // selected. Fall back to the earliest occurrence only when the tickets have
+  // no occurrence (single-date legacy events / order not yet fulfilled).
+  const purchasedOccurrenceId: string | null =
+    tickets.find((t: any) => t.occurrence_id)?.occurrence_id ?? null;
+
+  let successOcc: { starts_at: string } | null = null;
+  if (purchasedOccurrenceId) {
+    const { data } = await supabase
+      .from('event_occurrences')
+      .select('starts_at')
+      .eq('id', purchasedOccurrenceId)
+      .maybeSingle();
+    successOcc = data;
+  }
+  if (!successOcc) {
+    const { data } = await supabase
+      .from('event_occurrences')
+      .select('starts_at')
+      .eq('event_id', eventId)
+      .order('starts_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    successOcc = data;
   }
 
   const eventDate = successOcc ? new Date(successOcc.starts_at) : null;
@@ -145,20 +210,21 @@ export default async function CheckoutSuccessPage({
         {event && (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-8">
             {event.cover_image_url && (
-              <div className="aspect-video bg-gray-200 relative">
+              <div className="aspect-video bg-gray-200">
                 <img
                   src={event.cover_image_url}
                   alt={event.title}
                   className="w-full h-full object-cover"
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
               </div>
             )}
-            <div className={`p-6 ${event.cover_image_url ? '-mt-12 relative z-10' : ''}`}>
-              <h2 className={`text-2xl font-bold mb-3 ${event.cover_image_url ? 'text-white' : ''}`}>
+            {/* Text sits BELOW the image in dark — never overlaps the white
+                card background (the old -mt-12 overlay went white-on-white). */}
+            <div className="p-6">
+              <h2 className="text-2xl font-bold mb-3 text-gray-900">
                 {event.title}
               </h2>
-              <div className={`flex flex-wrap gap-4 text-sm ${event.cover_image_url ? 'text-white/80' : 'text-gray-600'}`}>
+              <div className="flex flex-wrap gap-4 text-sm text-gray-600">
                 {eventDate && (
                   <div className="flex items-center gap-1.5">
                     <Calendar size={14} />
@@ -186,7 +252,7 @@ export default async function CheckoutSuccessPage({
                     href={safeMeetingHref(event.meeting_link)!}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className={`flex items-center gap-1.5 hover:underline ${event.cover_image_url ? 'text-white/90' : 'text-indigo-600'}`}
+                    className="flex items-center gap-1.5 hover:underline text-indigo-600"
                   >
                     <Video size={14} />
                     Join Online Meeting
@@ -323,16 +389,19 @@ export default async function CheckoutSuccessPage({
           </div>
         )}
 
-        {/* Fallback while webhook is processing */}
+        {/* Fallback while webhook is processing — auto-refreshes a few times
+            so "updates shortly" actually happens. */}
         {!order && (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 text-center">
+            <AutoRefresh />
             <div className="animate-pulse space-y-4">
               <div className="h-4 bg-gray-200 rounded w-3/4 mx-auto" />
               <div className="h-4 bg-gray-200 rounded w-1/2 mx-auto" />
             </div>
             <p className="text-gray-700 mt-6 text-sm">
-              Your payment was successful! We&apos;re generating your tickets — this page will update
-              shortly. You&apos;ll also receive a confirmation email.
+              Your payment was successful! We&apos;re generating your tickets — this page will
+              refresh automatically for a moment. You&apos;ll also receive a confirmation email
+              with your tickets either way.
             </p>
           </div>
         )}

@@ -85,14 +85,29 @@ export default function SeatSelector({
     return id;
   });
 
+  const [selectedOccurrenceId, setSelectedOccurrenceId] = useState<string>(() => {
+    if (initialOccurrenceId && occurrences.some((o) => String(o.id) === initialOccurrenceId)) {
+      return initialOccurrenceId;
+    }
+    return occurrences.length === 1 ? occurrences[0].id : "";
+  });
+
   const {
     myHeldSeats,
     otherHeldSeats,
     holdSeat,
     releaseSeat,
+    releaseAll,
+    suppressRelease,
     holds,
     loading: holdsLoading,
-  } = useSeatHolds({ eventId, sessionId });
+  } = useSeatHolds({
+    eventId,
+    sessionId,
+    // Holds are occurrence-scoped once a date is picked (S5) — a hold for
+    // occurrence A doesn't block the same seat for occurrence B.
+    occurrenceId: selectedOccurrenceId || undefined,
+  });
 
   const [selectedSeats, setSelectedSeats] = useState<SelectedSeat[]>([]);
   // Serializes seat clicks — canvas events can double-fire (see SeatmapViewer).
@@ -101,12 +116,6 @@ export default function SeatSelector({
   const [error, setError] = useState<string | null>(null);
   const [shake, setShake] = useState(false);
   const [showBuyBlock, setShowBuyBlock] = useState(false);
-  const [selectedOccurrenceId, setSelectedOccurrenceId] = useState<string>(() => {
-    if (initialOccurrenceId && occurrences.some((o) => String(o.id) === initialOccurrenceId)) {
-      return initialOccurrenceId;
-    }
-    return occurrences.length === 1 ? occurrences[0].id : "";
-  });
   const [guestEmail, setGuestEmail] = useState("");
   const [guestName, setGuestName] = useState("");
   // Pending seat waiting for tier selection (multi-tier zones)
@@ -215,15 +224,24 @@ export default function SeatSelector({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config.zones, sections, tiers]);
 
-  // Compute sold seats — fetched from DB on mount
+  // Sold seats — a Set of seat LABELS (tickets store labels, not config seat
+  // ids; SHOP-1a). The viewers check `soldSeats.has(seat.label)`. Refetched
+  // whenever the selected occurrence changes (S5): a seat sold for one
+  // occurrence stays buyable for another.
   const [soldSeats, setSoldSeats] = useState<Set<string>>(new Set());
 
   useEffect(() => {
+    let cancelled = false;
     async function fetchSoldSeats() {
       try {
-        const res = await fetch(`/api/sold-seats?eventId=${encodeURIComponent(eventId)}`);
+        const occParam = selectedOccurrenceId
+          ? `&occurrenceId=${encodeURIComponent(selectedOccurrenceId)}`
+          : "";
+        const res = await fetch(
+          `/api/sold-seats?eventId=${encodeURIComponent(eventId)}${occParam}`
+        );
         const data = await res.json();
-        if (data.seatLabels && Array.isArray(data.seatLabels)) {
+        if (!cancelled && data.seatLabels && Array.isArray(data.seatLabels)) {
           setSoldSeats(new Set(data.seatLabels));
         }
       } catch (err) {
@@ -231,7 +249,21 @@ export default function SeatSelector({
       }
     }
     fetchSoldSeats();
-  }, [eventId]);
+    return () => {
+      cancelled = true;
+    };
+  }, [eventId, selectedOccurrenceId]);
+
+  /** Switching the date releases current holds (they're scoped to the old
+   *  occurrence) and clears the selection; sold seats refetch via the effect. */
+  async function handleOccurrenceChange(occId: string) {
+    if (occId === selectedOccurrenceId) return;
+    await releaseAll();
+    setSelectedSeats([]);
+    setPendingSeat(null);
+    setSelectedOccurrenceId(occId);
+    setError(null);
+  }
 
   // Hold expiry timer
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
@@ -303,6 +335,13 @@ export default function SeatSelector({
         setSelectedSeats((prev) => prev.filter((s) => s.seatId !== lastSeat.seatId));
       }
 
+      // Sold seats are keyed by LABEL (tickets store labels) — belt-and-braces
+      // guard; the viewers already render sold seats unclickable.
+      if (soldSeats.has(label)) {
+        setError(`Seat ${label} has already been sold.`);
+        return;
+      }
+
       const zoneTiers = sectionZoneTiers.get(sectionId) || [];
       if (zoneTiers.length === 0) {
         // No purchasable tier maps to this section — never hold a seat the
@@ -311,8 +350,9 @@ export default function SeatSelector({
         return;
       }
 
-      // Hold the seat
-      const result = await holdSeat(seatId);
+      // Hold the seat (label included so the server can run its label-keyed
+      // sold-check against tickets)
+      const result = await holdSeat(seatId, label);
       if (!result.success) {
         setError(result.error || "Failed to hold seat");
         return;
@@ -415,6 +455,12 @@ export default function SeatSelector({
     setError(null);
 
     try {
+      // Refresh every hold (the API extends same-session holds on POST) so the
+      // 10-minute window restarts as the customer heads into payment.
+      await Promise.all(
+        selectedSeats.map((s) => holdSeat(s.seatId, s.label))
+      );
+
       // Group seats by tier for line items
       const tierQuantities = new Map<string, number>();
       for (const seat of selectedSeats) {
@@ -428,10 +474,13 @@ export default function SeatSelector({
         ([tierId, quantity]) => ({ tierId, quantity })
       );
 
+      // tierId per seat lets the server validate each label against the zone
+      // whose tier is actually being purchased (S4).
       const seatSelections = selectedSeats.map((s) => ({
         seatId: s.seatId,
         sectionId: s.sectionId,
         label: s.label,
+        tierId: s.tierId,
       }));
 
       const response = await fetch("/api/checkout", {
@@ -455,6 +504,11 @@ export default function SeatSelector({
         throw new Error(data.error || "Failed to create checkout session");
       }
 
+      // Navigating to Stripe fires `pagehide`, which would release the holds
+      // and leave the seats grabbable mid-payment (SHOP-1c). Suppress the
+      // auto-release for THIS navigation only — tab close / back-nav on any
+      // other path still releases normally.
+      suppressRelease();
       window.location.href = data.url;
     } catch (err: unknown) {
       const message =
@@ -624,10 +678,7 @@ export default function SeatSelector({
                   <button
                     key={occ.id}
                     type="button"
-                    onClick={() => {
-                      setSelectedOccurrenceId(occ.id);
-                      setError(null);
-                    }}
+                    onClick={() => handleOccurrenceChange(occ.id)}
                     className={`w-full text-left p-3 border rounded-lg transition-colors ${
                       isSelected
                         ? "border-orange-300 bg-orange-50"

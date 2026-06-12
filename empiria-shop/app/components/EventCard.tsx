@@ -138,7 +138,7 @@ export function EventCard({
                                     {(organizerName || 'E').split(' ').map((w: string) => w[0]).slice(0, 2).join('')}
                                 </span>
                             </div>
-                            <span className="text-[12px] text-gray-600 font-medium line-clamp-1">
+                            <span className="text-[12px] text-gray-700 font-medium line-clamp-1">
                                 {organizerName || 'Empiria Events'}
                             </span>
                             {coHostCount > 0 && (

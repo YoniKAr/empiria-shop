@@ -17,6 +17,8 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     .select('title, description')
     .eq('slug', slug)
     .eq('event_type', 'gifft_movie')
+    .eq('status', 'published')
+    .eq('visibility', 'public')
     .single();
 
   return {
@@ -31,15 +33,22 @@ export default async function MovieDetailPage({ params }: PageProps) {
   const { slug } = await params;
   const supabase = getSupabaseAdmin();
 
-  // Fetch movie event
+  // Fetch movie event — drafts / archived / non-public movies are NOT
+  // publicly viewable by slug.
   const { data: event } = await supabase
     .from('events')
     .select('*, gifft_movie_details(*), ticket_tiers(*), event_occurrences(*), categories(name)')
     .eq('slug', slug)
     .eq('event_type', 'gifft_movie')
+    .eq('status', 'published')
+    .eq('visibility', 'public')
     .single();
 
   if (!event) notFound();
+
+  // Hidden tiers (is_hidden) are organizer-internal — strip them before the
+  // event object reaches any client widget/picker.
+  event.ticket_tiers = (event.ticket_tiers || []).filter((t: any) => !t.is_hidden);
 
   const movie = Array.isArray(event.gifft_movie_details)
     ? event.gifft_movie_details[0] || {}

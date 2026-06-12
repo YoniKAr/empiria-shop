@@ -7,7 +7,7 @@ interface CalMovie {
   title: string;
   slug: string;
   posterUrl?: string;
-  event_occurrences?: { starts_at: string }[];
+  event_occurrences?: { starts_at: string; is_cancelled?: boolean }[];
 }
 
 interface DayGroup {
@@ -16,12 +16,16 @@ interface DayGroup {
 }
 
 export default function GifftCalendar({ movies }: { movies: CalMovie[] }) {
-  // Flatten every (movie, showtime) pair
+  // Flatten every (movie, showtime) pair. Defensively hide cancelled and
+  // already-started showtimes (the server query filters these too).
+  const now = Date.now();
   const shows = movies
     .flatMap((m) =>
-      (m.event_occurrences ?? []).map((o) => ({ movie: m, start: new Date(o.starts_at) }))
+      (m.event_occurrences ?? [])
+        .filter((o) => !o.is_cancelled)
+        .map((o) => ({ movie: m, start: new Date(o.starts_at) }))
     )
-    .filter((s) => !isNaN(s.start.getTime()));
+    .filter((s) => !isNaN(s.start.getTime()) && s.start.getTime() >= now);
 
   if (shows.length === 0) {
     return <p className="text-center text-gray-700 py-12">No scheduled showtimes yet.</p>;

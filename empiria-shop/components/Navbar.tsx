@@ -4,6 +4,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import UserMenu from './UserMenu';
 import CurrencySelector from './CurrencySelector';
+import MobileNav from './MobileNav';
 
 export default async function Navbar({ overlay = false }: { overlay?: boolean }) {
   const session = await getSafeSession();
@@ -35,27 +36,30 @@ export default async function Navbar({ overlay = false }: { overlay?: boolean })
   return (
     <>
     <nav className="fixed top-4 left-1/2 z-50 w-[94%] max-w-5xl -translate-x-1/2">
-      <div className="flex items-center justify-between rounded-2xl bg-white/90 backdrop-blur-md px-5 py-2 shadow-lg border border-gray-100">
-        <div className="flex items-center gap-8">
+      <div className="relative flex items-center justify-between rounded-2xl bg-white/90 backdrop-blur-md px-3 sm:px-5 py-2 shadow-lg border border-gray-100">
+        <div className="flex items-center gap-2 sm:gap-8">
+          {/* Mobile: links collapse into a hamburger dropdown */}
+          <MobileNav />
+
           <Link href="/" className="flex items-center gap-2">
             <Image
               src="/logo.png"
               alt="Empiria Logo"
               width={130}
               height={40}
-              className="object-contain"
+              className="object-contain w-[100px] sm:w-[130px] h-auto"
               priority
             />
           </Link>
 
-          <div className="flex items-center gap-6">
+          <div className="hidden sm:flex items-center gap-6">
             <Link href="/" className="text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">Events</Link>
             <Link href="/gifft" className="text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">GIFFT</Link>
             <Link href="/specials" className="text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">Specials</Link>
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 sm:gap-4">
           <CurrencySelector defaultCurrency={defaultCurrency || undefined} />
           {user ? (
             <UserMenu
@@ -66,7 +70,7 @@ export default async function Navbar({ overlay = false }: { overlay?: boolean })
           ) : (
             <a
               href="/auth/login"
-              className="text-sm font-bold bg-black text-white px-5 py-2.5 rounded-full hover:bg-gray-800 transition-colors"
+              className="text-sm font-bold bg-black text-white px-4 py-2 sm:px-5 sm:py-2.5 rounded-full hover:bg-gray-800 transition-colors whitespace-nowrap"
             >
               Sign In
             </a>

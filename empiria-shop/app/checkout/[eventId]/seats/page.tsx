@@ -50,7 +50,10 @@ export default async function SeatSelectionPage({
   // Only seated events have a seat-selection step; GA / missing config → event page.
   if (!SEATED.includes(seatingType) || !seatingConfig) redirect(`/events/${event.slug}`);
 
-  const sortedTiers = [...(event.ticket_tiers || [])].sort((a: any, b: any) => a.price - b.price);
+  // S7: hidden tiers are not publicly purchasable — never offer them here.
+  const sortedTiers = [...(event.ticket_tiers || [])]
+    .filter((t: any) => !t.is_hidden)
+    .sort((a: any, b: any) => a.price - b.price);
   const currency = event.currency || 'cad';
   const currencySymbol = getCurrencySymbol(currency);
 

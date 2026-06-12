@@ -26,7 +26,7 @@ export default async function SpecialsIndex() {
               <Link
                 key={p.slug}
                 href={`/specials/${p.slug}`}
-                className="group block rounded-2xl overflow-hidden border bg-white hover:shadow-lg transition"
+                className="group block rounded-2xl overflow-hidden border border-gray-200 bg-white hover:shadow-lg transition"
               >
                 <div className="aspect-video bg-gray-100 overflow-hidden">
                   {p.hero_media_type === "image" && p.hero_media_url ? (

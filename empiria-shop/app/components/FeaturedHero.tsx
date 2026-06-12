@@ -117,7 +117,7 @@ export default function FeaturedHero({ featuredEvents, query, setQuery }: Featur
                   document.getElementById('events-section')?.scrollIntoView({ behavior: 'smooth' });
                 }
               }}
-              className="bg-[#F15A29] text-white h-12 px-8 rounded-full font-bold hover:brightness-110 transition-all cursor-pointer"
+              className="bg-[#F15A29] text-white h-12 px-8 rounded-full font-bold hover:bg-[#d6420f] transition-all cursor-pointer"
             >
               Search
             </button>

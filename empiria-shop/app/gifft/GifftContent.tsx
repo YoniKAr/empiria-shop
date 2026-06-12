@@ -57,7 +57,7 @@ interface Movie {
   city?: string;
   cover_image_url?: string;
   currency?: string;
-  event_occurrences?: { starts_at: string }[];
+  event_occurrences?: { starts_at: string; is_cancelled?: boolean }[];
   gifft_movie_details?: MovieDetail[] | MovieDetail;
 }
 

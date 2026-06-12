@@ -60,7 +60,7 @@ export default function EventsGrid({ events, query, setQuery, categories, active
         <div className="w-full bg-white">
             {/* Events Grid */}
             <div className="max-w-7xl mx-auto px-4 sm:px-6 py-16 text-left">
-                <div className="flex items-end justify-between mb-8">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between mb-8">
                     <h2 className="text-2xl font-bold text-[#F15A29]">
                         {query.trim()
                             ? `Results for "${query}" (${filtered.length})`
@@ -68,7 +68,7 @@ export default function EventsGrid({ events, query, setQuery, categories, active
                                 ? activeCategoryName
                                 : 'Upcoming Events'}
                     </h2>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
                         {[{ name: 'All', slug: null as string | null }, ...categories].map((cat) => {
                             const isActive = cat.slug === null
                                 ? !activeCategory
@@ -91,7 +91,7 @@ export default function EventsGrid({ events, query, setQuery, categories, active
                 </div>
 
                 {filtered.length === 0 ? (
-                    <div className="text-center py-20 text-muted-foreground">
+                    <div className="text-center py-20 text-gray-600">
                         <Search className="mx-auto mb-4 w-10 h-10 opacity-30" />
                         {query.trim() ? (
                             <>

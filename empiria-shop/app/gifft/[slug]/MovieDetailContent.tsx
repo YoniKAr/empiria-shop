@@ -325,8 +325,11 @@ export default function MovieDetailContent({
                     </div>
                   </div>
 
+                  {/* ?occ= carries THIS screening into checkout; the checkout
+                      page redirects seated movies to /checkout/[id]/seats with
+                      the occ preserved (S3). */}
                   <Link
-                    href={`/checkout/${event.id}`}
+                    href={`/checkout/${event.id}?occ=${encodeURIComponent(occ.id)}`}
                     className="flex-shrink-0 bg-[#F15A29] hover:bg-[#e07d15] text-white font-bold text-sm px-6 py-2.5 rounded-full transition-colors text-center shadow-sm"
                   >
                     Get Tickets

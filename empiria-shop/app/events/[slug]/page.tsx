@@ -148,8 +148,12 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
     // per-tier remaining_quantity (which is seeded to equal the pool).
     const sharedRemaining = Math.max(0, ((event as any).total_capacity ?? 0) - ((event as any).total_tickets_sold ?? 0));
 
+    // Hidden tiers (is_hidden) are organizer-internal — never shown or sold
+    // through public widgets/pickers.
+    const visibleTierRows = (event.ticket_tiers || []).filter((t: any) => !t.is_hidden);
+
     // Map ticket_tiers to TicketWidget shape
-    const tiers = [...(event.ticket_tiers || [])]
+    const tiers = [...visibleTierRows]
         .sort((a: any, b: any) => a.price - b.price)
         .map((tier: any) => ({
             id: String(tier.id),
@@ -180,7 +184,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
             : null;
 
     // Sorted tiers for seatmap selectors (same data, different shape)
-    const sortedTiers = [...(event.ticket_tiers || [])]
+    const sortedTiers = [...visibleTierRows]
         .sort((a: any, b: any) => a.price - b.price);
 
     // Future occurrences for the seated-event CTA date picker (multi-date events

@@ -11,6 +11,7 @@ import { toStripeAmount } from '@/lib/utils';
 import { computeFees, DEFAULT_FEE_PERCENT, DEFAULT_FIXED_PER_TICKET } from '@/lib/fees';
 import { sendOrderConfirmationEmail } from '@/lib/email';
 import { SHOP_URL } from '@/lib/urls';
+import { migrateSeatingConfig } from '@/lib/migrate-seating-config';
 
 interface TierSelection {
   tierId: string;
@@ -21,11 +22,50 @@ interface SeatSelection {
   seatId: string;
   sectionId: string;
   label: string;
+  /** Ticket tier purchased for this seat — validated against the zone the
+   *  seat belongs to (S4). */
+  tierId: string;
 }
 
 interface AssignedSeatSelection {
   label: string;
   tierId: string;
+}
+
+/** Holds are stored with seat_id composed as `${occurrenceId}:${seatId}` once a
+ *  date is picked (mirrors useSeatHolds) — un-prefixed holds are event-wide. */
+function composeHoldSeatId(seatId: string, occurrenceId?: string | null): string {
+  return occurrenceId ? `${occurrenceId}:${seatId}` : seatId;
+}
+
+/** Active hold seat keys relevant to an occurrence scope (raw, prefix stripped).
+ *  Holds for OTHER occurrences don't block this one. */
+function heldKeysForScope(
+  holds: Array<{ seat_id: string }>,
+  occurrenceId?: string | null
+): Set<string> {
+  const out = new Set<string>();
+  for (const h of holds) {
+    const idx = h.seat_id.indexOf(':');
+    if (idx === -1) {
+      out.add(h.seat_id);
+    } else if (!occurrenceId || h.seat_id.slice(0, idx) === occurrenceId) {
+      out.add(h.seat_id.slice(idx + 1));
+    }
+  }
+  return out;
+}
+
+/** True when `label` is `${range.prefix}<n>` with start <= n <= end. */
+function labelInRange(
+  range: { prefix: string; start: number; end: number },
+  label: string
+): boolean {
+  if (!label.startsWith(range.prefix)) return false;
+  const numPart = label.slice(range.prefix.length);
+  if (!/^\d+$/.test(numPart)) return false;
+  const n = Number.parseInt(numPart, 10);
+  return n >= range.start && n <= range.end;
 }
 
 export async function POST(request: NextRequest) {
@@ -128,6 +168,44 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // S5: multi-date events MUST say which date is being purchased — seat
+    // availability, ticket validity and check-in are all per occurrence.
+    const { count: futureOccCount } = await supabase
+      .from('event_occurrences')
+      .select('id', { count: 'exact', head: true })
+      .eq('event_id', eventId)
+      .eq('is_cancelled', false)
+      .gt('starts_at', new Date().toISOString());
+
+    if ((futureOccCount ?? 0) > 1 && !occurrenceId) {
+      return NextResponse.json(
+        { error: 'Please select an event date for this multi-date event.' },
+        { status: 400 }
+      );
+    }
+
+    // S3: a seat_map order without seat selections would mint seatless tickets
+    // for a seated event. Seat selections are only meaningful for seat_map.
+    const isSeatMapOrder = event.seating_type === 'seat_map';
+    if (isSeatMapOrder) {
+      if (!seatSelections || seatSelections.length === 0) {
+        return NextResponse.json(
+          { error: 'Please pick your seats before checking out.' },
+          { status: 400 }
+        );
+      }
+      if (!sessionId) {
+        return NextResponse.json(
+          { error: 'Missing seat session. Please refresh and re-select your seats.' },
+          { status: 400 }
+        );
+      }
+    }
+    // Ignore stray seat selections on non-seat_map events (they would otherwise
+    // flow into ticket creation as arbitrary seat labels).
+    const seatSel: SeatSelection[] | null =
+      isSeatMapOrder && seatSelections ? seatSelections : null;
+
     // 4. Resolve the event owner. An event is "platform-owned" only when its owner is
     // an admin/platform account — NOT merely because it was created via the admin app.
     // Admins can create events on behalf of real organizers, who must still be paid.
@@ -210,6 +288,14 @@ export async function POST(request: NextRequest) {
 
       if (tier.event_id !== eventId) {
         return NextResponse.json({ error: 'Tier does not belong to this event' }, { status: 400 });
+      }
+
+      // S7: hidden tiers are not publicly purchasable.
+      if (tier.is_hidden === true) {
+        return NextResponse.json(
+          { error: `"${tier.name}" is not available for purchase` },
+          { status: 400 }
+        );
       }
 
       const minQty = (tier as { min_per_order?: number }).min_per_order ?? 1;
@@ -301,6 +387,18 @@ export async function POST(request: NextRequest) {
 
       if (!coupon.is_active) {
         return NextResponse.json({ error: 'This coupon is no longer active' }, { status: 400 });
+      }
+
+      // S15: a coupon denominated in another currency must not apply — its
+      // flat amount / discount cap would be interpreted in the event currency.
+      if (
+        coupon.currency &&
+        coupon.currency.toLowerCase() !== (event.currency || 'cad').toLowerCase()
+      ) {
+        return NextResponse.json(
+          { error: 'This coupon is not valid for this event\'s currency' },
+          { status: 400 }
+        );
       }
 
       if (coupon.starts_at && new Date(coupon.starts_at) > now) {
@@ -410,13 +508,161 @@ export async function POST(request: NextRequest) {
       }
     };
 
-    // 6b. If seat_map mode, verify each seat has a valid hold for this session
-    if (seatSelections && seatSelections.length > 0 && sessionId) {
+    // 6b. seat_map: validate the submitted seats end-to-end before any money
+    // moves (SHOP-1b / S4 / S5) — every seat must (a) exist in the event's
+    // seating config under the claimed section with the claimed label, (b) be
+    // purchased with a tier that belongs to that seat's zone, (c) not already
+    // be sold for this occurrence, and (d) be actively held by THIS session.
+    if (isSeatMapOrder && seatSel) {
+      // Shape: every entry needs all four keys (tierId added for S4).
+      for (const seat of seatSel) {
+        if (!seat.seatId || !seat.sectionId || !seat.label || !seat.tierId) {
+          await releaseCouponOnFailure();
+          return NextResponse.json(
+            { error: 'Invalid seat selection. Please refresh and re-select your seats.' },
+            { status: 400 }
+          );
+        }
+      }
+
+      // No duplicate seats.
+      if (
+        new Set(seatSel.map((s) => s.seatId)).size !== seatSel.length ||
+        new Set(seatSel.map((s) => s.label)).size !== seatSel.length
+      ) {
+        await releaseCouponOnFailure();
+        return NextResponse.json({ error: 'Duplicate seats in selection' }, { status: 400 });
+      }
+
+      // Per-seat tiers must add up to exactly the purchased tier quantities.
+      const seatTierCounts = new Map<string, number>();
+      for (const seat of seatSel) {
+        seatTierCounts.set(seat.tierId, (seatTierCounts.get(seat.tierId) ?? 0) + 1);
+      }
+      const tiersMatch =
+        seatTierCounts.size === aggregatedQuantities.size &&
+        [...aggregatedQuantities].every(([tid, qty]) => seatTierCounts.get(tid) === qty);
+      if (!tiersMatch) {
+        await releaseCouponOnFailure();
+        return NextResponse.json(
+          { error: 'Seat selections do not match the ticket quantities' },
+          { status: 400 }
+        );
+      }
+
+      // (a)+(b): resolve seats against the seating config. Legacy configs keep
+      // seats inside zone polygons — migrateSeatingConfig synthesizes sections
+      // the same way the shop viewers do. Tier membership resolves defensively
+      // by id, then by the wizard-derived tier NAME ("Zone" / "Zone — Tier"),
+      // mirroring SeatSelector.
+      const migrated = migrateSeatingConfig(event.seating_config);
+      const sections = migrated?.sections || [];
+      if (sections.length === 0) {
+        await releaseCouponOnFailure();
+        return NextResponse.json(
+          { error: 'This event has no seat map configured. Please contact the organizer.' },
+          { status: 400 }
+        );
+      }
+
+      const { data: allEventTiers } = await supabase
+        .from('ticket_tiers')
+        .select('id, name')
+        .eq('event_id', eventId);
+      const tierById = new Map((allEventTiers || []).map((t) => [t.id, t]));
+      const tierByName = new Map(
+        (allEventTiers || []).map((t) => [t.name.trim().toLowerCase(), t])
+      );
+      const resolveTierId = (
+        tid: string | undefined,
+        ...names: (string | undefined)[]
+      ): string | undefined => {
+        if (tid && tierById.has(tid)) return tid;
+        for (const n of names) {
+          const t = n ? tierByName.get(n.trim().toLowerCase()) : undefined;
+          if (t) return t.id;
+        }
+        return undefined;
+      };
+
+      // Allowed (purchasable) ticket-tier ids per section. Zones share their id
+      // with the synthesized section.
+      const allowedTiersBySection = new Map<string, Set<string>>();
+      for (const zone of migrated?.zones || []) {
+        const allowed = new Set<string>();
+        if (zone.tiers && zone.tiers.length > 0) {
+          const multi = zone.tiers.length > 1;
+          for (const zt of zone.tiers) {
+            const rid = resolveTierId(zt.id, multi ? `${zone.name} — ${zt.name}` : zone.name);
+            if (rid) allowed.add(rid);
+          }
+        } else {
+          const rid = resolveTierId(zone.tier_id, zone.name);
+          if (rid) allowed.add(rid);
+        }
+        allowedTiersBySection.set(zone.id, allowed);
+      }
+      for (const section of sections) {
+        if (!allowedTiersBySection.has(section.id)) {
+          const rid = resolveTierId(section.tier_id, section.name);
+          allowedTiersBySection.set(section.id, new Set(rid ? [rid] : []));
+        }
+      }
+
+      for (const seat of seatSel) {
+        const section = sections.find((s) => s.id === seat.sectionId);
+        const cfgSeat = section?.seats?.find((cs) => cs.id === seat.seatId);
+        if (!section || !cfgSeat || cfgSeat.label !== seat.label) {
+          await releaseCouponOnFailure();
+          return NextResponse.json(
+            { error: `Seat ${seat.label} does not exist for this event.` },
+            { status: 400 }
+          );
+        }
+        const allowed = allowedTiersBySection.get(section.id);
+        if (!allowed || !allowed.has(seat.tierId)) {
+          await releaseCouponOnFailure();
+          return NextResponse.json(
+            { error: `Seat ${seat.label} cannot be purchased with the selected ticket type.` },
+            { status: 400 }
+          );
+        }
+      }
+
+      // (c) SHOP-1b: reject seats with a LIVE ticket (valid/used), scoped per
+      // occurrence — a seat sold for occurrence A stays buyable for B; tickets
+      // with no occurrence_id are event-wide. (The partial unique index
+      // tickets_live_seat_unique is the race-condition backstop at insert.)
+      let soldQuery = supabase
+        .from('tickets')
+        .select('seat_label')
+        .eq('event_id', eventId)
+        .in('status', ['valid', 'used'])
+        .in('seat_label', seatSel.map((s) => s.label));
+      if (occurrenceId) {
+        soldQuery = soldQuery.or(`occurrence_id.eq.${occurrenceId},occurrence_id.is.null`);
+      }
+      const { data: soldRows, error: soldCheckError } = await soldQuery;
+      if (soldCheckError) {
+        await releaseCouponOnFailure();
+        return NextResponse.json({ error: 'Failed to verify seat availability' }, { status: 500 });
+      }
+      if (soldRows && soldRows.length > 0) {
+        await releaseCouponOnFailure();
+        const taken = [...new Set(soldRows.map((r: any) => r.seat_label))].join(', ');
+        return NextResponse.json(
+          { error: `Seat${soldRows.length > 1 ? 's' : ''} ${taken} ${soldRows.length > 1 ? 'have' : 'has'} already been sold. Please pick different seats.` },
+          { status: 409 }
+        );
+      }
+
+      // (d) Verify each seat has a valid hold owned by this session. Holds are
+      // stored occurrence-composed (`${occurrenceId}:${seatId}`) by the client.
       const { data: activeHolds, error: holdsError } = await supabase
         .from('seat_holds')
         .select('seat_id, session_id')
         .eq('event_id', eventId)
-        .in('seat_id', seatSelections.map((s) => s.seatId))
+        .in('seat_id', seatSel.map((s) => composeHoldSeatId(s.seatId, occurrenceId)))
         .gt('expires_at', new Date().toISOString());
 
       if (holdsError) {
@@ -426,8 +672,8 @@ export async function POST(request: NextRequest) {
 
       const holdMap = new Map((activeHolds || []).map((h) => [h.seat_id, h.session_id]));
 
-      for (const seat of seatSelections) {
-        const holdSession = holdMap.get(seat.seatId);
+      for (const seat of seatSel) {
+        const holdSession = holdMap.get(composeHoldSeatId(seat.seatId, occurrenceId));
         if (!holdSession) {
           await releaseCouponOnFailure();
           return NextResponse.json(
@@ -454,15 +700,64 @@ export async function POST(request: NextRequest) {
 
       if (seatRanges.length > 0) {
         if (assignedSeats && assignedSeats.length > 0) {
-          // User chose specific seats — validate they aren't sold or held
-          const seatLabelsToCheck = assignedSeats.map((s) => s.label);
+          // User chose specific seats — validate shape, tier membership (S4),
+          // quantity parity, and that they aren't sold (per occurrence) or held.
+          for (const seat of assignedSeats) {
+            if (!seat.label || !seat.tierId) {
+              await releaseCouponOnFailure();
+              return NextResponse.json(
+                { error: 'Invalid seat selection. Please refresh and re-select your seats.' },
+                { status: 400 }
+              );
+            }
+            // S4: the label must fall inside one of the PURCHASED tier's
+            // seat_ranges — rejects label poaching and cross-tier seats.
+            const inTierRange = seatRanges.some(
+              (r) => r.tier_id === seat.tierId && labelInRange(r, seat.label)
+            );
+            if (!inTierRange) {
+              await releaseCouponOnFailure();
+              return NextResponse.json(
+                { error: `Seat ${seat.label} is not valid for the selected ticket type.` },
+                { status: 400 }
+              );
+            }
+          }
 
-          const { data: soldTickets } = await supabase
+          const seatLabelsToCheck = assignedSeats.map((s) => s.label);
+          if (new Set(seatLabelsToCheck).size !== seatLabelsToCheck.length) {
+            await releaseCouponOnFailure();
+            return NextResponse.json({ error: 'Duplicate seats in selection' }, { status: 400 });
+          }
+
+          // Per-seat tiers must add up to exactly the purchased tier quantities.
+          const seatTierCounts = new Map<string, number>();
+          for (const seat of assignedSeats) {
+            seatTierCounts.set(seat.tierId, (seatTierCounts.get(seat.tierId) ?? 0) + 1);
+          }
+          const tiersMatch =
+            seatTierCounts.size === aggregatedQuantities.size &&
+            [...aggregatedQuantities].every(([tid, qty]) => seatTierCounts.get(tid) === qty);
+          if (!tiersMatch) {
+            await releaseCouponOnFailure();
+            return NextResponse.json(
+              { error: 'Seat selections do not match the ticket quantities' },
+              { status: 400 }
+            );
+          }
+
+          // Sold check is occurrence-scoped (S5); occurrence-less tickets are
+          // event-wide and block every occurrence.
+          let soldQuery = supabase
             .from('tickets')
             .select('seat_label')
             .eq('event_id', eventId)
             .not('seat_label', 'is', null)
             .in('status', ['valid', 'used']);
+          if (occurrenceId) {
+            soldQuery = soldQuery.or(`occurrence_id.eq.${occurrenceId},occurrence_id.is.null`);
+          }
+          const { data: soldTickets } = await soldQuery;
 
           const soldLabels = new Set(
             (soldTickets || []).map((t: any) => t.seat_label).filter(Boolean)
@@ -474,9 +769,7 @@ export async function POST(request: NextRequest) {
             .eq('event_id', eventId)
             .gt('expires_at', new Date().toISOString());
 
-          const heldLabels = new Set(
-            (activeHolds || []).map((h: any) => h.seat_id)
-          );
+          const heldLabels = heldKeysForScope(activeHolds || [], occurrenceId);
 
           for (const seat of seatLabelsToCheck) {
             if (soldLabels.has(seat)) {
@@ -500,13 +793,17 @@ export async function POST(request: NextRequest) {
           // Auto-assign: pick next available seats from ranges for each tier
           const autoAssigned: AssignedSeatSelection[] = [];
 
-          // Get all sold/held labels
-          const { data: soldTickets } = await supabase
+          // Get all sold/held labels — sold is occurrence-scoped (S5).
+          let soldQuery = supabase
             .from('tickets')
             .select('seat_label')
             .eq('event_id', eventId)
             .not('seat_label', 'is', null)
             .in('status', ['valid', 'used']);
+          if (occurrenceId) {
+            soldQuery = soldQuery.or(`occurrence_id.eq.${occurrenceId},occurrence_id.is.null`);
+          }
+          const { data: soldTickets } = await soldQuery;
 
           const soldLabels = new Set(
             (soldTickets || []).map((t: any) => t.seat_label).filter(Boolean)
@@ -518,9 +815,7 @@ export async function POST(request: NextRequest) {
             .eq('event_id', eventId)
             .gt('expires_at', new Date().toISOString());
 
-          const heldLabels = new Set(
-            (activeHolds || []).map((h: any) => h.seat_id)
-          );
+          const heldLabels = heldKeysForScope(activeHolds || [], occurrenceId);
 
           for (const selection of validatedSelections) {
             const tierRanges = seatRanges.filter((r) => r.tier_id === selection.tierId);
@@ -663,8 +958,8 @@ export async function POST(request: NextRequest) {
       reservedCouponId = null;
 
       // 2. order_items + tickets (DB trigger handles inventory + QR generation)
-      const seatLabelQueue: string[] = seatSelections && seatSelections.length > 0
-        ? seatSelections.map((s: SeatSelection) => s.label)
+      const seatLabelQueue: string[] = seatSel && seatSel.length > 0
+        ? seatSel.map((s: SeatSelection) => s.label)
         : (resolvedAssignedSeats || []).map((s) => s.label);
 
       const freeTickets: Array<{ id: string; qr_code_secret: string; tierName: string; seatLabel?: string }> = [];
@@ -716,13 +1011,13 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // 3. Release seat holds (seat_map)
-      if (seatSelections && seatSelections.length > 0) {
+      // 3. Release seat holds (seat_map) — holds are stored occurrence-composed
+      if (seatSel && seatSel.length > 0) {
         await supabase
           .from('seat_holds')
           .delete()
           .eq('event_id', event.id)
-          .in('seat_id', seatSelections.map((s: SeatSelection) => s.seatId));
+          .in('seat_id', seatSel.map((s: SeatSelection) => composeHoldSeatId(s.seatId, occurrenceId)));
       }
 
       // 4. Record coupon usage (already reserved at checkout — record only)
@@ -940,9 +1235,13 @@ export async function POST(request: NextRequest) {
       metadata.splits = JSON.stringify(splits);
     }
 
-    // Include seat selections for seat_map mode
-    if (seatSelections && seatSelections.length > 0) {
-      metadata.seat_selections = JSON.stringify(seatSelections);
+    // Include seat selections for seat_map mode. seatId is the occurrence-
+    // composed HOLD key so the webhook's post-payment hold cleanup
+    // (.in('seat_id', …seatId)) deletes the actual rows; tickets use `label`.
+    if (seatSel && seatSel.length > 0) {
+      metadata.seat_selections = JSON.stringify(
+        seatSel.map((s) => ({ ...s, seatId: composeHoldSeatId(s.seatId, occurrenceId) }))
+      );
       metadata.seat_session_id = sessionId || '';
     }
 

@@ -6,6 +6,7 @@ import Link from "next/link"
 import StripeBadge from "@/components/StripeBadge"
 import { BlockedBuyerNotice } from "@/components/BlockedBuyerNotice"
 import { ctaButtonText, isSafeUrl } from "@/lib/eventFields"
+import { getCurrencySymbol } from "@/lib/utils"
 
 interface TicketTier {
     id: string
@@ -49,7 +50,7 @@ export function TicketWidget({ tiers, eventId, currency = "cad", ctaLabel, entry
                                 href={externalUrl!}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="block w-full bg-[#F15A29] text-white text-center py-4 rounded-xl font-bold text-base hover:brightness-110 active:scale-[0.98] transition-all duration-200 font-[family-name:var(--font-space-grotesk)]"
+                                className="block w-full bg-[#F15A29] text-white text-center py-4 rounded-xl font-bold text-base hover:bg-[#d6420f] active:scale-[0.98] transition-all duration-200 font-[family-name:var(--font-space-grotesk)]"
                             >
                                 {ctaButtonText(ctaLabel)}
                             </a>
@@ -77,7 +78,7 @@ function TicketedWidget({ tiers, eventId, currency = "cad", ctaLabel, sharedCapa
     const totalQty = tiers.reduce((s, t) => s + qtyOf(t.id), 0)
     const subtotal = tiers.reduce((s, t) => s + t.price * qtyOf(t.id), 0)
     const selectedLines = tiers.filter((t) => qtyOf(t.id) > 0)
-    const sym = currency === "inr" ? "₹" : currency === "usd" ? "$" : "CA$"
+    const sym = getCurrencySymbol(currency)
 
     // Max purchasable for a tier right now. In shared mode every tier's
     // `available` IS the shared event pool, so cap the running total across
@@ -247,7 +248,7 @@ function TicketedWidget({ tiers, eventId, currency = "cad", ctaLabel, sharedCapa
                                     return
                                 }
                             }}
-                            className={`block w-full bg-[#F15A29] text-white text-center py-4 rounded-xl font-bold text-base hover:brightness-110 active:scale-[0.98] transition-all duration-200 font-[family-name:var(--font-space-grotesk)] ${shake ? "animate-shake" : ""}`}
+                            className={`block w-full bg-[#F15A29] text-white text-center py-4 rounded-xl font-bold text-base hover:bg-[#d6420f] active:scale-[0.98] transition-all duration-200 font-[family-name:var(--font-space-grotesk)] ${shake ? "animate-shake" : ""}`}
                         >
                             {ctaButtonText(ctaLabel)}
                         </Link>
