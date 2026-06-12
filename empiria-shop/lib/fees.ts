@@ -26,7 +26,10 @@ export interface FeeBreakdown {
   customerTax: number;      // tax the CUSTOMER pays: pass -> hstTotal, absorb -> hstOnBase
   stripeOffset: number;     // gross-up so net after Stripe covers effBase+platformFee+hstTotal (0 in absorb)
   customerTotal: number;    // exact amount charged
-  organizerPayout: number;  // pass-mode target (effBase + hstOnBase); absorb recomputed in webhook with actual fee
+  organizerPayout: number;  // pass: guaranteed effBase + hstOnBase. absorb: ESTIMATE of
+                            // customerTotal - stripeFeeEstimate - platformFee - hstOnFee,
+                            // clamped at 0 (sub-$2 tickets can't cover the fees); the
+                            // webhook recomputes absorb with the ACTUAL Stripe fee.
   empiriaKeep: number;      // platformFee + hstOnFee
   stripeFeeEstimate: number;
 }
@@ -62,6 +65,17 @@ export function computeFees(input: FeeInput): FeeBreakdown {
     stripeOffset = 0;
   }
 
+  const stripeFeeEstimate = round2(STRIPE_PERCENT * customerTotal + STRIPE_FIXED);
+
+  // Organizer payout. PASS is a guarantee: ticket revenue + ticket tax. ABSORB is an
+  // estimate: the organizer eats the platform fee, its HST, and the Stripe fee — for
+  // sub-$2 tickets those can exceed the customer total, so clamp at 0 so no caller
+  // ever sees a negative payout. (The webhook recomputes absorb with the actual
+  // Stripe fee and applies the same clamp; Empiria absorbs any shortfall.)
+  const organizerPayout = passProcessingFee
+    ? round2(effBase + hstOnBase)
+    : Math.max(0, round2(customerTotal - stripeFeeEstimate - platformFee - hstOnFee));
+
   return {
     effBase,
     platformFee,
@@ -71,8 +85,8 @@ export function computeFees(input: FeeInput): FeeBreakdown {
     customerTax,
     stripeOffset,
     customerTotal,
-    organizerPayout: round2(effBase + hstOnBase),
+    organizerPayout,
     empiriaKeep: round2(platformFee + hstOnFee),
-    stripeFeeEstimate: round2(STRIPE_PERCENT * customerTotal + STRIPE_FIXED),
+    stripeFeeEstimate,
   };
 }

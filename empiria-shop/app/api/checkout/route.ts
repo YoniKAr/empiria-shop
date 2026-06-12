@@ -173,10 +173,38 @@ export async function POST(request: NextRequest) {
     const tierMap = new Map(ticketTiers.map((t) => [t.id, t]));
     const validatedSelections: Array<{ tierId: string; quantity: number; unitPrice: number; tierName: string }> = [];
 
+    // Reject non-integer / non-positive quantities up front. A fractional quantity
+    // (e.g. 2.5) passes min/max checks but desyncs money from tickets: the per-unit
+    // discount loop emits ceil(q) units while ticket creation emits floor(q).
     for (const selection of tiers) {
-      const tier = tierMap.get(selection.tierId);
+      if (
+        typeof selection.quantity !== 'number' ||
+        !Number.isInteger(selection.quantity) ||
+        selection.quantity <= 0
+      ) {
+        return NextResponse.json(
+          { error: 'Ticket quantities must be whole numbers of at least 1' },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Aggregate duplicate tierId entries into ONE selection BEFORE validation
+    // (mirrors the shared-capacity aggregate check below). Otherwise
+    // [{tier,5},{tier,5}] each passes max_per_order/remaining_quantity alone
+    // while the combined 10 bypasses both caps.
+    const aggregatedQuantities = new Map<string, number>();
+    for (const selection of tiers) {
+      aggregatedQuantities.set(
+        selection.tierId,
+        (aggregatedQuantities.get(selection.tierId) ?? 0) + selection.quantity
+      );
+    }
+
+    for (const [selTierId, selQuantity] of aggregatedQuantities) {
+      const tier = tierMap.get(selTierId);
       if (!tier) {
-        return NextResponse.json({ error: `Tier ${selection.tierId} not found` }, { status: 400 });
+        return NextResponse.json({ error: `Tier ${selTierId} not found` }, { status: 400 });
       }
 
       if (tier.event_id !== eventId) {
@@ -184,7 +212,7 @@ export async function POST(request: NextRequest) {
       }
 
       const minQty = (tier as { min_per_order?: number }).min_per_order ?? 1;
-      if (selection.quantity < minQty || selection.quantity > tier.max_per_order) {
+      if (selQuantity < minQty || selQuantity > tier.max_per_order) {
         return NextResponse.json(
           { error: `Quantity for "${tier.name}" must be between ${minQty} and ${tier.max_per_order}` },
           { status: 400 }
@@ -194,7 +222,7 @@ export async function POST(request: NextRequest) {
       // In shared-capacity mode the per-tier remaining_quantity is seeded to equal
       // the event pool and is NOT the real constraint — the event pool is checked
       // after this loop. Skip the per-tier check in shared mode.
-      if (!event.shared_capacity && tier.remaining_quantity < selection.quantity) {
+      if (!event.shared_capacity && tier.remaining_quantity < selQuantity) {
         return NextResponse.json(
           { error: `Only ${tier.remaining_quantity} "${tier.name}" tickets remaining` },
           { status: 400 }
@@ -209,12 +237,12 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: `Sales for "${tier.name}" have ended` }, { status: 400 });
       }
 
-      const tierSubtotal = tier.price * selection.quantity;
+      const tierSubtotal = tier.price * selQuantity;
       subtotal += tierSubtotal;
 
       validatedSelections.push({
         tierId: tier.id,
-        quantity: selection.quantity,
+        quantity: selQuantity,
         unitPrice: tier.price,
         tierName: tier.name,
       });
@@ -573,7 +601,9 @@ export async function POST(request: NextRequest) {
           discount_amount: discountAmount,
           platform_fee_amount: 0,
           organizer_payout_amount: 0,
-          processing_fee_amount: 0,
+          // stripeOffset is the customer-paid processing offset; a free order never
+          // touches Stripe so the engine returns 0 here — written explicitly.
+          processing_fee_amount: fees.stripeOffset,
           ticket_tax_amount: 0,
           platform_fee_tax_amount: 0,
           stripe_fee_amount: 0,
@@ -582,15 +612,36 @@ export async function POST(request: NextRequest) {
           currency,
           buyer_email: freeEmail || null,
           buyer_name: freeName || null,
+          // Full version-5 breakdown shape (parity with the webhook's keys) so
+          // analytics reading breakdown fields uniformly never get undefined.
+          // All money fields are 0 — nothing was charged or transferred.
           payout_breakdown: {
             version: 5,
             free_order: true,
             subtotal,
             eff_base: fees.effBase,
             customer_total: 0,
+            pass_processing_fee: passProcessingFee,
+            charge_ticket_tax: chargeTicketTax,
             total_tickets: totalTickets,
+            platform_fee_fixed_semantics: 'per_ticket',
+            platform_fee_percent: feePercent,
+            platform_fee_fixed: feeFixedPerTicket,
+            platform_fee: 0,
+            hst_on_base: 0,
+            hst_on_fee: 0,
+            empiria_keep: 0,
+            stripe_offset: 0,
+            stripe_fee: 0,
+            stripe_gap: 0,
+            platform_take_home: 0,
             discount_amount: discountAmount,
             coupon_code: couponCode_validated || '',
+            organizer_payout: 0,
+            transfer_group: null,
+            organizer_transfer_id: null,
+            splits: null,
+            elevsoft_transfer: null,
           },
           status: 'completed',
           source_app: 'shop',
@@ -750,23 +801,39 @@ export async function POST(request: NextRequest) {
         });
       }
     } else {
-      // Bake the discount into per-unit ticket lines (last unit absorbs the cent remainder)
-      // so sum(ticket lines) === fees.effBase exactly. No Stripe coupon.
+      // Bake the discount into per-unit ticket lines so sum(ticket lines) === fees.effBase
+      // exactly. No Stripe coupon. The discount (and its cent remainder) is allocated
+      // across PAID units only — free ($0) units always emit at 0¢. (Dumping the remainder
+      // on the last unit overall could land it on a free unit, where the 0-clamp swallows
+      // it and the line-item sum exceeds fees.customerTotal by 1-2¢.)
       const baseCents = Math.round(subtotal * 100);
       const discountCents = Math.round(discountAmount * 100);
-      const units: Array<{ name: string; cents: number }> = [];
+      const units: Array<{ name: string; cents: number; discount: number }> = [];
       for (const sel of validatedSelections) {
         for (let i = 0; i < sel.quantity; i++) {
-          units.push({ name: `${sel.tierName} — ${event.title}`, cents: Math.round(sel.unitPrice * 100) });
+          units.push({ name: `${sel.tierName} — ${event.title}`, cents: Math.round(sel.unitPrice * 100), discount: 0 });
         }
       }
-      let allocated = 0;
-      for (let i = 0; i < units.length; i++) {
-        const d = i === units.length - 1 ? discountCents - allocated : Math.round(discountCents * (units[i].cents / baseCents));
-        if (i < units.length - 1) allocated += d;
-        const net = Math.max(0, units[i].cents - d);
+      const paidUnits = units.filter((u) => u.cents > 0);
+      // Pass 1: proportional floor allocation per paid unit, capped at the unit's price.
+      // (Floors never over-allocate; total paid capacity is baseCents, so the cap on
+      // the discount keeps the leftover always placeable in pass 2.)
+      let remainingDiscount = Math.min(discountCents, baseCents);
+      for (const u of paidUnits) {
+        const d = Math.min(u.cents, Math.floor((discountCents * u.cents) / baseCents));
+        u.discount = d;
+        remainingDiscount -= d;
+      }
+      // Pass 2: distribute the leftover cents across paid units that still have capacity.
+      for (const u of paidUnits) {
+        if (remainingDiscount <= 0) break;
+        const add = Math.min(remainingDiscount, u.cents - u.discount);
+        u.discount += add;
+        remainingDiscount -= add;
+      }
+      for (const u of units) {
         lineItems.push({
-          price_data: { currency, product_data: { name: units[i].name }, unit_amount: net },
+          price_data: { currency, product_data: { name: u.name }, unit_amount: u.cents - u.discount },
           quantity: 1,
         });
       }
