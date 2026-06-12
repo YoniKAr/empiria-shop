@@ -36,7 +36,7 @@ export default async function Navbar({ overlay = false }: { overlay?: boolean })
   return (
     <>
     <nav className="fixed top-4 left-1/2 z-50 w-[94%] max-w-5xl -translate-x-1/2">
-      <div className="relative flex items-center justify-between rounded-2xl bg-white/90 backdrop-blur-md px-4 sm:px-6 py-3 shadow-lg border border-gray-100">
+      <div className="relative flex items-center justify-between rounded-2xl bg-white px-4 sm:px-6 py-3 shadow-lg backdrop-blur-sm">
         <div className="flex items-center gap-2 sm:gap-8">
           {/* Mobile: links collapse into a hamburger dropdown */}
           <MobileNav />
