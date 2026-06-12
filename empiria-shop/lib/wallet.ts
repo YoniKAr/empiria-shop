@@ -2,6 +2,7 @@ import { PKPass } from 'passkit-generator';
 import { readFile } from 'fs/promises';
 import { SignJWT, importPKCS8 } from 'jose';
 import path from 'path';
+import { APEX_URL, SHOP_URL } from '@/lib/urls';
 
 // ---------- Shared types ----------
 
@@ -146,7 +147,7 @@ export async function generateApplePass(
       {
         key: 'organizer',
         label: 'Powered by',
-        value: 'Empiria — empiriaindia.com',
+        value: `Empiria — ${new URL(APEX_URL).host}`,
       },
     );
 
@@ -196,7 +197,7 @@ export async function generateGoogleWalletLink(
       hexBackgroundColor: '#111827',
       logo: {
         sourceUri: {
-          uri: 'https://empiriaindia.com/logo-white.png',
+          uri: `${APEX_URL}/empiria_logo.png`,
         },
         contentDescription: {
           defaultValue: { language: 'en-US', value: 'Empiria' },
@@ -237,7 +238,7 @@ export async function generateGoogleWalletLink(
       iss: serviceAccountEmail,
       aud: 'google',
       typ: 'savetowallet',
-      origins: ['https://empiriaindia.com'],
+      origins: [APEX_URL, SHOP_URL],
       payload: {
         eventTicketObjects: [eventTicketObject],
       },

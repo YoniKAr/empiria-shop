@@ -12,6 +12,7 @@ import Link from 'next/link';
 import { CheckCircle2, Calendar, MapPin, ArrowRight, Video } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
+import { PROFILE_URL } from '@/lib/urls';
 
 // Only allow http(s) meeting links as clickable anchors — blocks
 // javascript:/data:/vbscript: and other XSS-prone schemes.
@@ -345,7 +346,7 @@ export default async function CheckoutSuccessPage({
             Explore More Events <ArrowRight size={16} />
           </Link>
           <a
-            href="https://profile.empiriaindia.com"
+            href={PROFILE_URL}
             className="inline-flex items-center justify-center gap-2 px-6 py-3 border border-gray-200 rounded-xl font-bold text-gray-700 hover:bg-gray-50 transition-colors"
           >
             View My Tickets

@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { LayoutDashboard, User, LogOut, ChevronDown } from 'lucide-react';
+import { PROFILE_URL, ADMIN_URL, ORGANIZER_URL } from '@/lib/urls';
 
 interface UserMenuProps {
   userName: string;
@@ -9,17 +10,15 @@ interface UserMenuProps {
   userRole: string | null;
 }
 
-const PROFILE_URL = 'https://profile.empiriaindia.com';
-
 const DASHBOARD_URLS: Record<string, { label: string; href: string }[]> = {
   admin: [
-    { label: 'Admin Dashboard', href: 'https://admin.empiriaindia.com/dashboard' },
+    { label: 'Admin Dashboard', href: `${ADMIN_URL}/dashboard` },
   ],
   organizer: [
-    { label: 'Organizer Dashboard', href: 'https://organizer.empiriaindia.com/dashboard' },
+    { label: 'Organizer Dashboard', href: `${ORGANIZER_URL}/dashboard` },
   ],
   non_profit: [
-    { label: 'Organizer Dashboard', href: 'https://organizer.empiriaindia.com/dashboard' },
+    { label: 'Organizer Dashboard', href: `${ORGANIZER_URL}/dashboard` },
   ],
 };
 

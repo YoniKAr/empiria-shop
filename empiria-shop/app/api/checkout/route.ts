@@ -10,6 +10,7 @@ import { getSupabaseAdmin } from '@/lib/supabase';
 import { toStripeAmount } from '@/lib/utils';
 import { computeFees, DEFAULT_FEE_PERCENT, DEFAULT_FIXED_PER_TICKET } from '@/lib/fees';
 import { sendOrderConfirmationEmail } from '@/lib/email';
+import { SHOP_URL } from '@/lib/urls';
 
 interface TierSelection {
   tierId: string;
@@ -579,7 +580,7 @@ export async function POST(request: NextRequest) {
     // Create the order + tickets inline (mirrors the webhook's fulfillment), then
     // send the buyer to the success page by order id.
     if (fees.customerTotal <= 0) {
-      const appBaseUrl = process.env.APP_BASE_URL || 'https://shop.empiriaindia.com';
+      const appBaseUrl = process.env.APP_BASE_URL || SHOP_URL;
       const freeEmail = contactEmail || user?.email || '';
       const freeUserId = user?.sub || null;
       const freeName = contactName || user?.name || '';
@@ -951,7 +952,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 10. Create Stripe Checkout Session
-    const appBaseUrl = process.env.APP_BASE_URL || 'https://shop.empiriaindia.com';
+    const appBaseUrl = process.env.APP_BASE_URL || SHOP_URL;
 
     let checkoutSession;
 
