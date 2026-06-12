@@ -13,6 +13,7 @@ interface EventDetailsProps {
     city: string
     addressText?: string
     organizer: string
+    organizerAvatarUrl?: string | null
     coOrganizers?: { name: string; avatarUrl?: string | null }[]
     galleryUrls?: string[]
     whatToExpect?: string[]
@@ -27,6 +28,7 @@ export function EventDetails({
     city,
     addressText,
     organizer,
+    organizerAvatarUrl = null,
     coOrganizers = [],
     galleryUrls = [],
     whatToExpect = [],
@@ -166,7 +168,23 @@ export function EventDetails({
                     </div>
                     <div>
                         <p className="text-xs text-gray-700 uppercase tracking-wider font-medium mb-1">Organized by</p>
-                        <p className="text-sm text-gray-900 font-medium">{organizer}</p>
+                        <div className="flex items-center gap-2">
+                            {organizerAvatarUrl ? (
+                                <Image
+                                    src={organizerAvatarUrl}
+                                    alt={organizer}
+                                    width={24}
+                                    height={24}
+                                    className="w-6 h-6 rounded-full object-cover flex-shrink-0"
+                                    unoptimized
+                                />
+                            ) : (
+                                <span className="w-6 h-6 rounded-full bg-orange-50 text-[#F15A29] text-[11px] font-semibold flex items-center justify-center flex-shrink-0">
+                                    {organizer.charAt(0).toUpperCase()}
+                                </span>
+                            )}
+                            <p className="text-sm text-gray-900 font-medium">{organizer}</p>
+                        </div>
                         {coOrganizers.length > 0 && (
                             <div className="mt-3 flex flex-col gap-2">
                                 {coOrganizers.map((co, i) => (

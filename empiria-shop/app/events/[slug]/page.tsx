@@ -55,9 +55,22 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
     // Role-based primary name: admin-owned events show "Empiria Events", but an
     // event an admin created ON BEHALF of a real organizer (owner role !== admin)
     // shows that organizer's name.
-    const organizer = ownerProfile?.role === 'admin'
+    const isPlatformEvent = ownerProfile?.role === 'admin';
+    const organizer = isPlatformEvent
         ? 'Empiria Events'
         : (ownerProfile?.full_name || 'Empiria Events');
+
+    // Organizer avatar: platform-owned events show the single shared platform
+    // avatar (admin-managed in platform_settings); otherwise the owner's own.
+    let organizerAvatarUrl: string | null = ownerProfile?.avatar_url || null;
+    if (isPlatformEvent) {
+        const { data: platformSetting } = await supabase
+            .from('platform_settings')
+            .select('value')
+            .eq('key', 'platform_avatar_url')
+            .maybeSingle();
+        organizerAvatarUrl = (platformSetting?.value as { url?: string | null } | null)?.url || null;
+    }
 
     // Fetch visible co-organizers (additional hosts shown publicly).
     const { data: coOrganizerRows } = await supabase
@@ -272,6 +285,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                         city={event.city}
                         addressText={event.address_text}
                         organizer={organizer}
+                        organizerAvatarUrl={organizerAvatarUrl}
                         coOrganizers={coOrganizers}
                         galleryUrls={galleryUrls}
                         whatToExpect={whatToExpect}
