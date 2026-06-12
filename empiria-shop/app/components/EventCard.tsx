@@ -91,7 +91,7 @@ export function EventCard({
                             </div>
                         ) : (
                             <div className="flex-shrink-0 border border-gray-200 rounded-lg px-3 py-2 text-center min-w-[56px] shadow-sm flex items-center justify-center">
-                                <span className="block text-gray-400 text-xs font-bold uppercase">TBD</span>
+                                <span className="block text-gray-700 text-xs font-bold uppercase">TBD</span>
                             </div>
                         )}
 
@@ -109,15 +109,15 @@ export function EventCard({
                     </div>
 
                     {/* Location */}
-                    <div className="flex items-center gap-2 text-sm text-gray-500 mb-4 mt-auto">
-                        <MapPin className="w-[15px] h-[15px] text-gray-400 flex-shrink-0" />
+                    <div className="flex items-center gap-2 text-sm text-gray-700 mb-4 mt-auto">
+                        <MapPin className="w-[15px] h-[15px] text-gray-700 flex-shrink-0" />
                         <span className="line-clamp-1 text-[13px]">{city}{venueName ? `, ${venueName}` : ''}</span>
                     </div>
 
                     {/* Tickets Info */}
                     <div className="flex items-center justify-between text-[13px] mb-4">
-                        <div className="flex items-center gap-2 text-gray-500">
-                            <Ticket className="w-[15px] h-[15px] text-gray-400 flex-shrink-0" />
+                        <div className="flex items-center gap-2 text-gray-700">
+                            <Ticket className="w-[15px] h-[15px] text-gray-700 flex-shrink-0" />
                             <span>{isFree ? 'Free entry' : 'Tickets from'}</span>
                         </div>
                         <span className="font-bold text-slate-900 text-[15px]">
@@ -142,7 +142,7 @@ export function EventCard({
                                 {organizerName || 'Empiria Events'}
                             </span>
                             {coHostCount > 0 && (
-                                <span className="text-[11px] text-gray-400 font-medium flex-shrink-0">
+                                <span className="text-[11px] text-gray-700 font-medium flex-shrink-0">
                                     +{coHostCount} co-host{coHostCount > 1 ? 's' : ''}
                                 </span>
                             )}

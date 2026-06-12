@@ -259,7 +259,7 @@ export default function ZoneSelector({
       <div className="border border-gray-200 rounded-xl shadow-lg bg-white overflow-hidden">
         <div className="p-4 border-b bg-gray-50">
           <h3 className="font-bold text-lg">Select Your Zone</h3>
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-700">
             Click on a zone to see pricing and availability
           </p>
         </div>
@@ -297,10 +297,10 @@ export default function ZoneSelector({
                       backgroundColor: isSoldOut ? "#9ca3af" : zone.color,
                     }}
                   />
-                  <span className={isSoldOut ? "text-gray-400 line-through" : "text-gray-700"}>
+                  <span className={isSoldOut ? "text-gray-700 line-through" : "text-gray-900"}>
                     {zone.name}
                   </span>
-                  <span className="text-gray-400">
+                  <span className="text-gray-700">
                     {isSoldOut ? "Sold out" : getZonePriceLabel(zone)}
                   </span>
                 </button>
@@ -317,7 +317,7 @@ export default function ZoneSelector({
         {/* Occurrence picker */}
         {occurrences.length > 1 && (
           <div className="mb-5">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+            <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
               Select a Date
             </p>
             <div className="space-y-2">
@@ -351,7 +351,7 @@ export default function ZoneSelector({
                       })}
                     </div>
                     {occ.label && (
-                      <div className="text-xs text-gray-500 mt-0.5">
+                      <div className="text-xs text-gray-700 mt-0.5">
                         {occ.label}
                       </div>
                     )}
@@ -391,18 +391,18 @@ export default function ZoneSelector({
                   >
                     <div className="flex items-center justify-between">
                       <div>
-                        <span className={`text-sm font-medium ${isSoldOut ? "text-gray-400" : "text-gray-900"}`}>
+                        <span className={`text-sm font-medium ${isSoldOut ? "text-gray-700" : "text-gray-900"}`}>
                           {tierLabel}
                         </span>
                         {ticketTier.description && (
-                          <p className="text-xs text-gray-500 mt-0.5">{ticketTier.description}</p>
+                          <p className="text-xs text-gray-700 mt-0.5">{ticketTier.description}</p>
                         )}
                       </div>
                       <div className="text-right">
-                        <span className={`text-sm font-bold ${isSoldOut ? "text-gray-400" : "text-gray-900"}`}>
+                        <span className={`text-sm font-bold ${isSoldOut ? "text-gray-700" : "text-gray-900"}`}>
                           {ticketTier.price === 0 ? "Free" : `${currencySymbol}${ticketTier.price}`}
                         </span>
-                        <p className="text-[10px] text-gray-400">
+                        <p className="text-[10px] text-gray-700">
                           {isSoldOut ? "Sold out" : `${ticketTier.remaining_quantity} left`}
                         </p>
                       </div>
@@ -426,12 +426,12 @@ export default function ZoneSelector({
         {/* Cart: tier quantity selections */}
         <div className="space-y-3 mb-5">
           {selections.length === 0 ? (
-            <p className="text-sm text-gray-400 py-4 text-center">
+            <p className="text-sm text-gray-700 py-4 text-center">
               Click on a zone in the map to add tickets
             </p>
           ) : (
             <>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
                 Your Tickets
               </p>
               {selections.map((sel) => {
@@ -457,7 +457,7 @@ export default function ZoneSelector({
                           <span className="font-semibold text-sm truncate block">
                             {sel.tierName}
                           </span>
-                          <span className="text-[10px] text-gray-400">
+                          <span className="text-[10px] text-gray-700">
                             {sel.zoneName}
                           </span>
                         </div>
@@ -471,7 +471,7 @@ export default function ZoneSelector({
                         <button
                           type="button"
                           onClick={() => removeSelection(sel.tierId)}
-                          className="text-gray-400 hover:text-red-500 text-xs"
+                          className="text-gray-700 hover:text-red-500 text-xs"
                           title="Remove"
                         >
                           &times;
@@ -512,7 +512,7 @@ export default function ZoneSelector({
         {/* Guest contact fields */}
         {!userEmail && totalItems > 0 && (
           <div className="space-y-3 mb-5 pt-4 border-t border-gray-100">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+            <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
               Contact Info
             </p>
             <input
@@ -532,7 +532,7 @@ export default function ZoneSelector({
               }}
               className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
             />
-            <p className="text-xs text-gray-400">
+            <p className="text-xs text-gray-700">
               Your tickets will be sent to this email.
             </p>
           </div>
@@ -584,7 +584,7 @@ export default function ZoneSelector({
           </p>
         )}
 
-        <p className="text-xs text-center text-gray-400 mt-4">
+        <p className="text-xs text-center text-gray-700 mt-4">
           Secure checkout powered by Stripe
         </p>
       </div>

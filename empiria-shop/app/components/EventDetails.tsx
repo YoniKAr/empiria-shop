@@ -137,9 +137,9 @@ export function EventDetails({
                         <Clock className="w-5 h-5 text-[#F15A29]" />
                     </div>
                     <div>
-                        <p className="text-xs text-gray-500 uppercase tracking-wider font-medium mb-1">When</p>
+                        <p className="text-xs text-gray-700 uppercase tracking-wider font-medium mb-1">When</p>
                         <p className="text-sm text-gray-900 font-medium">{formatDateTime(startAt)}</p>
-                        <p className="text-xs text-gray-500 mt-0.5">to {formatDateTime(endAt)}</p>
+                        <p className="text-xs text-gray-700 mt-0.5">to {formatDateTime(endAt)}</p>
                     </div>
                 </div>
 
@@ -153,9 +153,9 @@ export function EventDetails({
                         <MapPin className="w-5 h-5 text-[#F15A29]" />
                     </div>
                     <div>
-                        <p className="text-xs text-gray-500 uppercase tracking-wider font-medium mb-1">Where</p>
+                        <p className="text-xs text-gray-700 uppercase tracking-wider font-medium mb-1">Where</p>
                         <p className="text-sm text-gray-900 font-medium group-hover:text-[#F15A29] transition-colors">{venueName}</p>
-                        <p className="text-xs text-gray-500 mt-0.5">{addressText || city}</p>
+                        <p className="text-xs text-gray-700 mt-0.5">{addressText || city}</p>
                         <p className="text-[10px] text-[#F15A29] font-medium mt-1.5 opacity-0 group-hover:opacity-100 transition-opacity">Get Directions &rarr;</p>
                     </div>
                 </a>
@@ -165,7 +165,7 @@ export function EventDetails({
                         <Info className="w-5 h-5 text-[#F15A29]" />
                     </div>
                     <div>
-                        <p className="text-xs text-gray-500 uppercase tracking-wider font-medium mb-1">Organized by</p>
+                        <p className="text-xs text-gray-700 uppercase tracking-wider font-medium mb-1">Organized by</p>
                         <p className="text-sm text-gray-900 font-medium">{organizer}</p>
                         {coOrganizers.length > 0 && (
                             <div className="mt-3 flex flex-col gap-2">
@@ -264,7 +264,7 @@ export function EventDetails({
                     <div className="relative">
                         <button
                             onClick={() => setShowShare((v) => !v)}
-                            className="flex items-center gap-2 text-sm text-gray-500 hover:text-[#F15A29] transition-colors"
+                            className="flex items-center gap-2 text-sm text-gray-700 hover:text-[#F15A29] transition-colors"
                             aria-label="Share event"
                         >
                             <Share2 className="w-4 h-4" />
@@ -285,7 +285,7 @@ export function EventDetails({
                                         <p className="text-sm font-semibold text-gray-900">Share this event</p>
                                         <button
                                             onClick={() => setShowShare(false)}
-                                            className="text-gray-400 hover:text-gray-600 transition-colors"
+                                            className="text-gray-700 hover:text-gray-900 transition-colors"
                                         >
                                             <X className="w-4 h-4" />
                                         </button>
@@ -305,7 +305,7 @@ export function EventDetails({
                                             </div>
                                             <div>
                                                 <p className="text-sm font-medium text-gray-900">WhatsApp</p>
-                                                <p className="text-xs text-gray-500">Share via WhatsApp</p>
+                                                <p className="text-xs text-gray-700">Share via WhatsApp</p>
                                             </div>
                                         </button>
 
@@ -321,7 +321,7 @@ export function EventDetails({
                                             </div>
                                             <div>
                                                 <p className="text-sm font-medium text-gray-900">Instagram</p>
-                                                <p className="text-xs text-gray-500">Copy link for Instagram</p>
+                                                <p className="text-xs text-gray-700">Copy link for Instagram</p>
                                             </div>
                                         </button>
 
@@ -341,7 +341,7 @@ export function EventDetails({
                                                 <p className="text-sm font-medium text-gray-900">
                                                     {copied ? "Copied!" : "Copy Link"}
                                                 </p>
-                                                <p className="text-xs text-gray-500">Copy event URL</p>
+                                                <p className="text-xs text-gray-700">Copy event URL</p>
                                             </div>
                                         </button>
                                     </div>

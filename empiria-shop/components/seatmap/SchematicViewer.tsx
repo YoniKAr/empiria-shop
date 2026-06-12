@@ -71,7 +71,7 @@ export default function SchematicViewer({
             <div className="p-4 space-y-2 overflow-x-auto">
               {sortedRows.map(([rowLabel, seats]) => (
                 <div key={rowLabel} className="flex items-center gap-1.5">
-                  <span className="w-6 text-xs font-bold text-gray-500 text-center shrink-0">
+                  <span className="w-6 text-xs font-bold text-gray-700 text-center shrink-0">
                     {rowLabel}
                   </span>
                   <div className="flex gap-1.5">

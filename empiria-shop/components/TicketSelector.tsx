@@ -154,12 +154,12 @@ export default function TicketSelector({
   return (
     <div className="border border-gray-200 rounded-xl shadow-lg p-6 sticky top-24 bg-white">
       <h3 className="font-bold text-xl mb-1">Get Tickets</h3>
-      <p className="text-sm text-gray-500 mb-5">Select your tickets below</p>
+      <p className="text-sm text-gray-700 mb-5">Select your tickets below</p>
 
       {/* Occurrence picker */}
       {occurrences.length > 1 && (
         <div className="mb-5">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Select a Date</p>
+          <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">Select a Date</p>
           <div className="space-y-2">
             {occurrences.map((occ) => {
               const occDate = new Date(occ.starts_at);
@@ -188,7 +188,7 @@ export default function TicketSelector({
                     })}
                   </div>
                   {occ.label && (
-                    <div className="text-xs text-gray-500 mt-0.5">{occ.label}</div>
+                    <div className="text-xs text-gray-700 mt-0.5">{occ.label}</div>
                   )}
                 </button>
               );
@@ -219,7 +219,7 @@ export default function TicketSelector({
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold text-sm">{tier.name}</div>
                   {tier.description && (
-                    <div className="text-xs text-gray-500 mt-0.5 line-clamp-2">{tier.description}</div>
+                    <div className="text-xs text-gray-700 mt-0.5 line-clamp-2">{tier.description}</div>
                   )}
                 </div>
                 <div className="font-bold text-sm ml-3 shrink-0">
@@ -275,7 +275,7 @@ export default function TicketSelector({
       {/* Guest contact fields */}
       {!userEmail && totalItems > 0 && (
         <div className="space-y-3 mb-5 pt-4 border-t border-gray-100">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Contact Info</p>
+          <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Contact Info</p>
           <input
             type="text"
             placeholder="Full Name"
@@ -293,7 +293,7 @@ export default function TicketSelector({
             }}
             className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
           />
-          <p className="text-xs text-gray-400">Your tickets will be sent to this email.</p>
+          <p className="text-xs text-gray-700">Your tickets will be sent to this email.</p>
         </div>
       )}
 
@@ -335,7 +335,7 @@ export default function TicketSelector({
         )}
       </button>
 
-      <p className="text-xs text-center text-gray-400 mt-4">Secure checkout powered by Stripe</p>
+      <p className="text-xs text-center text-gray-700 mt-4">Secure checkout powered by Stripe</p>
     </div>
   );
 }

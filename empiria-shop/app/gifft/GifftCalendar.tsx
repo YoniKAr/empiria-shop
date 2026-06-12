@@ -24,7 +24,7 @@ export default function GifftCalendar({ movies }: { movies: CalMovie[] }) {
     .filter((s) => !isNaN(s.start.getTime()));
 
   if (shows.length === 0) {
-    return <p className="text-center text-gray-500 py-12">No scheduled showtimes yet.</p>;
+    return <p className="text-center text-gray-700 py-12">No scheduled showtimes yet.</p>;
   }
 
   // Group shows by day, then by movie (collecting that movie's showtimes for the day)
@@ -68,7 +68,7 @@ export default function GifftCalendar({ movies }: { movies: CalMovie[] }) {
             <div className="sm:w-44 flex-shrink-0 flex sm:flex-col items-baseline sm:items-start gap-2 sm:gap-0.5">
               <div
                 className={`text-xs font-semibold uppercase tracking-wide ${
-                  isToday ? 'text-[#F15A29]' : 'text-gray-400'
+                  isToday ? 'text-[#F15A29]' : 'text-gray-700'
                 }`}
               >
                 {day.date.toLocaleDateString('en-CA', { weekday: 'long' })}

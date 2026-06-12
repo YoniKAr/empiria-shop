@@ -61,14 +61,14 @@ export default function SearchBar() {
 
                 {/* Event Search Input */}
                 <div className="flex-1 flex items-center px-4 h-12 bg-gray-50 sm:bg-transparent rounded-full sm:rounded-none">
-                    <Search className="text-gray-400 w-5 h-5 mr-3 shrink-0" />
+                    <Search className="text-gray-700 w-5 h-5 mr-3 shrink-0" />
                     <input
                         type="text"
                         value={query}
                         onChange={(e) => setQuery(e.target.value)}
                         onFocus={() => { if (results.length > 0) setIsOpen(true); }}
                         placeholder="Search events, artists, categories..."
-                        className="bg-transparent w-full outline-none text-sm font-medium placeholder:text-gray-400"
+                        className="bg-transparent w-full outline-none text-sm font-medium placeholder:text-gray-700"
                     />
                 </div>
 
@@ -76,11 +76,11 @@ export default function SearchBar() {
 
                 {/* Location Input (Visual mostly, but could refine filter later) */}
                 <div className="flex-1 flex items-center px-4 h-12 bg-gray-50 sm:bg-transparent rounded-full sm:rounded-none">
-                    <MapPin className="text-gray-400 w-5 h-5 mr-3 shrink-0" />
+                    <MapPin className="text-gray-700 w-5 h-5 mr-3 shrink-0" />
                     <input
                         type="text"
                         placeholder="City or Location"
-                        className="bg-transparent w-full outline-none text-sm font-medium placeholder:text-gray-400"
+                        className="bg-transparent w-full outline-none text-sm font-medium placeholder:text-gray-700"
                     />
                 </div>
 
@@ -97,7 +97,7 @@ export default function SearchBar() {
             {isOpen && (
                 <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden max-h-96 overflow-y-auto z-10 p-2">
                     {isLoading ? (
-                        <div className="p-4 text-center text-gray-500 text-sm">Loading...</div>
+                        <div className="p-4 text-center text-gray-700 text-sm">Loading...</div>
                     ) : results.length > 0 ? (
                         <ul>
                             {results.map((event) => (
@@ -111,7 +111,7 @@ export default function SearchBar() {
                                         </div>
                                         <div>
                                             <div className="font-bold text-slate-900">{event.title}</div>
-                                            <div className="text-xs text-gray-500 flex items-center gap-1">
+                                            <div className="text-xs text-gray-700 flex items-center gap-1">
                                                 <span>{event.city}</span>
                                                 <span>•</span>
                                                 <span>{event.event_occurrences?.[0]?.starts_at ? new Date(event.event_occurrences[0].starts_at).toLocaleDateString() : 'TBD'}</span>
@@ -122,7 +122,7 @@ export default function SearchBar() {
                             ))}
                         </ul>
                     ) : (
-                        <div className="p-4 text-center text-gray-500 text-sm">
+                        <div className="p-4 text-center text-gray-700 text-sm">
                             No results found for "{query}"
                         </div>
                     )}

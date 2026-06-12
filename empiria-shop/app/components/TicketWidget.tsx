@@ -50,7 +50,7 @@ export function TicketWidget({ tiers, eventId, currency = "cad", ctaLabel, entry
                                 {ctaButtonText(ctaLabel)}
                             </a>
                         ) : (
-                            <p className="text-sm text-gray-500 text-center py-2">
+                            <p className="text-sm text-gray-700 text-center py-2">
                                 This event is hosted externally.
                             </p>
                         )}
@@ -122,7 +122,7 @@ function TicketedWidget({ tiers, eventId, currency = "cad", ctaLabel, sharedCapa
                                     <span className="font-semibold text-gray-900 text-sm">
                                         {tier.name}
                                     </span>
-                                    <span className="text-xs text-gray-500 leading-relaxed">
+                                    <span className="text-xs text-gray-700 leading-relaxed">
                                         {tier.description}
                                     </span>
                                     <div className="flex items-center justify-between mt-1">
@@ -134,7 +134,7 @@ function TicketedWidget({ tiers, eventId, currency = "cad", ctaLabel, sharedCapa
                                                 Sold Out
                                             </span>
                                         ) : sharedCapacity ? null : (
-                                            <span className="text-xs text-gray-500">
+                                            <span className="text-xs text-gray-700">
                                                 {tier.available} left
                                             </span>
                                         )}
@@ -215,8 +215,8 @@ function TicketedWidget({ tiers, eventId, currency = "cad", ctaLabel, sharedCapa
                     )}
 
                     <div className="flex items-center justify-center gap-2 mt-4">
-                        <ShieldCheck className="w-3.5 h-3.5 text-gray-400" />
-                        <p className="text-xs text-gray-400">
+                        <ShieldCheck className="w-3.5 h-3.5 text-gray-700" />
+                        <p className="text-xs text-gray-700">
                             Secure checkout powered by Stripe
                         </p>
                     </div>

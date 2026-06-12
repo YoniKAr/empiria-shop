@@ -135,7 +135,7 @@ export default async function CheckoutSuccessPage({
             <CheckCircle2 className="w-9 h-9 text-green-600" />
           </div>
           <h1 className="text-3xl font-extrabold mb-2">You&apos;re going!</h1>
-          <p className="text-gray-500 text-lg">
+          <p className="text-gray-700 text-lg">
             Your tickets have been confirmed. Check your email for a copy.
           </p>
         </div>
@@ -250,7 +250,7 @@ export default async function CheckoutSuccessPage({
 
                   {/* Ticket info */}
                   <div className="flex-1 text-center sm:text-left">
-                    <div className="text-xs text-gray-400 font-medium mb-1">
+                    <div className="text-xs text-gray-700 font-medium mb-1">
                       TICKET {index + 1} OF {tickets.length}
                     </div>
                     <h4 className="font-bold text-xl mb-1">{event?.title}</h4>
@@ -261,16 +261,16 @@ export default async function CheckoutSuccessPage({
                     <div className="space-y-1.5 text-sm text-gray-600">
                       {ticket.attendee_name && (
                         <p>
-                          <span className="text-gray-400">Name:</span> {ticket.attendee_name}
+                          <span className="text-gray-700">Name:</span> {ticket.attendee_name}
                         </p>
                       )}
                       {ticket.seat_label && (
                         <p>
-                          <span className="text-gray-400">Seat:</span> {ticket.seat_label}
+                          <span className="text-gray-700">Seat:</span> {ticket.seat_label}
                         </p>
                       )}
                       <p>
-                        <span className="text-gray-400">Status:</span>{' '}
+                        <span className="text-gray-700">Status:</span>{' '}
                         <span className="text-green-600 font-medium capitalize">{ticket.status}</span>
                       </p>
                     </div>
@@ -310,10 +310,10 @@ export default async function CheckoutSuccessPage({
                 </div>
 
                 <div className="px-6 py-3 bg-gray-50 flex items-center justify-between">
-                  <span className="text-xs text-gray-400 font-mono">
+                  <span className="text-xs text-gray-700 font-mono">
                     {ticket.qr_code_secret.slice(0, 8).toUpperCase()}
                   </span>
-                  <span className="text-xs text-gray-400">
+                  <span className="text-xs text-gray-700">
                     Show this QR code at the entrance
                   </span>
                 </div>
@@ -329,7 +329,7 @@ export default async function CheckoutSuccessPage({
               <div className="h-4 bg-gray-200 rounded w-3/4 mx-auto" />
               <div className="h-4 bg-gray-200 rounded w-1/2 mx-auto" />
             </div>
-            <p className="text-gray-500 mt-6 text-sm">
+            <p className="text-gray-700 mt-6 text-sm">
               Your payment was successful! We&apos;re generating your tickets — this page will update
               shortly. You&apos;ll also receive a confirmation email.
             </p>

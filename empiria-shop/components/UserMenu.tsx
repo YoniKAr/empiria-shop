@@ -57,7 +57,7 @@ export default function UserMenu({ userName, userPicture, userRole }: UserMenuPr
         </div>
         <ChevronDown
           size={14}
-          className={`text-gray-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+          className={`text-gray-700 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
         />
       </button>
 
@@ -67,7 +67,7 @@ export default function UserMenu({ userName, userPicture, userRole }: UserMenuPr
           <div className="px-4 py-3 border-b border-gray-100">
             <p className="text-sm font-semibold text-gray-900 truncate">{userName}</p>
             {userRole && (
-              <p className="text-xs text-gray-500 capitalize mt-0.5">
+              <p className="text-xs text-gray-700 capitalize mt-0.5">
                 {userRole === 'non_profit' ? 'Non-Profit' : userRole}
               </p>
             )}
@@ -81,7 +81,7 @@ export default function UserMenu({ userName, userPicture, userRole }: UserMenuPr
                 className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
                 onClick={() => setOpen(false)}
               >
-                <User size={16} className="text-gray-400" />
+                <User size={16} className="text-gray-700" />
                 My Tickets &amp; Profile
               </a>
             </div>
@@ -97,7 +97,7 @@ export default function UserMenu({ userName, userPicture, userRole }: UserMenuPr
                   className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
                   onClick={() => setOpen(false)}
                 >
-                  <LayoutDashboard size={16} className="text-gray-400" />
+                  <LayoutDashboard size={16} className="text-gray-700" />
                   {link.label}
                 </a>
               ))}

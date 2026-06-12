@@ -281,7 +281,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                 <div>
                     {isPast ? (
                         <div className="border border-gray-200 rounded-xl p-6 bg-gray-50 text-center">
-                            <p className="text-gray-500 font-medium">This event has ended</p>
+                            <p className="text-gray-700 font-medium">This event has ended</p>
                         </div>
                     ) : ['assigned_seating', 'zone_admission', 'zone_map', 'seat_map'].includes(seatingType) && seatingConfig ? (
                         <div className="border border-gray-200 rounded-xl shadow-lg bg-white p-6">

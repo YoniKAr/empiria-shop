@@ -305,7 +305,7 @@ export default function MovieDetailContent({
                     <div>
                       <p className="text-sm font-semibold text-slate-900">{formatDate(occ.starts_at)}</p>
                       <p className="text-sm text-[#F15A29] font-medium mt-0.5">{formatTime(occ.starts_at)}</p>
-                      <div className="flex items-center gap-3 mt-1.5 text-xs text-gray-500">
+                      <div className="flex items-center gap-3 mt-1.5 text-xs text-gray-700">
                         {(occ.venue_name || event.venue_name) && (
                           <span className="flex items-center gap-1">
                             <MapPin className="w-3 h-3" />
@@ -320,7 +320,7 @@ export default function MovieDetailContent({
                         )}
                       </div>
                       {occ.label && (
-                        <p className="text-xs text-gray-400 mt-1">{occ.label}</p>
+                        <p className="text-xs text-gray-700 mt-1">{occ.label}</p>
                       )}
                     </div>
                   </div>
@@ -342,7 +342,7 @@ export default function MovieDetailContent({
       {futureOccurrences.length === 0 && (
         <div className="border-t border-gray-100">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 py-12 text-center">
-            <p className="text-gray-500 mb-4">No upcoming screenings scheduled yet.</p>
+            <p className="text-gray-700 mb-4">No upcoming screenings scheduled yet.</p>
             <Link
               href={`/checkout/${event.id}`}
               className="inline-block bg-[#F15A29] hover:bg-[#e07d15] text-white font-bold text-sm px-8 py-3 rounded-full transition-colors shadow-sm"
