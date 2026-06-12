@@ -391,7 +391,11 @@ async function handleCheckoutCompleted(session: any) {
     let elevsoftTransferData: { id: string; amount: number } | null = null;
 
     if (elevsoftStripeId && elevsoftPercent > 0) {
-      const elevsoftAmount = Math.max(0, isPlatformEvent ? platformTakeHome : platformTakeHome * (elevsoftPercent / 100));
+      // Elevsoft's rev-share is a uniform % of the NET service fee for ALL
+      // events — platform-owned included. (Previously platform events sent
+      // Elevsoft 100% of the take-home, which was wrong: ticket revenue AND
+      // the remaining fee share belong to Empiria on its own events.)
+      const elevsoftAmount = Math.max(0, platformTakeHome * (elevsoftPercent / 100));
       const elevsoftCents = Math.round(elevsoftAmount * 100);
 
       if (elevsoftCents > 0) {
