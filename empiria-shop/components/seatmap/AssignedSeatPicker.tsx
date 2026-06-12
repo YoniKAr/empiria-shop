@@ -338,10 +338,10 @@ export default function AssignedSeatPicker({
     <div className="space-y-4">
       <div className="border border-gray-200 rounded-xl shadow-lg bg-white overflow-hidden">
         <div className="p-4 border-b bg-gray-50">
-          <h3 className="font-bold text-lg">
+          <h3 className="font-bold text-lg text-gray-900">
             {allowSeatChoice ? "Choose Your Seats" : "Get Tickets"}
           </h3>
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-700">
             {allowSeatChoice
               ? "Select your preferred seats from the available options"
               : "Select the number of tickets you want"}
@@ -352,7 +352,7 @@ export default function AssignedSeatPicker({
           {allowSeatChoice ? (
             /* ───── SEAT CHOICE MODE ───── */
             loadingAvailability ? (
-              <div className="flex items-center justify-center py-12 text-gray-400">
+              <div className="flex items-center justify-center py-12 text-gray-600">
                 <Loader2 size={24} className="animate-spin mr-2" />
                 Loading seat availability...
               </div>
@@ -365,7 +365,7 @@ export default function AssignedSeatPicker({
                         <h4 className="font-semibold text-sm text-gray-700">
                           Row {prefix}
                         </h4>
-                        <span className="text-xs text-gray-500">
+                        <span className="text-xs text-gray-700">
                           {tierName} &middot;{" "}
                           {price === 0
                             ? "Free"
@@ -387,7 +387,7 @@ export default function AssignedSeatPicker({
                               onClick={() => toggleSeat(seat)}
                               className={`w-9 h-9 rounded text-xs font-medium transition-colors flex items-center justify-center ${
                                 isSold
-                                  ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+                                  ? "bg-gray-200 text-gray-600 cursor-not-allowed"
                                   : isSelected
                                   ? "bg-orange-500 text-white ring-2 ring-orange-300"
                                   : "bg-green-100 text-green-800 hover:bg-green-200 border border-green-300"
@@ -454,7 +454,7 @@ export default function AssignedSeatPicker({
                           {tier.name}
                         </span>
                         {tier.description && (
-                          <p className="text-xs text-gray-500 mt-0.5">
+                          <p className="text-xs text-gray-700 mt-0.5">
                             {tier.description}
                           </p>
                         )}
@@ -466,7 +466,7 @@ export default function AssignedSeatPicker({
                       </span>
                     </div>
                     <div className="flex items-center justify-between mt-3">
-                      <span className="text-xs text-gray-400">
+                      <span className="text-xs text-gray-600">
                         {tier.remaining_quantity} available
                       </span>
                       <div className="flex items-center gap-2">
@@ -504,14 +504,14 @@ export default function AssignedSeatPicker({
 
       {/* Checkout panel */}
       <div className="border border-gray-200 rounded-xl shadow-lg p-6 sticky top-24 bg-white">
-        <h3 className="font-bold text-xl mb-1">
+        <h3 className="font-bold text-xl mb-1 text-gray-900">
           {allowSeatChoice ? "Your Seats" : "Get Tickets"}
         </h3>
 
         {/* Occurrence picker */}
         {occurrences.length > 1 && (
           <div className="mb-5">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+            <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
               Select a Date
             </p>
             <div className="space-y-2">
@@ -545,7 +545,7 @@ export default function AssignedSeatPicker({
                       })}
                     </div>
                     {occ.label && (
-                      <div className="text-xs text-gray-500 mt-0.5">
+                      <div className="text-xs text-gray-700 mt-0.5">
                         {occ.label}
                       </div>
                     )}
@@ -559,7 +559,7 @@ export default function AssignedSeatPicker({
         {/* Selected seats summary (seat choice mode) */}
         {allowSeatChoice && selectedSeats.length > 0 && (
           <div className="space-y-2 mb-4">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+            <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
               Selected Seats
             </p>
             <div className="flex flex-wrap gap-1.5">
@@ -581,7 +581,7 @@ export default function AssignedSeatPicker({
         {/* Guest contact fields */}
         {!userEmail && totalItems > 0 && (
           <div className="space-y-3 mb-5 pt-4 border-t border-gray-100">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+            <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
               Contact Info
             </p>
             <input
@@ -601,7 +601,7 @@ export default function AssignedSeatPicker({
               }}
               className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
             />
-            <p className="text-xs text-gray-400">
+            <p className="text-xs text-gray-600">
               Your tickets will be sent to this email.
             </p>
           </div>
@@ -653,7 +653,7 @@ export default function AssignedSeatPicker({
           </p>
         )}
 
-        <p className="text-xs text-center text-gray-400 mt-4">
+        <p className="text-xs text-center text-gray-600 mt-4">
           Secure checkout powered by Stripe
         </p>
       </div>

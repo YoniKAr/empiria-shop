@@ -363,8 +363,8 @@ export default function SeatSelector({
     <div className="space-y-4">
       <div className="border border-gray-200 rounded-xl shadow-lg bg-white overflow-hidden">
         <div className="p-4 border-b bg-gray-50">
-          <h3 className="font-bold text-lg">Select Your Seats</h3>
-          <p className="text-sm text-gray-500">
+          <h3 className="font-bold text-lg text-gray-900">Select Your Seats</h3>
+          <p className="text-sm text-gray-700">
             Click on available seats to reserve them
           </p>
           {timeLeft !== null && timeLeft > 0 && (
@@ -378,7 +378,7 @@ export default function SeatSelector({
 
         <div className="p-4">
           {holdsLoading ? (
-            <div className="flex items-center justify-center py-12 text-gray-400">
+            <div className="flex items-center justify-center py-12 text-gray-600">
               <Loader2 size={24} className="animate-spin mr-2" />
               Loading seat availability...
             </div>
@@ -405,7 +405,7 @@ export default function SeatSelector({
         {/* Legend for image overlay mode */}
         {!isSchematicMode && (
           <div className="px-4 pb-3">
-            <div className="flex flex-wrap gap-4 text-xs">
+            <div className="flex flex-wrap gap-4 text-xs font-medium text-gray-800">
               <div className="flex items-center gap-1.5">
                 <span className="w-3 h-3 rounded-full bg-green-400 border border-green-600" />
                 Available
@@ -429,12 +429,12 @@ export default function SeatSelector({
 
       {/* Ticket panel */}
       <div className="border border-gray-200 rounded-xl shadow-lg p-6 sticky top-24 bg-white">
-        <h3 className="font-bold text-xl mb-1">Your Seats</h3>
+        <h3 className="font-bold text-xl mb-1 text-gray-900">Your Seats</h3>
 
         {/* Occurrence picker */}
         {occurrences.length > 1 && (
           <div className="mb-5">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+            <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
               Select a Date
             </p>
             <div className="space-y-2">
@@ -468,7 +468,7 @@ export default function SeatSelector({
                       })}
                     </div>
                     {occ.label && (
-                      <div className="text-xs text-gray-500 mt-0.5">
+                      <div className="text-xs text-gray-700 mt-0.5">
                         {occ.label}
                       </div>
                     )}
@@ -485,7 +485,7 @@ export default function SeatSelector({
             <p className="text-sm font-semibold text-gray-900 mb-1">
               Seat {pendingSeat.label}
             </p>
-            <p className="text-xs text-gray-500 mb-3">
+            <p className="text-xs text-gray-700 mb-3">
               Choose a ticket type for this seat:
             </p>
             <div className="space-y-2">
@@ -523,7 +523,7 @@ export default function SeatSelector({
             <button
               type="button"
               onClick={handleCancelPending}
-              className="mt-2 w-full text-xs text-gray-500 hover:text-red-500 py-1"
+              className="mt-2 w-full text-xs text-gray-700 hover:text-red-500 py-1"
             >
               Cancel
             </button>
@@ -533,7 +533,7 @@ export default function SeatSelector({
         {/* Selected seats list */}
         <div className="space-y-2 mb-5">
           {selectedSeats.length === 0 && !pendingSeat ? (
-            <p className="text-sm text-gray-400 py-4 text-center">
+            <p className="text-sm text-gray-600 py-4 text-center">
               Click on seats in the map to select them
             </p>
           ) : (
@@ -544,10 +544,10 @@ export default function SeatSelector({
               >
                 <div className="min-w-0">
                   <div className="font-semibold text-sm">{seat.label}</div>
-                  <div className="text-xs text-gray-500">
+                  <div className="text-xs text-gray-700">
                     {seat.sectionName}
                     {seat.tierName && (
-                      <span className="ml-1 text-gray-400">
+                      <span className="ml-1 text-gray-600">
                         &middot; {seat.tierName}
                       </span>
                     )}
@@ -562,7 +562,7 @@ export default function SeatSelector({
                   <button
                     type="button"
                     onClick={() => handleRemoveSeat(seat.seatId)}
-                    className="text-gray-400 hover:text-red-500 transition-colors"
+                    className="text-gray-600 hover:text-red-500 transition-colors"
                     title="Remove seat"
                   >
                     <X size={16} />
@@ -576,7 +576,7 @@ export default function SeatSelector({
         {/* Guest contact fields */}
         {!userEmail && selectedSeats.length > 0 && (
           <div className="space-y-3 mb-5 pt-4 border-t border-gray-100">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+            <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
               Contact Info
             </p>
             <input
@@ -596,7 +596,7 @@ export default function SeatSelector({
               }}
               className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
             />
-            <p className="text-xs text-gray-400">
+            <p className="text-xs text-gray-600">
               Your tickets will be sent to this email.
             </p>
           </div>
@@ -629,7 +629,7 @@ export default function SeatSelector({
           type="button"
           onClick={handleCheckout}
           disabled={selectedSeats.length === 0 || loading}
-          className={`w-full bg-orange-600 text-white text-center py-4 rounded-xl font-bold hover:bg-orange-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 ${shake ? "animate-shake" : ""}`}
+          className={`w-full bg-orange-600 text-white text-center py-4 rounded-xl font-bold hover:bg-orange-700 transition-colors disabled:bg-gray-300 disabled:text-gray-600 disabled:cursor-not-allowed flex items-center justify-center gap-2 ${shake ? "animate-shake" : ""}`}
         >
           {loading ? (
             <>
@@ -649,7 +649,7 @@ export default function SeatSelector({
           </p>
         )}
 
-        <p className="text-xs text-center text-gray-400 mt-4">
+        <p className="text-xs text-center text-gray-600 mt-4">
           Secure checkout powered by Stripe
         </p>
       </div>
