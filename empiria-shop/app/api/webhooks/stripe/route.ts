@@ -13,7 +13,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { stripe } from '@/lib/stripe';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { sendOrderConfirmationEmail } from '@/lib/email';
-import { inviteGuestToFinishSignup } from '@/lib/guest-invite';
 
 export async function POST(request: NextRequest) {
   const body = await request.text();
@@ -642,14 +641,6 @@ async function handleCheckoutCompleted(session: any) {
       } catch (emailError) {
         console.error('[Webhook] Failed to send confirmation email:', emailError);
       }
-    }
-
-    // 5. Guest purchase → invite them to finish signup (Auth0 set-password email).
-    // Guest = no authenticated buyer (metadata.user_auth0_id was empty → userId null).
-    // Fire-and-forget: inviteGuestToFinishSignup never throws, so this cannot
-    // affect webhook success; it runs after all response-critical work.
-    if (!userId && userEmail) {
-      await inviteGuestToFinishSignup({ email: userEmail, name: userName });
     }
 
     console.log('[Webhook] Checkout fully processed for session:', session.id);
