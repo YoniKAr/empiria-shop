@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
   try {
     // 1. Parse request body
     const body = await request.json();
-    const { eventId, tiers, contactEmail, contactName, occurrenceId, seatSelections, sessionId, assignedSeats, couponCode, fieldResponses } = body as {
+    const { eventId, tiers, contactEmail, contactName, occurrenceId, seatSelections, sessionId, assignedSeats, couponCode, fieldResponses, attemptId } = body as {
       eventId: string;
       tiers: TierSelection[];
       contactEmail?: string;
@@ -92,6 +92,10 @@ export async function POST(request: NextRequest) {
         tierId: string;
         perTicket: Array<Array<{ field_id: string; label: string; value: string }>>;
       }>;
+      /** Per-submit-click uuid from the client — becomes the Stripe idempotency
+       *  key on sessions.create so a duplicated/retried request can't mint two
+       *  Checkout Sessions. */
+      attemptId?: string;
     };
 
     if (!eventId || !tiers || tiers.length === 0) {
@@ -100,6 +104,23 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Contact fields flow into Stripe metadata (500-char/value hard cap — Stripe
+    // REJECTS oversized values, it never truncates). Cap them well below.
+    if (typeof contactEmail === 'string' && contactEmail.length > 200) {
+      return NextResponse.json({ error: 'Email address is too long (200 characters max).' }, { status: 400 });
+    }
+    if (typeof contactName === 'string' && contactName.length > 200) {
+      return NextResponse.json({ error: 'Name is too long (200 characters max).' }, { status: 400 });
+    }
+
+    // Sanitized per-attempt idempotency key. Missing/invalid (e.g. in-flight
+    // requests from clients deployed before attemptId existed) → no key, which
+    // preserves the old behavior.
+    const attemptKey =
+      typeof attemptId === 'string' && /^[A-Za-z0-9._-]{10,100}$/.test(attemptId)
+        ? attemptId
+        : null;
 
     // 2. Get session (optional — guests can checkout too)
     const session = await getSafeSession();
@@ -869,6 +890,19 @@ export async function POST(request: NextRequest) {
       feeFixedPerTicket,
     });
 
+    // Stripe's minimum card charge is $0.50 (CAD/USD). A discounted-but-not-free
+    // total below it cannot be charged — reject explicitly instead of silently
+    // treating the order as free.
+    if (fees.customerTotal > 0 && fees.customerTotal < 0.5) {
+      await releaseCouponOnFailure();
+      return NextResponse.json(
+        {
+          error: `The discounted total ($${fees.customerTotal.toFixed(2)} ${currency.toUpperCase()}) is below the $0.50 card-payment minimum. Please adjust your ticket quantity or use a different coupon.`,
+        },
+        { status: 400 }
+      );
+    }
+
     // ── FREE ORDER ($0 total): skip Stripe entirely, issue tickets directly ──
     // A genuinely free (or fully-discounted-to-$0) order cannot and should not go
     // through Stripe — Stripe rejects $0 charges, and there's no fee to collect.
@@ -1079,6 +1113,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ url: `${appBaseUrl}/checkout/success?order_id=${freeOrder.id}` });
     }
 
+    // Stripe caps Checkout Sessions at 100 line items. Without a discount each
+    // TIER is one line; with a discount every TICKET becomes its own line (the
+    // per-unit discount allocation below) — plus up to 3 fee lines. Guard with
+    // headroom at 95 rather than letting Stripe reject the session opaquely.
+    const projectedLineCount =
+      (discountAmount > 0 ? totalTickets : validatedSelections.length) + 3;
+    if (projectedLineCount > 95) {
+      await releaseCouponOnFailure();
+      return NextResponse.json(
+        {
+          error: discountAmount > 0
+            ? 'Too many tickets for a single discounted order. Please reduce the quantity or split your purchase into multiple orders.'
+            : 'Too many ticket types in a single order. Please split your purchase into multiple orders.',
+        },
+        { status: 400 }
+      );
+    }
+
     // Build Stripe line items summing exactly to fees.customerTotal.
     const lineItems: Array<{
       price_data: { currency: string; product_data: { name: string; description?: string }; unit_amount: number };
@@ -1189,19 +1241,32 @@ export async function POST(request: NextRequest) {
     }
 
     const hasMultiSplit = splits && splits.length > 0;
-    const transferGroup = `evt_${eventId.slice(0, 8)}_${Date.now()}`;
+    // Derive the transfer group from the attempt key when present so an
+    // idempotent retry of the SAME attempt sends Stripe byte-identical params
+    // (same idempotency key + different params = Stripe idempotency_error).
+    const transferGroup = attemptKey
+      ? `evt_${eventId.slice(0, 8)}_${attemptKey.replace(/[^A-Za-z0-9]/g, '').slice(0, 16)}`
+      : `evt_${eventId.slice(0, 8)}_${Date.now()}`;
 
     // 8. Determine user identity
     const customerEmail = contactEmail || user?.email;
     const userId = user?.sub || `guest_${Date.now()}`;
 
-    // 9. Build metadata for webhook processing
+    // 9. Build metadata for webhook processing.
+    // ⚠️ Stripe metadata is hard-capped at 500 chars PER VALUE and Stripe
+    // REJECTS oversized values (it never truncates) — serialized arrays
+    // (tier_selections, seat_selections, splits) blow past 500 at realistic
+    // sizes (3+ seats, ~4-5 tiers, ~4 split recipients). So the large arrays
+    // are ALWAYS staged in the checkout_payloads table (keyed by session id,
+    // inserted right after sessions.create below) and metadata carries only
+    // small scalars + the payload_staged flag. The webhook keeps metadata
+    // parsing as a fallback for in-flight sessions created before this deploy.
     const metadata: Record<string, string> = {
       event_id: eventId,
       user_auth0_id: user?.sub || '',
       user_email: customerEmail || '',
-      user_name: contactName || user?.name || '',
-      tier_selections: JSON.stringify(validatedSelections),
+      user_name: (contactName || user?.name || '').slice(0, 200),
+      payload_staged: 'true',
       subtotal: subtotal.toFixed(2),
       eff_base: fees.effBase.toFixed(2),
       paid_tickets: paidTickets.toString(),
@@ -1231,24 +1296,28 @@ export async function POST(request: NextRequest) {
     metadata.transfer_group = transferGroup;
     metadata.is_platform_event = isPlatformEvent ? 'true' : 'false';
     metadata.organizer_stripe_id = organizer?.stripe_account_id || '';
-    if (hasMultiSplit) {
-      metadata.splits = JSON.stringify(splits);
-    }
-
-    // Include seat selections for seat_map mode. seatId is the occurrence-
-    // composed HOLD key so the webhook's post-payment hold cleanup
-    // (.in('seat_id', …seatId)) deletes the actual rows; tickets use `label`.
     if (seatSel && seatSel.length > 0) {
-      metadata.seat_selections = JSON.stringify(
-        seatSel.map((s) => ({ ...s, seatId: composeHoldSeatId(s.seatId, occurrenceId) }))
-      );
       metadata.seat_session_id = sessionId || '';
     }
 
-    // Include assigned seats for assigned_seating mode
-    if (resolvedAssignedSeats && resolvedAssignedSeats.length > 0) {
-      metadata.assigned_seats = JSON.stringify(resolvedAssignedSeats.map((s) => s.label));
-    }
+    // The staged payload (inserted into checkout_payloads keyed by the session
+    // id, right after sessions.create). The webhook reads these arrays from the
+    // staging row — NOT from metadata — when payload_staged === 'true'.
+    // Seat selections: seatId is the occurrence-composed HOLD key so the
+    // webhook's post-payment hold cleanup (.in('seat_id', …seatId)) deletes the
+    // actual rows; tickets use `label`.
+    const stagedCheckoutPayload = {
+      tier_selections: validatedSelections,
+      seat_selections:
+        seatSel && seatSel.length > 0
+          ? seatSel.map((s) => ({ ...s, seatId: composeHoldSeatId(s.seatId, occurrenceId) }))
+          : null,
+      assigned_seats:
+        resolvedAssignedSeats && resolvedAssignedSeats.length > 0
+          ? resolvedAssignedSeats.map((s) => s.label)
+          : null,
+      splits: hasMultiSplit ? splits : null,
+    };
 
     // 10. Create Stripe Checkout Session
     const appBaseUrl = process.env.APP_BASE_URL || SHOP_URL;
@@ -1258,24 +1327,60 @@ export async function POST(request: NextRequest) {
     // Unified checkout: all charges land on platform account.
     // Transfers to organizer/partners happen in the webhook.
     // Tax stays on platform for remittance.
-    checkoutSession = await stripe.checkout.sessions.create({
-      mode: 'payment',
-      line_items: lineItems,
-      ...(customerEmail && { customer_email: customerEmail }),
-      payment_intent_data: {
-        transfer_group: transferGroup,
+    checkoutSession = await stripe.checkout.sessions.create(
+      {
+        mode: 'payment',
+        line_items: lineItems,
+        ...(customerEmail && { customer_email: customerEmail }),
+        payment_intent_data: {
+          transfer_group: transferGroup,
+          metadata,
+        },
         metadata,
+        success_url: `${appBaseUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${appBaseUrl}/events/${event.slug}`,
+        // 35 min — Stripe's documented minimum is 30 and sitting at the exact
+        // floor risks rejection from clock skew. The base is rounded UP to a
+        // 5-minute boundary so an idempotent retry of the same attempt sends
+        // identical params (see idempotencyKey below).
+        expires_at: Math.ceil(Date.now() / 1000 / 300) * 300 + 35 * 60,
       },
-      metadata,
-      success_url: `${appBaseUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${appBaseUrl}/events/${event.slug}`,
-      expires_at: Math.floor(Date.now() / 1000) + 1800,
-    });
+      // One key per submit click → a network-level duplicate of this request
+      // returns the SAME session instead of creating a second one.
+      attemptKey ? { idempotencyKey: `checkout_${attemptKey}` } : undefined
+    );
 
     // From here on, the coupon reservation is owned by the Stripe session lifecycle:
     // it is released by the webhook on checkout.session.expired / payment_intent.payment_failed,
     // or consumed by the completed order. So stop releasing it on this request's failures.
     reservedCouponId = null;
+
+    // Stage the large checkout payload keyed by the session id. This row is
+    // LOAD-BEARING (metadata no longer carries the arrays): if it can't be
+    // written the webhook could never fulfill the session, so expire the
+    // session (fires checkout.session.expired → coupon reservation released)
+    // and fail the request instead of redirecting the customer to a checkout
+    // that can't be completed. Upsert: an idempotent Stripe retry of the same
+    // attempt returns the SAME session id, which must not violate the unique
+    // constraint on stripe_checkout_session_id.
+    const { error: payloadStageError } = await supabase
+      .from('checkout_payloads')
+      .upsert(
+        { stripe_checkout_session_id: checkoutSession.id, payload: stagedCheckoutPayload },
+        { onConflict: 'stripe_checkout_session_id' }
+      );
+    if (payloadStageError) {
+      console.error('[Checkout] Failed to stage checkout payload:', payloadStageError);
+      try {
+        await stripe.checkout.sessions.expire(checkoutSession.id);
+      } catch (expireErr) {
+        console.error('[Checkout] Failed to expire unstageable session:', expireErr);
+      }
+      return NextResponse.json(
+        { error: 'Could not start checkout. Please try again.' },
+        { status: 500 }
+      );
+    }
 
     // Stage per-ticket custom field responses for the webhook to attach to tickets.
     // Must NOT abort the redirect — the Stripe session already exists at this point.

@@ -13,6 +13,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { stripe } from '@/lib/stripe';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { sendOrderConfirmationEmail } from '@/lib/email';
+import { sendEmail } from '@/lib/mailer';
+
+// Vercel: webhook fulfillment (order + tickets + transfers + email) can exceed
+// the default function duration — give it headroom so a slow Stripe/DB call
+// can't kill the function mid-transfer. Node runtime is required (stripe SDK,
+// nodemailer/SES).
+export const runtime = 'nodejs';
+export const maxDuration = 60;
+
+const ADMIN_ALERT_EMAIL = process.env.ADMIN_ALERT_EMAIL || 'info@empiria.events';
 
 export async function POST(request: NextRequest) {
   const body = await request.text();
@@ -72,6 +82,19 @@ export async function POST(request: NextRequest) {
             ? session.payment_intent
             : session.payment_intent?.id ?? null;
         await releaseCouponReservation(session.metadata, expiredPiId, `session_expired:${session.id}`);
+        // Drop staged rows for the abandoned session (checkout payload + custom
+        // field responses) — they are only consumed by successful fulfillment.
+        {
+          const supabaseExpired = getSupabaseAdmin();
+          await supabaseExpired
+            .from('checkout_payloads')
+            .delete()
+            .eq('stripe_checkout_session_id', session.id);
+          await supabaseExpired
+            .from('checkout_field_responses')
+            .delete()
+            .eq('stripe_checkout_session_id', session.id);
+        }
         break;
       }
       case 'charge.refunded': {
@@ -91,6 +114,27 @@ export async function POST(request: NextRequest) {
         await handleDisputeClosed(dispute);
         break;
       }
+      case 'charge.updated': {
+        // True-up the Stripe fee bookkeeping when the balance_transaction
+        // becomes available (we may have ESTIMATED the fee at fulfillment time).
+        const charge = event.data.object;
+        await handleChargeUpdated(charge);
+        break;
+      }
+      case 'refund.created': {
+        // Record the REAL refund id on the order (charge.refunded's embedded
+        // refund list is not always populated).
+        const refund = event.data.object;
+        await handleRefundCreated(refund);
+        break;
+      }
+      case 'refund.failed': {
+        // The customer was NOT refunded even though we already reversed
+        // transfers — flag the order and alert admins for manual action.
+        const refund = event.data.object;
+        await handleRefundFailed(refund);
+        break;
+      }
       default:
         // Unhandled event type — that's fine
         break;
@@ -107,7 +151,24 @@ async function handleCheckoutCompleted(session: any) {
   const supabase = getSupabaseAdmin();
   const metadata = session.metadata;
 
-  if (!metadata?.event_id || !metadata?.tier_selections) {
+  // ── Async payment safety net ──
+  // With async payment methods, checkout.session.completed can fire while
+  // payment_status is still 'unpaid' (funds arrive later, signalled by
+  // checkout.session.async_payment_succeeded). We don't enable async methods
+  // today, but if one ever slips through we must NOT fulfill an unpaid session.
+  if (session.payment_status === 'unpaid') {
+    console.warn(
+      `[Webhook] checkout.session.completed with payment_status='unpaid' for session ${session.id} — NOT fulfilling (awaiting async payment)`
+    );
+    return;
+  }
+
+  // Sessions created after the metadata-size fix set payload_staged='true' and
+  // stage the large arrays (tier/seat/split data) in the checkout_payloads
+  // table (Stripe metadata caps values at 500 chars and REJECTS larger ones);
+  // older in-flight sessions still carry tier_selections inline in metadata.
+  const payloadStaged = metadata?.payload_staged === 'true';
+  if (!metadata?.event_id || (!payloadStaged && !metadata?.tier_selections)) {
     console.error('[Webhook] Missing metadata on checkout session:', session.id);
     return;
   }
@@ -153,12 +214,44 @@ async function handleCheckoutCompleted(session: any) {
     perTicket: Array<Array<{ field_id: string; label: string; value: string }>>;
   }>;
 
+  // Load the staged checkout payload when the session flags it. The row is
+  // LOAD-BEARING for these sessions — if it can't be loaded we THROW so the
+  // POST returns 500 and Stripe retries the event (transient DB failure) —
+  // and it is deleted once fulfillment creates the tickets (or on
+  // checkout.session.expired).
+  let stagedPayload: {
+    tier_selections?: Array<{ tierId: string; quantity: number; unitPrice: number; tierName: string }>;
+    seat_selections?: Array<{ seatId: string; sectionId: string; label: string }> | null;
+    assigned_seats?: string[] | null;
+    splits?: Array<{
+      recipient_user_id: string;
+      recipient_stripe_id: string;
+      percentage: number;
+      description: string;
+    }> | null;
+  } | null = null;
+  if (payloadStaged) {
+    const { data: payloadRow, error: payloadError } = await supabase
+      .from('checkout_payloads')
+      .select('payload')
+      .eq('stripe_checkout_session_id', session.id)
+      .maybeSingle();
+    if (payloadError || !payloadRow?.payload || !Array.isArray(payloadRow.payload.tier_selections)) {
+      throw new Error(
+        `[Webhook] Staged checkout payload missing/invalid for session ${session.id}: ${payloadError?.message ?? 'no row'}`
+      );
+    }
+    stagedPayload = payloadRow.payload;
+  }
+
   const eventId = metadata.event_id;
   const userAuth0Id = metadata.user_auth0_id || null;
   const userEmail = metadata.user_email || session.customer_email || '';
   const userName = metadata.user_name || '';
   const occurrenceId = metadata.occurrence_id || null;
-  const tierSelections = JSON.parse(metadata.tier_selections) as Array<{
+  const tierSelections = (
+    stagedPayload ? stagedPayload.tier_selections! : JSON.parse(metadata.tier_selections)
+  ) as Array<{
     tierId: string;
     quantity: number;
     unitPrice: number;
@@ -180,14 +273,22 @@ async function handleCheckoutCompleted(session: any) {
   const couponId = metadata.coupon_id || null;
   const couponCode = metadata.coupon_code || '';
 
-  // Seat selections for seat_map mode
+  // Seat selections for seat_map mode (staged payload, or legacy metadata)
   const seatSelections: Array<{ seatId: string; sectionId: string; label: string }> | null =
-    metadata.seat_selections ? JSON.parse(metadata.seat_selections) : null;
+    stagedPayload
+      ? stagedPayload.seat_selections ?? null
+      : metadata.seat_selections
+        ? JSON.parse(metadata.seat_selections)
+        : null;
   const seatSessionId = metadata.seat_session_id || null;
 
-  // Assigned seats for assigned_seating mode
+  // Assigned seats for assigned_seating mode (staged payload, or legacy metadata)
   const assignedSeats: string[] | null =
-    metadata.assigned_seats ? JSON.parse(metadata.assigned_seats) : null;
+    stagedPayload
+      ? stagedPayload.assigned_seats ?? null
+      : metadata.assigned_seats
+        ? JSON.parse(metadata.assigned_seats)
+        : null;
 
   // Determine user_id for order/tickets
   const userId = userAuth0Id || null;
@@ -197,24 +298,30 @@ async function handleCheckoutCompleted(session: any) {
   const organizerStripeId = metadata.organizer_stripe_id || '';
 
   try {
-    // Parse multi-split data from metadata
-    const hasMultiSplit = !!(metadata.transfer_group && metadata.splits);
+    // Multi-split data: from the staged payload, or legacy inline metadata.
     let parsedSplits: Array<{
       recipient_user_id: string;
       recipient_stripe_id: string;
       percentage: number;
       description: string;
     }> | null = null;
-    if (hasMultiSplit) {
+    if (stagedPayload) {
+      parsedSplits = stagedPayload.splits ?? null;
+    } else if (metadata.splits) {
       try {
         parsedSplits = JSON.parse(metadata.splits);
       } catch (parseError) {
         console.error('[Webhook] Failed to parse splits metadata:', parseError);
       }
     }
-    // ── Retrieve charge details early (Stripe fee + receipt URL) ──
+    const hasMultiSplit = !!(metadata.transfer_group && parsedSplits && parsedSplits.length > 0);
+    // ── Retrieve charge details early (Stripe fee + receipt URL + charge id) ──
+    // The charge id is reused as `source_transaction` on every outbound
+    // transfer below, tying transfers to this charge's settlement (required
+    // for live mode where the platform balance may not cover instant payouts).
     let stripeFee = 0;
     let receiptUrl: string | undefined;
+    let chargeId: string | null = null;
 
     if (session.payment_intent) {
       try {
@@ -224,20 +331,27 @@ async function handleCheckoutCompleted(session: any) {
         );
         const charge = paymentIntent.latest_charge;
         if (charge && typeof charge === 'object') {
+          chargeId = charge.id;
           if (charge.receipt_url) receiptUrl = charge.receipt_url;
           const bt = (charge as any).balance_transaction;
           if (bt && typeof bt === 'object') {
             stripeFee = bt.fee / 100; // cents → dollars
           }
+        } else if (typeof charge === 'string') {
+          chargeId = charge;
         }
       } catch (err) {
         console.error('[Webhook] Failed to fetch charge details:', err);
       }
     }
 
-    // Fallback: estimate Stripe fee if balance_transaction not yet available
+    // Fallback: estimate Stripe fee if balance_transaction not yet available.
+    // When we estimate, flag it in payout_breakdown so the `charge.updated`
+    // handler can true-up the books once the real balance_transaction lands.
+    let stripeFeeEstimated = false;
     if (stripeFee === 0 && customerTotal > 0) {
       stripeFee = Math.round((customerTotal * 0.029 + 0.30) * 100) / 100;
+      stripeFeeEstimated = true;
       console.log(`[Webhook] Using estimated Stripe fee: $${stripeFee}`);
     }
 
@@ -278,6 +392,36 @@ async function handleCheckoutCompleted(session: any) {
     // kept in payout_breakdown.platform_event_notional_payout for traceability).
     const orderOrganizerPayout = isPlatformEvent ? 0 : actualOrganizerPayout;
 
+    // Shared payout_breakdown core — used for the initial insert, the
+    // pre-transfer intent persist, and the final post-transfer update so the
+    // three writes can never drift apart.
+    const basePayoutBreakdown = {
+      version: 5,
+      subtotal,
+      eff_base: effBase,
+      customer_total: customerTotal,
+      pass_processing_fee: passProcessingFee,
+      charge_ticket_tax: chargeTicketTax,
+      total_tickets: totalTickets,
+      platform_fee_fixed_semantics: 'per_ticket',
+      platform_fee_percent: feePercent,
+      platform_fee_fixed: feeFixed,
+      platform_fee: platformFee,
+      hst_on_base: hstOnBase,
+      hst_on_fee: hstOnFee,
+      empiria_keep: empiriaKeep,
+      stripe_offset: stripeOffset,
+      stripe_fee: stripeFee,
+      stripe_gap: stripeGap,
+      platform_take_home: platformTakeHome,
+      ...(stripeFeeEstimated ? { stripe_fee_estimated: true } : {}),
+      discount_amount: discountAmount,
+      coupon_code: couponCode,
+      organizer_payout: orderOrganizerPayout,
+      ...(isPlatformEvent ? { platform_event_notional_payout: actualOrganizerPayout } : {}),
+      transfer_group: metadata.transfer_group || null,
+    };
+
     // 1. Create the order (initial payout_breakdown — transfer IDs added after
     //    transfers). When RESUMING a ticketless order from a failed prior
     //    attempt, the order row already exists — reuse it.
@@ -307,31 +451,7 @@ async function handleCheckoutCompleted(session: any) {
         currency: session.currency || 'cad',
         buyer_email: userEmail || null,
         buyer_name: userName || null,
-        payout_breakdown: {
-          version: 5,
-          subtotal,
-          eff_base: effBase,
-          customer_total: customerTotal,
-          pass_processing_fee: passProcessingFee,
-          charge_ticket_tax: chargeTicketTax,
-          total_tickets: totalTickets,
-          platform_fee_fixed_semantics: 'per_ticket',
-          platform_fee_percent: feePercent,
-          platform_fee_fixed: feeFixed,
-          platform_fee: platformFee,
-          hst_on_base: hstOnBase,
-          hst_on_fee: hstOnFee,
-          empiria_keep: empiriaKeep,
-          stripe_offset: stripeOffset,
-          stripe_fee: stripeFee,
-          stripe_gap: stripeGap,
-          platform_take_home: platformTakeHome,
-          discount_amount: discountAmount,
-          coupon_code: couponCode,
-          organizer_payout: orderOrganizerPayout,
-          ...(isPlatformEvent ? { platform_event_notional_payout: actualOrganizerPayout } : {}),
-          transfer_group: metadata.transfer_group || null,
-        },
+        payout_breakdown: basePayoutBreakdown,
         status: 'completed',
         source_app: metadata.source_app || 'shop',
       })
@@ -496,6 +616,17 @@ async function handleCheckoutCompleted(session: any) {
         .eq('stripe_checkout_session_id', session.id);
     }
 
+    // 3a-bis. Clean up the staged checkout payload — once tickets exist, any
+    // retry of this event short-circuits on the existing-order guard and never
+    // re-reads the payload. (Best-effort: a failed delete only leaves an
+    // orphaned row.)
+    if (stagedPayload) {
+      await supabase
+        .from('checkout_payloads')
+        .delete()
+        .eq('stripe_checkout_session_id', session.id);
+    }
+
     // 3b. Clean up seat holds after successful ticket creation
     if (seatSelections && seatSelections.length > 0) {
       const seatIds = seatSelections.map((s) => s.seatId);
@@ -544,50 +675,61 @@ async function handleCheckoutCompleted(session: any) {
     }
 
     // ── 4. TRANSFERS (deliberately AFTER ticket fulfillment — see note above) ──
+    const transferCurrency = session.currency || 'cad';
 
-    // ── Create organizer transfer (replaces destination charge behavior) ──
-    let organizerTransferId: string | null = null;
+    // `source_transaction` ties each transfer to THIS charge so the transfer
+    // draws from the charge's settlement instead of the platform's available
+    // balance (required in live mode, where the platform balance won't cover
+    // payouts before the charge settles). If we somehow have no charge id,
+    // fall back to plain transfers — but make NOISE, because that re-opens the
+    // live-mode insufficient-balance failure mode.
+    if (!chargeId) {
+      console.error(
+        `[Webhook] ⚠️ NO CHARGE ID for session ${session.id} (order ${order.id}) — creating transfers WITHOUT source_transaction. ` +
+          'Live-mode transfers may fail on insufficient platform balance. Investigate immediately.'
+      );
+    }
+    const sourceTransaction = chargeId ? { source_transaction: chargeId } : {};
 
-    if (!isPlatformEvent && organizerStripeId && actualOrganizerPayout > 0) {
-      if (hasMultiSplit && parsedSplits) {
-        // Multi-split: transfers handled below (each partner gets their share)
-      } else {
-        // Single organizer: transfer full net to organizer
-        const orgPayoutCents = Math.round(actualOrganizerPayout * 100);
-        try {
-          const transfer = await stripe.transfers.create(
-            {
-              amount: orgPayoutCents,
-              currency: session.currency || 'cad',
-              destination: organizerStripeId,
-              transfer_group: metadata.transfer_group,
-              metadata: { event_id: eventId, order_id: order.id, type: 'organizer_payout' },
-            },
-            { idempotencyKey: `tx_${order.id}_org` }
-          );
-          organizerTransferId = transfer.id;
-          console.log(`[Webhook] Organizer transfer created: ${orgPayoutCents} cents to ${organizerStripeId}`);
-        } catch (err) {
-          console.error('[Webhook] Organizer transfer failed:', err);
-        }
-      }
+    // ── Transfer INTENT ledger (persisted BEFORE any money moves) ──
+    // If the function dies (timeout/crash) after a transfer is created but
+    // before its id is recorded, this ledger + the idempotency keys let a
+    // retry — or an admin / the refund & dispute paths — reconcile exactly
+    // what was meant to go out, to whom, and for how much.
+    type IntendedTransfer = {
+      purpose: string; // 'organizer' | `split:<acct>` | 'elevsoft'
+      destination: string;
+      amountCents: number;
+      idempotencyKey: string;
+      transfer_id?: string | null;
+      error?: string;
+    };
+    const intendedTransfers: IntendedTransfer[] = [];
+
+    const isSingleOrganizerTransfer =
+      !isPlatformEvent &&
+      !!organizerStripeId &&
+      actualOrganizerPayout > 0 &&
+      !(hasMultiSplit && parsedSplits);
+
+    if (isSingleOrganizerTransfer) {
+      intendedTransfers.push({
+        purpose: 'organizer',
+        destination: organizerStripeId,
+        amountCents: Math.round(actualOrganizerPayout * 100),
+        idempotencyKey: `tx_${order.id}_org`,
+      });
     }
 
-    // ── Multi-split transfers ──
-    const splitTransferDetails: Array<{
-      user_id: string;
-      stripe_id: string;
-      percentage: number;
-      amount: number;
-      description: string;
-      stripe_transfer_id: string | null;
+    // Pre-compute every split allocation (same remainder logic as before) so
+    // the intent ledger is complete BEFORE any transfer is attempted.
+    const splitPlans: Array<{
+      split: NonNullable<typeof parsedSplits>[number];
+      amountCents: number;
     }> = [];
-
     if (hasMultiSplit && parsedSplits) {
-      const currency = session.currency || 'cad';
-      let totalTransferred = 0;
       const splitBaseCents = Math.round(actualOrganizerPayout * 100);
-
+      let totalAllocated = 0;
       for (let i = 0; i < parsedSplits.length; i++) {
         const split = parsedSplits[i];
         let amountCents: number;
@@ -600,7 +742,7 @@ async function handleCheckoutCompleted(session: any) {
         // transfer). Without this gate the last co-org received the ENTIRE
         // payout base.
         if (i === parsedSplits.length - 1 && !isPlatformEvent) {
-          amountCents = splitBaseCents - totalTransferred;
+          amountCents = splitBaseCents - totalAllocated;
         } else {
           amountCents = Math.round((splitBaseCents * split.percentage) / 100);
         }
@@ -609,17 +751,119 @@ async function handleCheckoutCompleted(session: any) {
         // This keeps the last split's remainder based on intended allocations,
         // so a failed intermediate transfer leaves that recipient unpaid
         // (money stays on the platform) without overpaying the last split.
+        totalAllocated += amountCents;
+        splitPlans.push({ split, amountCents });
+
+        if (amountCents > 0) {
+          intendedTransfers.push({
+            purpose: `split:${split.recipient_stripe_id}`,
+            destination: split.recipient_stripe_id,
+            amountCents,
+            idempotencyKey: `tx_${order.id}_split_${split.recipient_stripe_id}`,
+          });
+        }
+      }
+    }
+
+    // Elevsoft's rev-share is a uniform % of the NET service fee for ALL
+    // events — platform-owned included. (Previously platform events sent
+    // Elevsoft 100% of the take-home, which was wrong: ticket revenue AND
+    // the remaining fee share belong to Empiria on its own events.)
+    // Rounded to cents BEFORE storing so the persisted amount matches the
+    // transferred cents exactly.
+    const elevsoftStripeId = process.env.ELEVSOFT_STRIPE_ACCOUNT_ID;
+    const elevsoftPercent = parseFloat(process.env.ELEVSOFT_REVENUE_PERCENT || '0');
+    const elevsoftAmount =
+      elevsoftStripeId && elevsoftPercent > 0
+        ? Math.max(0, Math.round(platformTakeHome * (elevsoftPercent / 100) * 100) / 100)
+        : 0;
+    const elevsoftCents = Math.round(elevsoftAmount * 100);
+
+    if (elevsoftStripeId && elevsoftCents > 0) {
+      intendedTransfers.push({
+        purpose: 'elevsoft',
+        destination: elevsoftStripeId,
+        amountCents: elevsoftCents,
+        idempotencyKey: `tx_${order.id}_elevsoft`,
+      });
+    }
+
+    const persistIntendedTransfers = async () => {
+      const { error: intentError } = await supabase
+        .from('orders')
+        .update({
+          payout_breakdown: { ...basePayoutBreakdown, intended_transfers: intendedTransfers },
+        })
+        .eq('id', order.id);
+      if (intentError) {
+        console.error('[Webhook] Failed to persist intended_transfers:', intentError);
+      }
+      return intentError;
+    };
+    const intentFor = (purpose: string) => intendedTransfers.find((t) => t.purpose === purpose);
+
+    if (intendedTransfers.length > 0) {
+      // If the intent ledger can't be persisted, ABORT before sending money:
+      // throw → 500 → Stripe retries (transfer idempotency keys + the
+      // zero-ticket resume path keep the retry safe).
+      const intentError = await persistIntendedTransfers();
+      if (intentError) throw intentError;
+    }
+
+    // ── Create organizer transfer (replaces destination charge behavior) ──
+    let organizerTransferId: string | null = null;
+
+    if (isSingleOrganizerTransfer) {
+      const intent = intentFor('organizer')!;
+      try {
+        const transfer = await stripe.transfers.create(
+          {
+            amount: intent.amountCents,
+            currency: transferCurrency,
+            destination: organizerStripeId,
+            transfer_group: metadata.transfer_group,
+            ...sourceTransaction,
+            metadata: { event_id: eventId, order_id: order.id, type: 'organizer_payout' },
+          },
+          { idempotencyKey: intent.idempotencyKey }
+        );
+        organizerTransferId = transfer.id;
+        intent.transfer_id = transfer.id;
+        console.log(`[Webhook] Organizer transfer created: ${intent.amountCents} cents to ${organizerStripeId}`);
+      } catch (err) {
+        intent.error = err instanceof Error ? err.message : String(err);
+        console.error('[Webhook] Organizer transfer failed:', err);
+      }
+      await persistIntendedTransfers();
+    }
+
+    // ── Multi-split transfers ──
+    const splitTransferDetails: Array<{
+      user_id: string;
+      stripe_id: string;
+      percentage: number;
+      amount: number;
+      description: string;
+      stripe_transfer_id: string | null;
+    }> = [];
+
+    if (splitPlans.length > 0) {
+      let totalTransferred = 0;
+
+      for (const { split, amountCents } of splitPlans) {
         totalTransferred += amountCents;
 
         let transferId: string | null = null;
-        if (amountCents > 0) {
+        const intent = intentFor(`split:${split.recipient_stripe_id}`);
+        if (amountCents > 0 && intent) {
           try {
             const transfer = await stripe.transfers.create(
               {
                 amount: amountCents,
-                currency,
+                currency: transferCurrency,
                 destination: split.recipient_stripe_id,
                 transfer_group: metadata.transfer_group,
+                ...sourceTransaction,
                 metadata: {
                   event_id: eventId,
                   order_id: order.id,
@@ -627,18 +871,22 @@ async function handleCheckoutCompleted(session: any) {
                   percentage: String(split.percentage),
                 },
               },
-              { idempotencyKey: `tx_${order.id}_split_${split.recipient_stripe_id}` }
+              { idempotencyKey: intent.idempotencyKey }
             );
             transferId = transfer.id;
+            intent.transfer_id = transfer.id;
             console.log(
               `[Webhook] Transfer created: ${amountCents} cents (${split.percentage}%) to ${split.recipient_stripe_id}`
             );
           } catch (transferError) {
+            intent.error =
+              transferError instanceof Error ? transferError.message : String(transferError);
             console.error(
               `[Webhook] Failed to create transfer for ${split.recipient_stripe_id}:`,
               transferError
             );
           }
+          await persistIntendedTransfers();
         }
 
         splitTransferDetails.push({
@@ -655,47 +903,36 @@ async function handleCheckoutCompleted(session: any) {
     }
 
     // ── Elevsoft revenue share transfer ──
-    const elevsoftStripeId = process.env.ELEVSOFT_STRIPE_ACCOUNT_ID;
-    const elevsoftPercent = parseFloat(process.env.ELEVSOFT_REVENUE_PERCENT || '0');
     let elevsoftTransferData: { id: string; amount: number } | null = null;
 
-    if (elevsoftStripeId && elevsoftPercent > 0) {
-      // Elevsoft's rev-share is a uniform % of the NET service fee for ALL
-      // events — platform-owned included. (Previously platform events sent
-      // Elevsoft 100% of the take-home, which was wrong: ticket revenue AND
-      // the remaining fee share belong to Empiria on its own events.)
-      // Rounded to cents BEFORE storing so the persisted amount matches the
-      // transferred cents exactly.
-      const elevsoftAmount = Math.max(
-        0,
-        Math.round(platformTakeHome * (elevsoftPercent / 100) * 100) / 100
-      );
-      const elevsoftCents = Math.round(elevsoftAmount * 100);
-
-      if (elevsoftCents > 0) {
-        try {
-          const transfer = await stripe.transfers.create(
-            {
-              amount: elevsoftCents,
-              currency: session.currency || 'cad',
-              destination: elevsoftStripeId,
-              transfer_group: metadata.transfer_group,
-              metadata: {
-                event_id: eventId,
-                order_id: order.id,
-                type: isPlatformEvent ? 'platform_event_revenue' : 'elevsoft_revenue_share',
-                platform_fee_gross: platformFee.toFixed(2),
-                stripe_fee: stripeFee.toFixed(2),
-              },
+    if (elevsoftStripeId && elevsoftCents > 0) {
+      const intent = intentFor('elevsoft')!;
+      try {
+        const transfer = await stripe.transfers.create(
+          {
+            amount: elevsoftCents,
+            currency: transferCurrency,
+            destination: elevsoftStripeId,
+            transfer_group: metadata.transfer_group,
+            ...sourceTransaction,
+            metadata: {
+              event_id: eventId,
+              order_id: order.id,
+              type: isPlatformEvent ? 'platform_event_revenue' : 'elevsoft_revenue_share',
+              platform_fee_gross: platformFee.toFixed(2),
+              stripe_fee: stripeFee.toFixed(2),
             },
-            { idempotencyKey: `tx_${order.id}_elevsoft` }
-          );
-          elevsoftTransferData = { id: transfer.id, amount: elevsoftAmount };
-          console.log(`[Webhook] Elevsoft transfer: ${elevsoftCents} cents`);
-        } catch (err) {
-          console.error('[Webhook] Elevsoft transfer failed:', err);
-        }
+          },
+          { idempotencyKey: intent.idempotencyKey }
+        );
+        elevsoftTransferData = { id: transfer.id, amount: elevsoftAmount };
+        intent.transfer_id = transfer.id;
+        console.log(`[Webhook] Elevsoft transfer: ${elevsoftCents} cents`);
+      } catch (err) {
+        intent.error = err instanceof Error ? err.message : String(err);
+        console.error('[Webhook] Elevsoft transfer failed:', err);
       }
+      await persistIntendedTransfers();
     }
 
     // ── 5. Update order with full payout_breakdown including transfer IDs ──
@@ -704,29 +941,8 @@ async function handleCheckoutCompleted(session: any) {
       .update({
         elevsoft_amount: elevsoftTransferData?.amount || 0,
         payout_breakdown: {
-          version: 5,
-          subtotal,
-          eff_base: effBase,
-          customer_total: customerTotal,
-          pass_processing_fee: passProcessingFee,
-          charge_ticket_tax: chargeTicketTax,
-          total_tickets: totalTickets,
-          platform_fee_fixed_semantics: 'per_ticket',
-          platform_fee_percent: feePercent,
-          platform_fee_fixed: feeFixed,
-          platform_fee: platformFee,
-          hst_on_base: hstOnBase,
-          hst_on_fee: hstOnFee,
-          empiria_keep: empiriaKeep,
-          stripe_offset: stripeOffset,
-          stripe_fee: stripeFee,
-          stripe_gap: stripeGap,
-          platform_take_home: platformTakeHome,
-          discount_amount: discountAmount,
-          coupon_code: couponCode,
-          organizer_payout: orderOrganizerPayout,
-          ...(isPlatformEvent ? { platform_event_notional_payout: actualOrganizerPayout } : {}),
-          transfer_group: metadata.transfer_group || null,
+          ...basePayoutBreakdown,
+          intended_transfers: intendedTransfers.length > 0 ? intendedTransfers : null,
           organizer_transfer_id: organizerTransferId,
           splits: splitTransferDetails.length > 0 ? splitTransferDetails : null,
           elevsoft_transfer: elevsoftTransferData ? {
@@ -841,8 +1057,14 @@ async function handleChargeRefunded(charge: any, stripeEventId: string) {
     .maybeSingle();
 
   if (!order) {
-    console.log('[Webhook] charge.refunded: no order for PI', paymentIntentId, '— acking');
-    return;
+    // OUT-OF-ORDER DELIVERY: the refund event can arrive before
+    // checkout.session.completed has created the order. THROW → 500 → Stripe
+    // retries (with backoff, up to ~3 days), by which point the order exists
+    // and the reversal bookkeeping below runs against it. Acking with 200 here
+    // permanently skipped the transfer reversals for this refund.
+    throw new Error(
+      `[Webhook] charge.refunded: no order for PI ${paymentIntentId} — failing so Stripe retries (out-of-order delivery)`
+    );
   }
 
   const pb: any = order.payout_breakdown || {};
@@ -863,11 +1085,12 @@ async function handleChargeRefunded(charge: any, stripeEventId: string) {
   // Proportion of the ORIGINAL charge represented by this new refund delta.
   const proportion = newlyRefundedCents / chargeAmountCents;
 
-  // Track processed refund ids for bookkeeping (latest refund id if available).
+  // Track processed refund ids for bookkeeping. NOTE: charge.refunds.data is
+  // not always populated on charge.refunded events; the `refund.created`
+  // handler upserts the authoritative refund id. We deliberately do NOT fall
+  // back to charge.id here (the old fallback polluted refund_ids with a
+  // ch_... id).
   const refundList = charge.refunds?.data;
-  const latestRefundId: string =
-    (Array.isArray(refundList) && refundList.length > 0 && refundList[0]?.id) ||
-    charge.id;
 
   // Idempotency keys are keyed on the Stripe EVENT id: each partial refund
   // fires its own charge.refunded event (unique id), so successive partial
@@ -881,8 +1104,15 @@ async function handleChargeRefunded(charge: any, stripeEventId: string) {
   // Reverse each outbound transfer proportionally to the new refund delta.
   // Per-transfer original amount comes from payout_breakdown: organizer_payout
   // for the organizer transfer, split.amount for each split, elevsoft amount for
-  // Elevsoft. We reverse that share × proportion; createReversal caps at the
-  // transfer's remaining reversible balance.
+  // Elevsoft. We reverse that share × proportion, CLAMPED to the transfer's
+  // remaining reversible balance (retrieved live) so rounding drift across
+  // successive partial refunds can never overshoot into an API error.
+  // Reversal FAILURES are recorded in payout_breakdown.failed_reversals —
+  // the "money owed back to the platform" ledger (e.g. the organizer's
+  // connected balance was already paid out and can't cover the reversal).
+  const failedReversals: Array<{ transferId: string; amountCents: number; error: string; at: string }> =
+    Array.isArray(pb.failed_reversals) ? [...pb.failed_reversals] : [];
+
   const transfers = collectOutboundTransfers(pb);
   for (const t of transfers) {
     let originalCents = 0;
@@ -896,8 +1126,22 @@ async function handleChargeRefunded(charge: any, stripeEventId: string) {
       );
       originalCents = Math.round(((match?.amount) || 0) * 100);
     }
-    const amountToReverse = Math.round(originalCents * proportion);
+    let amountToReverse = Math.round(originalCents * proportion);
     if (amountToReverse <= 0) continue;
+
+    // Clamp to what is actually still reversible on the transfer.
+    try {
+      const liveTransfer = await stripe.transfers.retrieve(t.id);
+      const remaining = (liveTransfer.amount ?? 0) - (liveTransfer.amount_reversed ?? 0);
+      amountToReverse = Math.min(amountToReverse, Math.max(0, remaining));
+    } catch (err) {
+      console.error(`[Webhook] Could not retrieve transfer ${t.id} to clamp reversal — using computed amount:`, err);
+    }
+    if (amountToReverse <= 0) {
+      console.log(`[Webhook] Transfer ${t.id} (${t.label}) already fully reversed — skipping`);
+      continue;
+    }
+
     try {
       await stripe.transfers.createReversal(
         t.id,
@@ -906,19 +1150,29 @@ async function handleChargeRefunded(charge: any, stripeEventId: string) {
       );
       console.log(`[Webhook] Reversed ${amountToReverse} cents on transfer ${t.id} (${t.label})`);
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      failedReversals.push({
+        transferId: t.id,
+        amountCents: amountToReverse,
+        error: message,
+        at: new Date().toISOString(),
+      });
       console.error(`[Webhook] Failed to reverse transfer ${t.id} (${t.label}):`, err);
     }
   }
 
   const fullyRefunded = cumulativeRefundedCents >= chargeAmountCents;
 
-  // Persist reversal bookkeeping (cumulative refunded + processed refund ids).
+  // Persist reversal bookkeeping (cumulative refunded + processed refund ids +
+  // failed-reversal ledger). Real refund ids also arrive via refund.created.
   const updatedPb = {
     ...pb,
     refunded_amount: Math.round(cumulativeRefundedCents) / 100,
-    refund_ids: Array.isArray(refundList)
-      ? Array.from(new Set([...processedRefundIds, ...refundList.map((r: any) => r.id)]))
-      : Array.from(new Set([...processedRefundIds, latestRefundId])),
+    refund_ids:
+      Array.isArray(refundList) && refundList.length > 0
+        ? Array.from(new Set([...processedRefundIds, ...refundList.map((r: any) => r.id)]))
+        : processedRefundIds,
+    ...(failedReversals.length > 0 ? { failed_reversals: failedReversals } : {}),
   };
 
   if (fullyRefunded) {
@@ -986,8 +1240,12 @@ async function handleDisputeCreated(dispute: any) {
     .maybeSingle();
 
   if (!order) {
-    console.log('[Webhook] charge.dispute.created: no order for PI', paymentIntentId, '— acking');
-    return;
+    // OUT-OF-ORDER DELIVERY: the dispute can arrive before the order exists.
+    // THROW → 500 → Stripe retries (up to ~3 days) until the order is there.
+    // Acking with 200 permanently skipped the transfer reversals.
+    throw new Error(
+      `[Webhook] charge.dispute.created: no order for PI ${paymentIntentId} — failing so Stripe retries (out-of-order delivery)`
+    );
   }
 
   const pb: any = order.payout_breakdown || {};
@@ -1000,25 +1258,58 @@ async function handleDisputeCreated(dispute: any) {
 
   // Reverse ALL outbound transfers in full — the platform is now debited the
   // disputed amount and connected accounts must not keep those funds.
+  // Clamp each reversal to the transfer's remaining reversible balance
+  // (partial refunds may have already reversed part of it); record FAILURES
+  // in payout_breakdown.failed_reversals — the money-owed-back ledger.
+  const failedReversals: Array<{ transferId: string; amountCents: number; error: string; at: string }> =
+    Array.isArray(pb.failed_reversals) ? [...pb.failed_reversals] : [];
+
   const transfers = collectOutboundTransfers(pb);
   for (const t of transfers) {
+    let reverseAmountCents: number | null = null;
     try {
-      // No amount → reverses the full remaining transfer balance.
+      const liveTransfer = await stripe.transfers.retrieve(t.id);
+      const remaining = (liveTransfer.amount ?? 0) - (liveTransfer.amount_reversed ?? 0);
+      if (remaining <= 0) {
+        console.log(`[Webhook] Dispute ${dispute.id}: transfer ${t.id} (${t.label}) already fully reversed — skipping`);
+        continue;
+      }
+      reverseAmountCents = remaining;
+    } catch (err) {
+      // Can't read the transfer — fall back to a full (amount-less) reversal,
+      // which Stripe caps at the remaining balance itself.
+      console.error(`[Webhook] Dispute ${dispute.id}: could not retrieve transfer ${t.id} to clamp — using full reversal:`, err);
+    }
+    try {
       await stripe.transfers.createReversal(
         t.id,
-        {},
+        reverseAmountCents != null ? { amount: reverseAmountCents } : {},
         { idempotencyKey: `disp_${dispute.id}_${t.id}` }
       );
-      console.log(`[Webhook] Dispute ${dispute.id}: fully reversed transfer ${t.id} (${t.label})`);
+      console.log(`[Webhook] Dispute ${dispute.id}: reversed transfer ${t.id} (${t.label})`);
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      failedReversals.push({
+        transferId: t.id,
+        amountCents: reverseAmountCents ?? 0,
+        error: message,
+        at: new Date().toISOString(),
+      });
       console.error(`[Webhook] Dispute reversal failed for transfer ${t.id} (${t.label}):`, err);
     }
   }
 
+  // Dispute fee (e.g. $15) comes through dispute.balance_transactions.
+  const disputeFeeCents = Array.isArray(dispute.balance_transactions)
+    ? dispute.balance_transactions.reduce(
+        (sum: number, bt: any) => sum + Math.abs(bt?.fee || 0),
+        0
+      )
+    : 0;
+
   // Record the dispute on the order. Do NOT change order status — there is no
   // 'disputed' enum value; we only annotate payout_breakdown.
-  // NOTE: charge.dispute.closed (if won, re-transfer funds to recipients) is a
-  // follow-up not handled here.
+  // charge.dispute.closed handles the outcome (won → re-transfer).
   const updatedPb = {
     ...pb,
     dispute_id: dispute.id,
@@ -1026,13 +1317,39 @@ async function handleDisputeCreated(dispute: any) {
       id: dispute.id,
       status: dispute.status,
       amount: (dispute.amount || 0) / 100,
+      dispute_fee: disputeFeeCents / 100,
     },
+    ...(disputeFeeCents > 0 ? { dispute_fee: disputeFeeCents / 100 } : {}),
+    ...(failedReversals.length > 0 ? { failed_reversals: failedReversals } : {}),
   };
   await supabase
     .from('orders')
     .update({ payout_breakdown: updatedPb })
     .eq('id', order.id);
   console.log(`[Webhook] Dispute ${dispute.id} recorded for order ${order.id}; all transfers reversed`);
+
+  // Alert admins — disputes have a hard evidence deadline.
+  try {
+    const dueBy = dispute.evidence_details?.due_by
+      ? new Date(dispute.evidence_details.due_by * 1000).toUTCString()
+      : null;
+    await sendEmail({
+      to: ADMIN_ALERT_EMAIL,
+      subject: `⚠️ Stripe dispute opened — order ${order.id} ($${((dispute.amount || 0) / 100).toFixed(2)} ${String(dispute.currency || 'cad').toUpperCase()})`,
+      html: `
+        <h2>A payment dispute (chargeback) was opened</h2>
+        <p><strong>Order:</strong> ${order.id}<br/>
+        <strong>Dispute:</strong> ${dispute.id} (${dispute.reason || 'unknown reason'})<br/>
+        <strong>Amount:</strong> $${((dispute.amount || 0) / 100).toFixed(2)} ${String(dispute.currency || 'cad').toUpperCase()}<br/>
+        <strong>Dispute fee:</strong> $${(disputeFeeCents / 100).toFixed(2)}</p>
+        <p>All outbound transfers for this order have been reversed${failedReversals.length > 0 ? ` (<strong>${failedReversals.length} reversal(s) FAILED — see payout_breakdown.failed_reversals</strong>)` : ''}.</p>
+        <p><strong>Evidence must be submitted in the Stripe dashboard — typically within 7–21 days of the dispute date${dueBy ? ` (deadline: ${dueBy})` : ''}.</strong></p>
+        <p><a href="https://dashboard.stripe.com/disputes/${dispute.id}">Open the dispute in the Stripe dashboard</a></p>
+      `,
+    });
+  } catch (emailError) {
+    console.error('[Webhook] Failed to send dispute alert email:', emailError);
+  }
 }
 
 async function handleDisputeClosed(dispute: any) {
@@ -1054,8 +1371,11 @@ async function handleDisputeClosed(dispute: any) {
     .maybeSingle();
 
   if (!order) {
-    console.log('[Webhook] charge.dispute.closed: no order for PI', paymentIntentId, '— acking');
-    return;
+    // Same out-of-order rationale as charge.refunded / dispute.created:
+    // THROW so Stripe retries until the order exists.
+    throw new Error(
+      `[Webhook] charge.dispute.closed: no order for PI ${paymentIntentId} — failing so Stripe retries (out-of-order delivery)`
+    );
   }
 
   const pb: any = order.payout_breakdown || {};
@@ -1071,11 +1391,41 @@ async function handleDisputeClosed(dispute: any) {
   const currency = order.currency || 'cad';
 
   // Only a WON dispute returns the funds to the platform; in that case we re-push
-  // each previously-reversed share back to its connected account using the ORIGINAL
-  // amounts recorded in payout_breakdown. Any non-won closed status (lost/warning_*)
-  // means the reversal stands — we just record the outcome.
+  // each previously-reversed share back to its connected account. The re-pay is
+  // NETTED against money the recipient never returned:
+  //   re-pay = original share
+  //          − the share already clawed back by PRIOR REFUNDS (proportional —
+  //            same math the refund handler used; those funds went to the
+  //            customer, not the dispute, so they don't come back on a win)
+  //          − any reversal that FAILED (recorded in failed_reversals — the
+  //            recipient still HAS that money, so re-paying it would double-pay).
+  // Any non-won closed status (lost/warning_*) means the reversal stands — we
+  // just record the outcome.
   if (dispute.status === 'won') {
-    // Re-transfer organizer payout.
+    const customerTotal = Number(pb.customer_total || 0);
+    const refundedProportion =
+      customerTotal > 0 ? Math.min(1, Number(pb.refunded_amount || 0) / customerTotal) : 0;
+    const failedReversalList: Array<{ transferId?: string; amountCents?: number }> =
+      Array.isArray(pb.failed_reversals) ? pb.failed_reversals : [];
+    const intendedList: Array<{ purpose?: string; amountCents?: number }> =
+      Array.isArray(pb.intended_transfers) ? pb.intended_transfers : [];
+
+    // Net re-pay (in dollars) for a recipient given its original share and the
+    // id of its original transfer.
+    const netRepay = (originalAmount: number, transferId: string | null | undefined): number => {
+      let cents = Math.round(originalAmount * 100);
+      // Subtract the proportional share already consumed by prior refunds.
+      cents -= Math.round(cents * refundedProportion);
+      // Subtract reversals that FAILED for this transfer — that money never
+      // left the recipient's balance.
+      for (const f of failedReversalList) {
+        if (f?.transferId && f.transferId === transferId) {
+          cents -= f.amountCents || 0;
+        }
+      }
+      return Math.max(0, cents) / 100;
+    };
+
     const reTransfers: {
       organizer_transfer_id?: string | null;
       splits?: Array<{ user_id?: string; stripe_id?: string; amount: number; stripe_transfer_id: string | null }>;
@@ -1083,10 +1433,15 @@ async function handleDisputeClosed(dispute: any) {
     } = {};
 
     // Single-organizer payout (only present when there were no splits).
+    // Prefer the intent ledger for original amount/destination where present.
     if (pb.organizer_transfer_id && pb.organizer_payout > 0) {
+      const organizerIntent = intendedList.find((t) => t.purpose === 'organizer');
+      const originalAmount = organizerIntent?.amountCents != null
+        ? organizerIntent.amountCents / 100
+        : Number(pb.organizer_payout || 0);
       const destination = await resolveOrganizerStripeId(supabase, order.id, pb);
       reTransfers.organizer_transfer_id = await redoTransfer({
-        amount: pb.organizer_payout,
+        amount: netRepay(originalAmount, pb.organizer_transfer_id),
         currency,
         destination,
         disputeId: dispute.id,
@@ -1114,8 +1469,9 @@ async function handleDisputeClosed(dispute: any) {
           });
           continue;
         }
+        const repayAmount = netRepay(amount, s.stripe_transfer_id);
         const newId = await redoTransfer({
-          amount,
+          amount: repayAmount,
           currency,
           destination,
           disputeId: dispute.id,
@@ -1125,7 +1481,7 @@ async function handleDisputeClosed(dispute: any) {
         reTransfers.splits.push({
           user_id: s?.user_id,
           stripe_id: s?.stripe_id,
-          amount,
+          amount: repayAmount,
           stripe_transfer_id: newId ?? s?.stripe_transfer_id ?? null,
         });
       }
@@ -1134,7 +1490,10 @@ async function handleDisputeClosed(dispute: any) {
     // Elevsoft share.
     if (pb.elevsoft_transfer?.stripe_transfer_id) {
       reTransfers.elevsoft_transfer_id = await redoTransfer({
-        amount: Number(pb.elevsoft_transfer?.amount || 0),
+        amount: netRepay(
+          Number(pb.elevsoft_transfer?.amount || 0),
+          pb.elevsoft_transfer.stripe_transfer_id
+        ),
         currency,
         destination: process.env.ELEVSOFT_STRIPE_ACCOUNT_ID || null,
         disputeId: dispute.id,
@@ -1215,12 +1574,17 @@ async function redoTransfer(opts: {
 }
 
 // Resolve the connected account that received the single-organizer payout.
-// The original transfer recorded its destination, so read it back from Stripe.
+// Prefer the persisted intent ledger (no API call); fall back to reading the
+// original transfer's destination back from Stripe.
 async function resolveOrganizerStripeId(
   _supabase: ReturnType<typeof getSupabaseAdmin>,
   _orderId: string,
   pb: any
 ): Promise<string | null> {
+  if (Array.isArray(pb.intended_transfers)) {
+    const organizerIntent = pb.intended_transfers.find((t: any) => t?.purpose === 'organizer');
+    if (organizerIntent?.destination) return organizerIntent.destination;
+  }
   try {
     if (pb.organizer_transfer_id) {
       const t = await stripe.transfers.retrieve(pb.organizer_transfer_id);
@@ -1231,6 +1595,219 @@ async function resolveOrganizerStripeId(
     console.error('[Webhook] Could not resolve organizer stripe id from original transfer:', err);
   }
   return null;
+}
+
+// ──────────────────────────────────────────────────
+// charge.updated — Stripe-fee TRUE-UP
+//
+// When fulfillment ran before the charge's balance_transaction existed we
+// ESTIMATED the Stripe fee (payout_breakdown.stripe_fee_estimated = true).
+// charge.updated fires once the balance_transaction is attached: correct the
+// BOOKS only (stripe_fee_amount, net_platform_revenue, payout_breakdown fee
+// fields) — transfers were already sized and are NOT touched.
+// ──────────────────────────────────────────────────
+async function handleChargeUpdated(charge: any) {
+  const btRef = charge.balance_transaction;
+  if (!btRef) return; // nothing to true-up yet
+
+  const paymentIntentId =
+    typeof charge.payment_intent === 'string'
+      ? charge.payment_intent
+      : charge.payment_intent?.id;
+  if (!paymentIntentId) return;
+
+  const supabase = getSupabaseAdmin();
+  const { data: order } = await supabase
+    .from('orders')
+    .select('id, payout_breakdown')
+    .eq('stripe_payment_intent_id', paymentIntentId)
+    .maybeSingle();
+
+  // charge.updated fires for ALL charges (receipt sends, metadata edits, …)
+  // and often before our order exists — ack quietly; the checkout handler
+  // fetches the balance_transaction itself, so nothing is lost.
+  if (!order) return;
+
+  const pb: any = order.payout_breakdown || {};
+  if (!pb.stripe_fee_estimated) return; // books already real — nothing to do
+
+  // Resolve the actual fee.
+  let actualFee: number;
+  try {
+    const bt =
+      typeof btRef === 'object'
+        ? btRef
+        : await stripe.balanceTransactions.retrieve(btRef);
+    actualFee = (bt.fee || 0) / 100;
+  } catch (err) {
+    console.error('[Webhook] charge.updated: failed to retrieve balance_transaction — will retry:', err);
+    throw err; // 500 → Stripe retries; flag stays set so the retry true-ups
+  }
+
+  // Recompute the platform bookkeeping with the REAL fee (same math as
+  // fulfillment; money does NOT move — transfers were already sized).
+  const passProcessingFee = !!pb.pass_processing_fee;
+  const platformFee = Number(pb.platform_fee || 0);
+  const stripeOffset = Number(pb.stripe_offset || 0);
+  const hstOnFee = Number(pb.hst_on_fee || 0);
+  const customerTotal = Number(pb.customer_total || 0);
+  // Residual math uses the NOTIONAL payout on platform events (mirrors fulfillment).
+  const payoutForResidual = Number(
+    pb.platform_event_notional_payout ?? pb.organizer_payout ?? 0
+  );
+
+  const stripeGap = passProcessingFee
+    ? Math.max(0, Math.round((actualFee - stripeOffset) * 100) / 100)
+    : 0;
+  let platformTakeHome = Math.max(0, Math.round((platformFee - stripeGap) * 100) / 100);
+  if (!passProcessingFee) {
+    const absorbResidual =
+      Math.round((customerTotal - actualFee - payoutForResidual - hstOnFee) * 100) / 100;
+    platformTakeHome = Math.max(0, Math.min(platformTakeHome, absorbResidual));
+  }
+
+  await supabase
+    .from('orders')
+    .update({
+      stripe_fee_amount: actualFee,
+      net_platform_revenue: platformTakeHome,
+      payout_breakdown: {
+        ...pb,
+        stripe_fee: actualFee,
+        stripe_gap: stripeGap,
+        platform_take_home: platformTakeHome,
+        stripe_fee_estimated: false,
+        stripe_fee_trued_up_at: new Date().toISOString(),
+      },
+    })
+    .eq('id', order.id);
+
+  console.log(
+    `[Webhook] charge.updated: trued-up Stripe fee for order ${order.id} → $${actualFee} (take-home $${platformTakeHome})`
+  );
+}
+
+// ──────────────────────────────────────────────────
+// refund.created — record the REAL refund id
+//
+// charge.refunded's embedded refunds list is not always populated, and the old
+// fallback stored the CHARGE id in refund_ids. This handler upserts the
+// authoritative re_... id.
+// ──────────────────────────────────────────────────
+async function handleRefundCreated(refund: any) {
+  const paymentIntentId =
+    typeof refund.payment_intent === 'string'
+      ? refund.payment_intent
+      : refund.payment_intent?.id;
+  if (!paymentIntentId || !refund.id) {
+    console.warn('[Webhook] refund.created with no payment_intent/id — acking');
+    return;
+  }
+
+  const supabase = getSupabaseAdmin();
+  const { data: order } = await supabase
+    .from('orders')
+    .select('id, payout_breakdown')
+    .eq('stripe_payment_intent_id', paymentIntentId)
+    .maybeSingle();
+
+  if (!order) {
+    // Out-of-order: retry until the order exists so the refund id is recorded.
+    throw new Error(
+      `[Webhook] refund.created: no order for PI ${paymentIntentId} — failing so Stripe retries (out-of-order delivery)`
+    );
+  }
+
+  const pb: any = order.payout_breakdown || {};
+  const refundIds: string[] = Array.isArray(pb.refund_ids) ? pb.refund_ids : [];
+  if (refundIds.includes(refund.id)) return; // already recorded (retry)
+
+  await supabase
+    .from('orders')
+    .update({ payout_breakdown: { ...pb, refund_ids: [...refundIds, refund.id] } })
+    .eq('id', order.id);
+  console.log(`[Webhook] refund.created: recorded refund ${refund.id} on order ${order.id}`);
+}
+
+// ──────────────────────────────────────────────────
+// refund.failed — the customer was NOT refunded
+//
+// By the time this fires we have usually already reversed the outbound
+// transfers (charge.refunded), so the platform is HOLDING the money while the
+// customer never received it. Flag the order and alert admins for manual
+// action (re-issue the refund to another payment method / contact customer).
+// ──────────────────────────────────────────────────
+async function handleRefundFailed(refund: any) {
+  const paymentIntentId =
+    typeof refund.payment_intent === 'string'
+      ? refund.payment_intent
+      : refund.payment_intent?.id;
+  if (!paymentIntentId) {
+    console.warn('[Webhook] refund.failed with no payment_intent — acking');
+    return;
+  }
+
+  const supabase = getSupabaseAdmin();
+  const { data: order } = await supabase
+    .from('orders')
+    .select('id, status, payout_breakdown, buyer_email, total_amount, currency')
+    .eq('stripe_payment_intent_id', paymentIntentId)
+    .maybeSingle();
+
+  if (!order) {
+    throw new Error(
+      `[Webhook] refund.failed: no order for PI ${paymentIntentId} — failing so Stripe retries (out-of-order delivery)`
+    );
+  }
+
+  const pb: any = order.payout_breakdown || {};
+
+  // Idempotency: a retried event for the same refund changes nothing.
+  if (pb.refund_failed?.refundId === refund.id) {
+    console.log(`[Webhook] refund.failed: ${refund.id} already recorded for order ${order.id}`);
+    return;
+  }
+
+  // Keep status 'refunded' (the enum has no better state) but flag the failure
+  // VISIBLY in payout_breakdown so admin views can surface it.
+  const updatedPb = {
+    ...pb,
+    refund_failed: {
+      refundId: refund.id,
+      at: new Date().toISOString(),
+      reason: refund.failure_reason || 'unknown',
+    },
+  };
+  await supabase
+    .from('orders')
+    .update({ payout_breakdown: updatedPb })
+    .eq('id', order.id);
+  console.error(
+    `[Webhook] ⚠️ Refund ${refund.id} FAILED for order ${order.id} (${refund.failure_reason || 'unknown'}) — customer NOT refunded`
+  );
+
+  // Admin alert — manual action required.
+  try {
+    await sendEmail({
+      to: ADMIN_ALERT_EMAIL,
+      subject: `🚨 Refund FAILED for order ${order.id} — manual action needed`,
+      html: `
+        <h2>Refund FAILED — the customer was NOT refunded</h2>
+        <p><strong>Order:</strong> ${order.id}<br/>
+        <strong>Refund:</strong> ${refund.id}<br/>
+        <strong>Failure reason:</strong> ${refund.failure_reason || 'unknown'}<br/>
+        <strong>Customer:</strong> ${order.buyer_email || 'unknown'}<br/>
+        <strong>Order total:</strong> $${Number(order.total_amount || 0).toFixed(2)} ${String(order.currency || 'cad').toUpperCase()}</p>
+        <p>The order is marked <strong>refunded</strong> and the outbound transfers were already reversed,
+        but Stripe could not return the money to the customer (e.g. expired/closed card).
+        <strong>Manual action needed:</strong> re-issue the refund from the Stripe dashboard or arrange an
+        alternative refund method with the customer.</p>
+        <p><a href="https://dashboard.stripe.com/payments/${paymentIntentId}">Open the payment in the Stripe dashboard</a></p>
+      `,
+    });
+  } catch (emailError) {
+    console.error('[Webhook] Failed to send refund-failed alert email:', emailError);
+  }
 }
 
 // ──────────────────────────────────────────────────

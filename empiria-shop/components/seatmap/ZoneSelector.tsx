@@ -226,6 +226,14 @@ export default function ZoneSelector({
         quantity: s.quantity,
       }));
 
+      // Per-attempt idempotency key: a fresh uuid per submit CLICK. The server
+      // passes it to Stripe (sessions.create idempotencyKey) so a duplicated /
+      // retried request can never create two Checkout Sessions.
+      const attemptId =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
       const response = await fetch("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -237,6 +245,7 @@ export default function ZoneSelector({
           occurrenceId:
             selectedOccurrenceId ||
             (occurrences.length === 1 ? occurrences[0].id : undefined),
+          attemptId,
         }),
       });
 

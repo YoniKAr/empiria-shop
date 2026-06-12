@@ -268,6 +268,14 @@ export function CheckoutForm({
         }),
       }));
 
+      // Per-attempt idempotency key: a fresh uuid per submit CLICK. The server
+      // passes it to Stripe (sessions.create idempotencyKey) so a duplicated /
+      // retried request can never create two Checkout Sessions.
+      const attemptId =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
       const res = await fetch("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -279,6 +287,7 @@ export function CheckoutForm({
           occurrenceId: selectedOccurrence?.id,
           couponCode: couponApplied ? couponCode.trim() : undefined,
           fieldResponses,
+          attemptId,
         }),
       });
 
