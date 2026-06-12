@@ -8,9 +8,6 @@ import { EventDetails } from '@/app/components/EventDetails';
 import SponsorSections from '@/app/components/SponsorSections';
 import { EventCard } from '@/app/components/EventCard';
 import { TicketWidget } from '@/app/components/TicketWidget';
-import ZoneSelector from '@/components/seatmap/ZoneSelector';
-import SeatSelector from '@/components/seatmap/SeatSelector';
-import AssignedSeatPicker from '@/components/seatmap/AssignedSeatPicker';
 import Footer from '@/components/Footer';
 import type { SeatingConfig } from '@/lib/seatmap-types';
 
@@ -286,75 +283,31 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                         <div className="border border-gray-200 rounded-xl p-6 bg-gray-50 text-center">
                             <p className="text-gray-500 font-medium">This event has ended</p>
                         </div>
-                    ) : seatingType === 'assigned_seating' && seatingConfig ? (
-                        <AssignedSeatPicker
-                            seatRanges={seatingConfig.seat_ranges || []}
-                            tiers={sortedTiers}
-                            eventId={event.id}
-                            eventCurrency={currency}
-                            currencySymbol={currencySymbol}
-                            userEmail={user?.email}
-                            userName={user?.name}
-                            blockedBuyer={blockedBuyer}
-                            allowSeatChoice={seatingConfig.allow_seat_choice ?? false}
-                            occurrences={futureOccurrences.map((o: any) => ({
-                                id: o.id,
-                                starts_at: o.starts_at,
-                                ends_at: o.ends_at,
-                                label: o.label || '',
-                            }))}
-                        />
-                    ) : seatingType === 'zone_admission' && seatingConfig ? (
-                        <ZoneSelector
-                            config={seatingConfig}
-                            tiers={sortedTiers}
-                            eventId={event.id}
-                            eventCurrency={currency}
-                            currencySymbol={currencySymbol}
-                            userEmail={user?.email}
-                            userName={user?.name}
-                            blockedBuyer={blockedBuyer}
-                            occurrences={futureOccurrences.map((o: any) => ({
-                                id: o.id,
-                                starts_at: o.starts_at,
-                                ends_at: o.ends_at,
-                                label: o.label || '',
-                            }))}
-                        />
-                    ) : seatingType === 'zone_map' && seatingConfig ? (
-                        <ZoneSelector
-                            config={seatingConfig}
-                            tiers={sortedTiers}
-                            eventId={event.id}
-                            eventCurrency={currency}
-                            currencySymbol={currencySymbol}
-                            userEmail={user?.email}
-                            userName={user?.name}
-                            blockedBuyer={blockedBuyer}
-                            occurrences={futureOccurrences.map((o: any) => ({
-                                id: o.id,
-                                starts_at: o.starts_at,
-                                ends_at: o.ends_at,
-                                label: o.label || '',
-                            }))}
-                        />
-                    ) : seatingType === 'seat_map' && seatingConfig ? (
-                        <SeatSelector
-                            config={seatingConfig}
-                            tiers={sortedTiers}
-                            eventId={event.id}
-                            eventCurrency={currency}
-                            currencySymbol={currencySymbol}
-                            userEmail={user?.email}
-                            userName={user?.name}
-                            blockedBuyer={blockedBuyer}
-                            occurrences={futureOccurrences.map((o: any) => ({
-                                id: o.id,
-                                starts_at: o.starts_at,
-                                ends_at: o.ends_at,
-                                label: o.label || '',
-                            }))}
-                        />
+                    ) : ['assigned_seating', 'zone_admission', 'zone_map', 'seat_map'].includes(seatingType) && seatingConfig ? (
+                        <div className="border border-gray-200 rounded-xl shadow-lg bg-white p-6">
+                            <h3 className="text-lg font-bold text-gray-900">Tickets</h3>
+                            <p className="mt-1 text-sm text-gray-700">
+                                {seatingType === 'seat_map' || seatingType === 'assigned_seating'
+                                    ? 'Pick your exact seats on the next step.'
+                                    : 'Choose your section on the next step.'}
+                            </p>
+                            {sortedTiers.length > 0 && (
+                                <p className="mt-4 text-2xl font-bold text-gray-900">
+                                    {currencySymbol}
+                                    {Number(sortedTiers[0].price).toFixed(2)}
+                                    <span className="ml-1 text-sm font-medium text-gray-600">onwards</span>
+                                </p>
+                            )}
+                            <a
+                                href={`/checkout/${event.id}/seats`}
+                                className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-[#F15A29] py-4 font-bold text-white transition-colors hover:bg-[#d94d1f]"
+                            >
+                                {seatingType === 'seat_map' || seatingType === 'assigned_seating'
+                                    ? 'Select your seats'
+                                    : 'Choose tickets'}{' '}
+                                →
+                            </a>
+                        </div>
                     ) : (
                         <TicketWidget
                             tiers={tiers}

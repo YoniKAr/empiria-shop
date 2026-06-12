@@ -87,9 +87,9 @@ export interface SponsorSection {
 
 // Logo box height per tier (px) — the section "thickness".
 export const SPONSOR_TIER_HEIGHT: Record<SponsorTier, number> = {
-  primary: 128,
-  secondary: 96,
-  tertiary: 64,
+  primary: 320,
+  secondary: 192,
+  tertiary: 128,
 };
 
 export function validateSponsorSections(sections: SponsorSection[]): string | null {
