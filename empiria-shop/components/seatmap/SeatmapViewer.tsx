@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useEffect, useCallback, useState } from "react";
-import { Canvas, Polygon, Circle, FabricImage, FabricText } from "fabric";
+import { Canvas, Polygon, Circle, FabricImage, FabricText, Point } from "fabric";
 import type { SeatingConfig, ZoneDefinition, SectionDefinition } from "@/lib/seatmap-types";
 import { migrateSeatingConfig } from "@/lib/migrate-seating-config";
 
@@ -25,6 +25,17 @@ interface SeatmapViewerProps {
 }
 
 const MAX_CANVAS_WIDTH = 1000;
+
+// Zoom is relative to the fitted view: 1 = the whole map fits the canvas
+// (zooming out below fit is pointless), 4 = 4x magnification.
+const MIN_ZOOM = 1;
+const MAX_ZOOM = 4;
+const ZOOM_STEP = 1.5;
+// A press that moves more than this many screen px is a pan/drag, not a click.
+const CLICK_TOLERANCE_PX = 5;
+
+const ZOOM_BTN_CLASS =
+  "flex h-8 w-8 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-900 shadow-md transition hover:bg-gray-50 disabled:opacity-40 disabled:hover:bg-white";
 
 // Helper to get/set custom data on fabric objects (not in TS types but works at runtime)
 function setObjData(obj: any, data: Record<string, any>) {
@@ -64,6 +75,19 @@ export default function SeatmapViewer({
   // Fit transform from image-native space -> canvas px (scale + offset).
   const fitRef = useRef({ scale: 1, offX: 0, offY: 0 });
   const [containerWidth, setContainerWidth] = useState(0);
+  // Mirrors canvas.getZoom() so the overlay buttons can enable/disable.
+  const [zoomLevel, setZoomLevel] = useState(1);
+  // One press/drag gesture at a time (mouse or single touch).
+  const gestureRef = useRef({
+    active: false,
+    panning: false,
+    moved: false,
+    startX: 0,
+    startY: 0,
+    lastX: 0,
+    lastY: 0,
+    data: undefined as Record<string, any> | undefined,
+  });
 
   const migrated = migrateSeatingConfig(config);
   // Native image dimensions drive the canvas aspect ratio + coord projection.
@@ -97,6 +121,102 @@ export default function SeatmapViewer({
     return { x: x * scale + offX, y: y * scale + offY };
   }, []);
 
+  // --- Zoom & pan -----------------------------------------------------------
+  // Content fills the canvas exactly at zoom 1 (objects carry the fit scale),
+  // so an identity viewportTransform IS the fitted view. backgroundVpt is true
+  // by default in Fabric v6, so canvas.backgroundImage follows the viewport
+  // transform too — seats stay glued to the image at any zoom.
+
+  // Clamp the viewport translation so the map can never be dragged out of view.
+  const clampViewport = useCallback((canvas: Canvas) => {
+    const vpt = canvas.viewportTransform;
+    const zoom = canvas.getZoom();
+    const w = canvas.getWidth();
+    const h = canvas.getHeight();
+    // Scene occupies w*zoom x h*zoom screen px; keep it covering the canvas.
+    vpt[4] = Math.min(0, Math.max(w - w * zoom, vpt[4]));
+    vpt[5] = Math.min(0, Math.max(h - h * zoom, vpt[5]));
+    canvas.setViewportTransform(vpt);
+  }, []);
+
+  const syncZoomUi = useCallback((canvas: Canvas, zoom: number) => {
+    canvas.defaultCursor = zoom > MIN_ZOOM ? "grab" : "default";
+    setZoomLevel(zoom);
+  }, []);
+
+  const zoomBy = useCallback(
+    (factor: number) => {
+      const canvas = fabricRef.current;
+      if (!canvas) return;
+      const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, canvas.getZoom() * factor));
+      canvas.zoomToPoint(new Point(canvas.getWidth() / 2, canvas.getHeight() / 2), next);
+      clampViewport(canvas);
+      syncZoomUi(canvas, next);
+    },
+    [clampViewport, syncZoomUi]
+  );
+
+  const resetZoom = useCallback(() => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
+    syncZoomUi(canvas, 1);
+  }, [syncZoomUi]);
+
+  // Screen coords from a mouse or touch event (Fabric forwards both).
+  function eventClientXY(ev: any): { x: number; y: number } | null {
+    if (ev?.touches?.length) return { x: ev.touches[0].clientX, y: ev.touches[0].clientY };
+    if (typeof ev?.clientX === "number") return { x: ev.clientX, y: ev.clientY };
+    return null;
+  }
+
+  // Press started: remember the pressed object's data; if the press did NOT
+  // start on a seat/zone and we're zoomed in, this gesture may become a pan.
+  function beginPointer(canvas: Canvas, ev: any, data?: Record<string, any>) {
+    const p = eventClientXY(ev);
+    if (!p) return;
+    const g = gestureRef.current;
+    g.active = true;
+    g.moved = false;
+    g.data = data;
+    g.panning = !data && canvas.getZoom() > MIN_ZOOM;
+    g.startX = g.lastX = p.x;
+    g.startY = g.lastY = p.y;
+    if (g.panning) canvas.setCursor("grabbing");
+  }
+
+  // Pointer moved: flag the gesture as a drag past the click tolerance and,
+  // when panning, translate the viewport (clamped).
+  function trackPointer(canvas: Canvas, ev: any) {
+    const g = gestureRef.current;
+    if (!g.active) return;
+    const p = eventClientXY(ev);
+    if (!p) return;
+    if (!g.moved && Math.hypot(p.x - g.startX, p.y - g.startY) > CLICK_TOLERANCE_PX) g.moved = true;
+    if (g.panning && g.moved) {
+      const vpt = canvas.viewportTransform;
+      vpt[4] += p.x - g.lastX;
+      vpt[5] += p.y - g.lastY;
+      clampViewport(canvas);
+      canvas.setCursor("grabbing");
+    }
+    g.lastX = p.x;
+    g.lastY = p.y;
+  }
+
+  // Press ended: return the pressed object's data ONLY for a clean click —
+  // a drag (pan) past the tolerance must never fire a seat/zone selection.
+  function endPointer(canvas: Canvas): Record<string, any> | undefined {
+    const g = gestureRef.current;
+    if (!g.active) return undefined;
+    const data = g.moved ? undefined : g.data;
+    g.active = false;
+    g.panning = false;
+    g.data = undefined;
+    canvas.setCursor(canvas.defaultCursor ?? "default");
+    return data;
+  }
+
   // (Re)create the canvas + render the background and content when the size or
   // the underlying map changes.
   useEffect(() => {
@@ -114,6 +234,22 @@ export default function SeatmapViewer({
       selection: false,
     });
     fabricRef.current = canvas;
+
+    // A fresh canvas (initial mount or container resize) starts at the fitted
+    // view: zoom 1, identity pan. Reset the UI mirror so nothing drifts.
+    syncZoomUi(canvas, 1);
+
+    // Wheel/trackpad zoom, anchored at the cursor. Attached once per canvas —
+    // the per-state render functions only off() mouse:down/move/up/over/out.
+    canvas.on("mouse:wheel", (e) => {
+      const we = e.e as WheelEvent;
+      we.preventDefault(); // keep the page from scrolling while zooming the map
+      we.stopPropagation();
+      const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, canvas.getZoom() * Math.pow(0.999, we.deltaY)));
+      canvas.zoomToPoint(new Point(we.offsetX, we.offsetY), next);
+      clampViewport(canvas);
+      syncZoomUi(canvas, next);
+    });
 
     const render = async () => {
       if (migrated.image_url) {
@@ -160,6 +296,8 @@ export default function SeatmapViewer({
     // This runs on every state change — drop the previous generation's
     // listeners or every click fires once per re-render (duplicate selections).
     canvas.off("mouse:down");
+    canvas.off("mouse:move");
+    canvas.off("mouse:up");
     canvas.off("mouse:over");
     canvas.off("mouse:out");
     const zonePolygonMap = new Map<string, Polygon[]>();
@@ -207,8 +345,14 @@ export default function SeatmapViewer({
       }
     }
 
+    // Click vs pan: down records the pressed zone (or arms a background pan
+    // when zoomed), move pans, up only selects if the pointer didn't drag.
     canvas.on("mouse:down", (e) => {
-      const data = getObjData(e.target);
+      beginPointer(canvas, e.e, getObjData(e.target));
+    });
+    canvas.on("mouse:move", (e) => trackPointer(canvas, e.e));
+    canvas.on("mouse:up", () => {
+      const data = endPointer(canvas);
       if (data?.zoneId && onZoneClick) onZoneClick(data.zoneId);
     });
     canvas.on("mouse:over", (e) => {
@@ -235,6 +379,8 @@ export default function SeatmapViewer({
   function renderSections(canvas: Canvas, sections: SectionDefinition[]) {
     // Same listener hygiene as renderZones — exactly one handler generation.
     canvas.off("mouse:down");
+    canvas.off("mouse:move");
+    canvas.off("mouse:up");
     canvas.off("mouse:over");
     canvas.off("mouse:out");
     const scale = fitRef.current.scale;
@@ -302,8 +448,14 @@ export default function SeatmapViewer({
       }
     }
 
+    // Click vs pan: down records the pressed seat (or arms a background pan
+    // when zoomed), move pans, up only selects if the pointer didn't drag.
     canvas.on("mouse:down", (e) => {
-      const data = getObjData(e.target);
+      beginPointer(canvas, e.e, getObjData(e.target));
+    });
+    canvas.on("mouse:move", (e) => trackPointer(canvas, e.e));
+    canvas.on("mouse:up", () => {
+      const data = endPointer(canvas);
       if (data?.seatId && onSeatClick) onSeatClick(data.seatId, data.sectionId, data.label);
     });
     canvas.on("mouse:over", (e) => {
@@ -323,8 +475,49 @@ export default function SeatmapViewer({
   }
 
   return (
-    <div ref={containerRef} className="w-full rounded-lg border bg-slate-50 overflow-hidden">
+    <div ref={containerRef} className="relative w-full rounded-lg border bg-slate-50 overflow-hidden">
       <canvas ref={canvasRef} />
+      <div className="absolute right-2 top-2 z-10 flex flex-col gap-1.5">
+        <button
+          type="button"
+          aria-label="Zoom in"
+          title="Zoom in"
+          onClick={() => zoomBy(ZOOM_STEP)}
+          disabled={zoomLevel >= MAX_ZOOM - 0.001}
+          className={ZOOM_BTN_CLASS}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          aria-label="Zoom out"
+          title="Zoom out"
+          onClick={() => zoomBy(1 / ZOOM_STEP)}
+          disabled={zoomLevel <= MIN_ZOOM + 0.001}
+          className={ZOOM_BTN_CLASS}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            <path d="M5 12h14" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          aria-label="Reset zoom"
+          title="Fit to view"
+          onClick={resetZoom}
+          disabled={zoomLevel <= MIN_ZOOM + 0.001}
+          className={ZOOM_BTN_CLASS}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M8 3H5a2 2 0 0 0-2 2v3" />
+            <path d="M21 8V5a2 2 0 0 0-2-2h-3" />
+            <path d="M3 16v3a2 2 0 0 0 2 2h3" />
+            <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+          </svg>
+        </button>
+      </div>
     </div>
   );
 }

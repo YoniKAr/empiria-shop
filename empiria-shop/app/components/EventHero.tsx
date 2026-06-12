@@ -158,12 +158,11 @@ export function EventHero({
                             </a>
                         )}
 
-                        {/* Organized by */}
+                        {/* Organized by — label first, then pfp + name */}
                         <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+                            <span className="text-sm md:text-base text-white/85">Organized by</span>
                             <AvatarCircle name={organizer} avatarUrl={organizerAvatarUrl} size="md" />
-                            <p className="text-sm md:text-base text-white/85">
-                                Organized by <span className="font-semibold text-white">{organizer}</span>
-                            </p>
+                            <span className="text-sm md:text-base font-semibold text-white">{organizer}</span>
                             {coOrganizers.length > 0 && (
                                 <span className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm text-white/85">
                                     <span>with</span>
