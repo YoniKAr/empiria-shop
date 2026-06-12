@@ -157,6 +157,11 @@ export default function SeatmapViewer({
   }, [selectedZoneId, availability, soldSeats, myHeldSeats, otherHeldSeats, mode, config.zones, config.sections]);
 
   function renderZones(canvas: Canvas, zones: ZoneDefinition[]) {
+    // This runs on every state change — drop the previous generation's
+    // listeners or every click fires once per re-render (duplicate selections).
+    canvas.off("mouse:down");
+    canvas.off("mouse:over");
+    canvas.off("mouse:out");
     const zonePolygonMap = new Map<string, Polygon[]>();
 
     for (const zone of zones) {
@@ -228,6 +233,10 @@ export default function SeatmapViewer({
   }
 
   function renderSections(canvas: Canvas, sections: SectionDefinition[]) {
+    // Same listener hygiene as renderZones — exactly one handler generation.
+    canvas.off("mouse:down");
+    canvas.off("mouse:over");
+    canvas.off("mouse:out");
     const scale = fitRef.current.scale;
     for (const section of sections) {
       const polygon = new Polygon(section.points.map(([x, y]) => proj(x, y)), {

@@ -8,6 +8,8 @@ import { EventDetails } from '@/app/components/EventDetails';
 import SponsorSections from '@/app/components/SponsorSections';
 import { EventCard } from '@/app/components/EventCard';
 import { TicketWidget } from '@/app/components/TicketWidget';
+import SeatQuantityCTA from '@/components/seatmap/SeatQuantityCTA';
+import { computeSeatQuantityCap } from '@/lib/seat-quantity';
 import Footer from '@/components/Footer';
 import type { SeatingConfig } from '@/lib/seatmap-types';
 
@@ -298,15 +300,22 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                                     <span className="ml-1 text-sm font-medium text-gray-600">onwards</span>
                                 </p>
                             )}
-                            <a
-                                href={`/checkout/${event.id}/seats`}
-                                className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-[#F15A29] py-4 font-bold text-white transition-colors hover:bg-[#d94d1f]"
-                            >
-                                {seatingType === 'seat_map' || seatingType === 'assigned_seating'
-                                    ? 'Select your seats'
-                                    : 'Choose tickets'}{' '}
-                                →
-                            </a>
+                            {seatingType === 'seat_map' ? (
+                                <SeatQuantityCTA
+                                    eventId={String(event.id)}
+                                    maxQuantity={computeSeatQuantityCap(sortedTiers)}
+                                />
+                            ) : (
+                                <a
+                                    href={`/checkout/${event.id}/seats`}
+                                    className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-[#F15A29] py-4 font-bold text-white transition-colors hover:bg-[#d94d1f]"
+                                >
+                                    {seatingType === 'assigned_seating'
+                                        ? 'Select your seats'
+                                        : 'Choose tickets'}{' '}
+                                    →
+                                </a>
+                            )}
                         </div>
                     ) : (
                         <TicketWidget

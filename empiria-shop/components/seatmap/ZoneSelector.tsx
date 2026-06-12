@@ -93,10 +93,31 @@ export default function ZoneSelector({
   const tierMap = new Map(tiers.map((t) => [t.id, t]));
   const zones = migratedConfig.zones || [];
 
+  // Configs saved before tier-id remapping shipped can carry designer-generated
+  // ids that don't match ticket_tiers rows — fall back to the tier NAME the
+  // wizard derives from the zone ("Zone" or "Zone — Tier"), returning REAL ids.
+  const tierByName = new Map(tiers.map((t) => [t.name.trim().toLowerCase(), t]));
+  function resolveZoneTierIds(zone: ZoneDefinition): string[] {
+    const candidates = getZoneTierIds(zone);
+    const multi = (zone.tiers?.length || 0) > 1;
+    const resolved: string[] = [];
+    for (const tid of candidates) {
+      if (tierMap.has(tid)) {
+        resolved.push(tid);
+        continue;
+      }
+      const zt = zone.tiers?.find((z) => z.id === tid);
+      const derivedName = zt && multi ? `${zone.name} — ${zt.name}` : zone.name;
+      const byName = tierByName.get(derivedName.trim().toLowerCase());
+      if (byName) resolved.push(byName.id);
+    }
+    return resolved;
+  }
+
   // Build zone-level availability: zone.id → total remaining across all zone tiers
   const zoneAvailability: Record<string, number> = {};
   for (const zone of zones) {
-    const tierIds = getZoneTierIds(zone);
+    const tierIds = resolveZoneTierIds(zone);
     let total = 0;
     for (const tid of tierIds) {
       const t = tierMap.get(tid);
@@ -229,7 +250,7 @@ export default function ZoneSelector({
   // Get tiers available for the selected zone
   const selectedZoneTiers: { zoneTier: ZoneTier | undefined; ticketTier: TicketTier }[] = [];
   if (selectedZone) {
-    const tierIds = getZoneTierIds(selectedZone);
+    const tierIds = resolveZoneTierIds(selectedZone);
     for (const tid of tierIds) {
       const tt = tierMap.get(tid);
       if (tt) {
@@ -241,7 +262,7 @@ export default function ZoneSelector({
 
   // Price range for zone legend
   function getZonePriceLabel(zone: ZoneDefinition): string {
-    const tierIds = getZoneTierIds(zone);
+    const tierIds = resolveZoneTierIds(zone);
     const prices = tierIds
       .map((tid) => tierMap.get(tid)?.price)
       .filter((p): p is number => p !== undefined);

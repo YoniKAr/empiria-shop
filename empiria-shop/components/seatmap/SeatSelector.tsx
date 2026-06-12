@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
-import { X, Loader2, AlertCircle, Clock } from "lucide-react";
+import { useState, useEffect, useMemo, useRef } from "react";
+import { X, Loader2, AlertCircle, Clock, Minus, Plus } from "lucide-react";
 import SeatmapViewer from "./SeatmapViewer";
 import SchematicViewer from "./SchematicViewer";
 import { useSeatHolds } from "./useSeatHolds";
+import { computeSeatQuantityCap } from "@/lib/seat-quantity";
 import type { SeatingConfig, SectionDefinition, ZoneTier } from "@/lib/seatmap-types";
 
 interface TicketTier {
@@ -32,6 +33,9 @@ interface SeatSelectorProps {
   userName?: string;
   occurrences?: OccurrenceOption[];
   blockedBuyer?: boolean;
+  /** Deep-linked seat count (e.g. ?qty=2). If valid (1..max), the quantity
+   *  step is skipped and the map opens locked to that count. */
+  initialQuantity?: number;
 }
 
 interface SelectedSeat {
@@ -64,6 +68,7 @@ export default function SeatSelector({
   userName,
   occurrences = [],
   blockedBuyer = false,
+  initialQuantity,
 }: SeatSelectorProps) {
   const [sessionId] = useState(() => {
     if (typeof window === "undefined") return "";
@@ -84,6 +89,8 @@ export default function SeatSelector({
   } = useSeatHolds({ eventId, sessionId });
 
   const [selectedSeats, setSelectedSeats] = useState<SelectedSeat[]>([]);
+  // Serializes seat clicks — canvas events can double-fire (see SeatmapViewer).
+  const clickBusyRef = useRef(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [shake, setShake] = useState(false);
@@ -100,7 +107,62 @@ export default function SeatSelector({
     label: string;
   } | null>(null);
 
+  // ── Quantity-gated selection ────────────────────────────────────────────
+  // Customer first picks HOW MANY seats, then the map enforces exactly N.
+  const maxQuantity = useMemo(() => computeSeatQuantityCap(tiers), [tiers]);
+  const hasValidInitialQuantity =
+    initialQuantity !== undefined &&
+    Number.isInteger(initialQuantity) &&
+    initialQuantity >= 1 &&
+    initialQuantity <= maxQuantity;
+  const [requiredQuantity, setRequiredQuantity] = useState<number>(
+    hasValidInitialQuantity ? (initialQuantity as number) : 1
+  );
+  const [phase, setPhase] = useState<"quantity" | "map">(
+    hasValidInitialQuantity ? "map" : "quantity"
+  );
+
+  /** Seats counted toward the cap: confirmed selections + the tier-pending one. */
+  const selectedCount = selectedSeats.length + (pendingSeat ? 1 : 0);
+
+  /** Change N. If reduced below current selections, release the excess
+   *  (most recent first — the pending seat is the most recent of all). */
+  async function applyQuantityChange(nextQty: number) {
+    const clamped = Math.max(1, Math.min(maxQuantity, nextQty));
+    let excess = selectedCount - clamped;
+    if (excess > 0) {
+      if (pendingSeat) {
+        await releaseSeat(pendingSeat.seatId);
+        setPendingSeat(null);
+        excess--;
+      }
+      if (excess > 0) {
+        const toRelease = selectedSeats.slice(selectedSeats.length - excess);
+        for (const seat of [...toRelease].reverse()) {
+          await releaseSeat(seat.seatId);
+        }
+        const releasedIds = new Set(toRelease.map((s) => s.seatId));
+        setSelectedSeats((prev) => prev.filter((s) => !releasedIds.has(s.seatId)));
+      }
+    }
+    setRequiredQuantity(clamped);
+    setError(null);
+  }
+
   const tierMap = new Map(tiers.map((t) => [t.id, t]));
+  // Configs saved before tier-id remapping shipped can carry designer-generated
+  // ids that don't match ticket_tiers rows — fall back to the tier NAME the
+  // wizard derives from the zone ("Zone" or "Zone — Tier").
+  const tierByName = new Map(tiers.map((t) => [t.name.trim().toLowerCase(), t]));
+  const resolveTier = (tid: string | undefined, ...names: (string | undefined)[]): TicketTier | undefined => {
+    const byId = tid ? tierMap.get(tid) : undefined;
+    if (byId) return byId;
+    for (const n of names) {
+      const t = n ? tierByName.get(n.trim().toLowerCase()) : undefined;
+      if (t) return t;
+    }
+    return undefined;
+  };
   const sections = config.sections || [];
 
   // Build lookup: sectionId (= zoneId) → zone tiers
@@ -110,16 +172,17 @@ export default function SeatSelector({
       for (const zone of config.zones) {
         const tierEntries: { zoneTier: ZoneTier; ticketTier: TicketTier }[] = [];
         if (zone.tiers && zone.tiers.length > 0) {
+          const multi = zone.tiers.length > 1;
           for (const zt of zone.tiers) {
-            const tt = tierMap.get(zt.id);
+            const tt = resolveTier(zt.id, multi ? `${zone.name} — ${zt.name}` : zone.name);
             if (tt) tierEntries.push({ zoneTier: zt, ticketTier: tt });
           }
         } else {
           // Legacy: single tier via tier_id
-          const tt = tierMap.get(zone.tier_id);
+          const tt = resolveTier(zone.tier_id, zone.name);
           if (tt) {
             tierEntries.push({
-              zoneTier: { id: zone.tier_id, name: zone.name, price: tt.price, initial_quantity: tt.remaining_quantity, max_per_order: tt.max_per_order || 10, description: "", currency: "" },
+              zoneTier: { id: tt.id, name: zone.name, price: tt.price, initial_quantity: tt.remaining_quantity, max_per_order: tt.max_per_order || 10, description: "", currency: "" },
               ticketTier: tt,
             });
           }
@@ -130,17 +193,18 @@ export default function SeatSelector({
     // Fallback: use sections' tier_id for non-zone configs
     for (const section of sections) {
       if (!map.has(section.id)) {
-        const tt = tierMap.get(section.tier_id);
+        const tt = resolveTier(section.tier_id, section.name);
         if (tt) {
           map.set(section.id, [{
-            zoneTier: { id: section.tier_id, name: section.name, price: tt.price, initial_quantity: tt.remaining_quantity, max_per_order: tt.max_per_order || 10, description: "", currency: "" },
+            zoneTier: { id: tt.id, name: section.name, price: tt.price, initial_quantity: tt.remaining_quantity, max_per_order: tt.max_per_order || 10, description: "", currency: "" },
             ticketTier: tt,
           }]);
         }
       }
     }
     return map;
-  }, [config.zones, sections, tierMap]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config.zones, sections, tiers]);
 
   // Compute sold seats — fetched from DB on mount
   const [soldSeats, setSoldSeats] = useState<Set<string>>(new Set());
@@ -188,6 +252,7 @@ export default function SeatSelector({
 
       if (remaining <= 0) {
         setSelectedSeats([]);
+        setPendingSeat(null);
       }
     };
 
@@ -201,44 +266,75 @@ export default function SeatSelector({
     sectionId: string,
     label: string
   ) {
-    setError(null);
+    // Re-entrancy guard: canvas events can double-fire; while one click is
+    // mid-flight (awaiting hold/release), ignore further clicks entirely.
+    if (clickBusyRef.current) return;
+    clickBusyRef.current = true;
+    try {
+      setError(null);
 
-    // If already held by me, release it
-    if (myHeldSeats.has(seatId)) {
-      await releaseSeat(seatId);
-      setSelectedSeats((prev) => prev.filter((s) => s.seatId !== seatId));
-      setPendingSeat(null);
-      return;
-    }
+      // If already held by me, release it (deselect)
+      if (myHeldSeats.has(seatId)) {
+        await releaseSeat(seatId);
+        setSelectedSeats((prev) => prev.filter((s) => s.seatId !== seatId));
+        if (pendingSeat?.seatId === seatId) setPendingSeat(null);
+        return;
+      }
 
-    // Hold the seat
-    const result = await holdSeat(seatId);
-    if (!result.success) {
-      setError(result.error || "Failed to hold seat");
-      return;
-    }
+      // A tier-pending seat is the most recent pick; clicking any other seat
+      // replaces it — release its hold so it never lingers.
+      if (pendingSeat) {
+        await releaseSeat(pendingSeat.seatId);
+        setPendingSeat(null);
+      } else if (selectedSeats.length >= requiredQuantity) {
+        // Already at N: release the most recently selected seat's hold and
+        // drop it from the selection, making room for the new seat.
+        const lastSeat = selectedSeats[selectedSeats.length - 1];
+        await releaseSeat(lastSeat.seatId);
+        setSelectedSeats((prev) => prev.filter((s) => s.seatId !== lastSeat.seatId));
+      }
 
-    const zoneTiers = sectionZoneTiers.get(sectionId) || [];
+      const zoneTiers = sectionZoneTiers.get(sectionId) || [];
+      if (zoneTiers.length === 0) {
+        // No purchasable tier maps to this section — never hold a seat the
+        // customer can't see/buy (it would block them invisibly for 10 min).
+        setError("This seat can't be purchased right now — its ticket tier is unavailable.");
+        return;
+      }
 
-    if (zoneTiers.length > 1) {
-      // Multi-tier zone: show tier picker
-      setPendingSeat({ seatId, sectionId, label });
-    } else if (zoneTiers.length === 1) {
-      // Single tier: add directly
-      const { zoneTier, ticketTier } = zoneTiers[0];
-      const section = sections.find((s) => s.id === sectionId);
-      setSelectedSeats((prev) => [
-        ...prev,
-        {
-          seatId,
-          sectionId,
-          label,
-          tierId: ticketTier.id,
-          price: ticketTier.price,
-          sectionName: section?.name || "",
-          tierName: getTierLabel(zoneTier, ticketTier),
-        },
-      ]);
+      // Hold the seat
+      const result = await holdSeat(seatId);
+      if (!result.success) {
+        setError(result.error || "Failed to hold seat");
+        return;
+      }
+
+      if (zoneTiers.length > 1) {
+        // Multi-tier zone: show tier picker
+        setPendingSeat({ seatId, sectionId, label });
+      } else {
+        // Single tier: add directly (dedupe — never two entries for one seat)
+        const { zoneTier, ticketTier } = zoneTiers[0];
+        const section = sections.find((s) => s.id === sectionId);
+        setSelectedSeats((prev) =>
+          prev.some((s) => s.seatId === seatId)
+            ? prev
+            : [
+                ...prev,
+                {
+                  seatId,
+                  sectionId,
+                  label,
+                  tierId: ticketTier.id,
+                  price: ticketTier.price,
+                  sectionName: section?.name || "",
+                  tierName: getTierLabel(zoneTier, ticketTier),
+                },
+              ]
+        );
+      }
+    } finally {
+      clickBusyRef.current = false;
     }
   }
 
@@ -288,8 +384,10 @@ export default function SeatSelector({
       return;
     }
 
-    if (selectedSeats.length === 0) {
-      setError("Please select at least one seat");
+    if (selectedSeats.length !== requiredQuantity) {
+      setError(
+        `Please select exactly ${requiredQuantity} seat${requiredQuantity !== 1 ? "s" : ""}`
+      );
       return;
     }
 
@@ -358,14 +456,86 @@ export default function SeatSelector({
   }
 
   const isSchematicMode = config.view_mode === "schematic";
+  const remainingToPick = requiredQuantity - selectedSeats.length;
 
+  // ── Phase 1: pick how many seats ──────────────────────────────────────
+  if (phase === "quantity") {
+    return (
+      <div className="max-w-md mx-auto border border-gray-200 rounded-xl shadow-lg bg-white p-6">
+        <h3 className="font-bold text-xl text-gray-900">How many seats?</h3>
+        <p className="text-sm text-gray-700 mt-1">
+          You&apos;ll pick exactly this many seats on the map.
+        </p>
+
+        <div className="flex items-center justify-center gap-6 my-8">
+          <button
+            type="button"
+            aria-label="Fewer seats"
+            onClick={() => applyQuantityChange(requiredQuantity - 1)}
+            disabled={requiredQuantity <= 1}
+            className="w-12 h-12 rounded-full border border-gray-300 flex items-center justify-center text-gray-900 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          >
+            <Minus size={18} />
+          </button>
+          <span className="w-20 text-center text-5xl font-bold text-gray-900 tabular-nums">
+            {requiredQuantity}
+          </span>
+          <button
+            type="button"
+            aria-label="More seats"
+            onClick={() => applyQuantityChange(requiredQuantity + 1)}
+            disabled={requiredQuantity >= maxQuantity}
+            className="w-12 h-12 rounded-full border border-gray-300 flex items-center justify-center text-gray-900 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          >
+            <Plus size={18} />
+          </button>
+        </div>
+
+        <p className="text-xs text-gray-700 text-center">
+          Up to {maxQuantity} seat{maxQuantity !== 1 ? "s" : ""} per order
+        </p>
+
+        <button
+          type="button"
+          onClick={() => setPhase("map")}
+          className="mt-6 w-full bg-[#F15A29] text-white py-4 rounded-xl font-bold hover:bg-[#d94d1f] transition-colors"
+        >
+          Continue — pick {requiredQuantity} seat
+          {requiredQuantity !== 1 ? "s" : ""} →
+        </button>
+      </div>
+    );
+  }
+
+  // ── Phase 2: the seat map, locked to exactly N seats ─────────────────
   return (
     <div className="space-y-4">
+      {/* Quantity summary */}
+      <div className="flex items-center justify-between border border-gray-200 rounded-xl shadow-lg bg-white px-4 py-3">
+        <div className="text-sm">
+          <span className="font-bold text-gray-900">
+            {requiredQuantity} seat{requiredQuantity !== 1 ? "s" : ""}
+          </span>
+          <span className="ml-2 text-gray-700">
+            {selectedSeats.length} of {requiredQuantity} selected
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={() => setPhase("quantity")}
+          className="text-sm font-semibold text-[#F15A29] hover:underline"
+        >
+          Change
+        </button>
+      </div>
+
       <div className="border border-gray-200 rounded-xl shadow-lg bg-white overflow-hidden">
         <div className="p-4 border-b bg-gray-50">
           <h3 className="font-bold text-lg text-gray-900">Select Your Seats</h3>
           <p className="text-sm text-gray-700">
-            Click on available seats to reserve them
+            Pick {requiredQuantity} seat{requiredQuantity !== 1 ? "s" : ""} on
+            the map — clicking a new seat once you have {requiredQuantity} swaps
+            out your last pick
           </p>
           {timeLeft !== null && timeLeft > 0 && (
             <div className="flex items-center gap-1.5 mt-2 text-sm text-orange-600 font-medium">
@@ -533,8 +703,9 @@ export default function SeatSelector({
         {/* Selected seats list */}
         <div className="space-y-2 mb-5">
           {selectedSeats.length === 0 && !pendingSeat ? (
-            <p className="text-sm text-gray-600 py-4 text-center">
-              Click on seats in the map to select them
+            <p className="text-sm text-gray-700 py-4 text-center">
+              Select {requiredQuantity} seat
+              {requiredQuantity !== 1 ? "s" : ""} on the map
             </p>
           ) : (
             selectedSeats.map((seat) => (
@@ -628,16 +799,20 @@ export default function SeatSelector({
         <button
           type="button"
           onClick={handleCheckout}
-          disabled={selectedSeats.length === 0 || loading}
-          className={`w-full bg-orange-600 text-white text-center py-4 rounded-xl font-bold hover:bg-orange-700 transition-colors disabled:bg-gray-300 disabled:text-gray-600 disabled:cursor-not-allowed flex items-center justify-center gap-2 ${shake ? "animate-shake" : ""}`}
+          disabled={
+            selectedSeats.length !== requiredQuantity ||
+            !!pendingSeat ||
+            loading
+          }
+          className={`w-full bg-[#F15A29] text-white text-center py-4 rounded-xl font-bold hover:bg-[#d94d1f] transition-colors disabled:bg-gray-300 disabled:text-gray-700 disabled:cursor-not-allowed flex items-center justify-center gap-2 ${shake ? "animate-shake" : ""}`}
         >
           {loading ? (
             <>
               <Loader2 size={18} className="animate-spin" />
               Redirecting to payment...
             </>
-          ) : selectedSeats.length === 0 ? (
-            "Select Seats"
+          ) : remainingToPick > 0 ? (
+            `Select ${remainingToPick} more seat${remainingToPick !== 1 ? "s" : ""}`
           ) : (
             "Checkout"
           )}

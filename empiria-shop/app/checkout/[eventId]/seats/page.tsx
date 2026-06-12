@@ -13,8 +13,19 @@ import type { SeatingConfig } from '@/lib/seatmap-types';
 
 const SEATED = ['seat_map', 'assigned_seating', 'zone_map', 'zone_admission'];
 
-export default async function SeatSelectionPage({ params }: { params: Promise<{ eventId: string }> }) {
+export default async function SeatSelectionPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ eventId: string }>;
+  searchParams: Promise<{ qty?: string }>;
+}) {
   const { eventId } = await params;
+  // Deep-linked seat count (?qty=2). SeatSelector validates against its own
+  // max and falls back to the quantity step when out of range.
+  const { qty } = await searchParams;
+  const parsedQty = qty ? Number.parseInt(qty, 10) : NaN;
+  const initialQuantity = Number.isInteger(parsedQty) && parsedQty > 0 ? parsedQty : undefined;
   const supabase = getSupabaseAdmin();
 
   const { data: event } = await supabase
@@ -101,6 +112,7 @@ export default async function SeatSelectionPage({ params }: { params: Promise<{ 
             userName={user?.name}
             blockedBuyer={blockedBuyer}
             occurrences={occurrences}
+            initialQuantity={initialQuantity}
           />
         ) : (
           <ZoneSelector
