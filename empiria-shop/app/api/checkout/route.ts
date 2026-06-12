@@ -10,6 +10,7 @@ import { getSupabaseAdmin } from '@/lib/supabase';
 import { toStripeAmount } from '@/lib/utils';
 import { computeFees, DEFAULT_FEE_PERCENT, DEFAULT_FIXED_PER_TICKET } from '@/lib/fees';
 import { sendOrderConfirmationEmail } from '@/lib/email';
+import { inviteGuestToFinishSignup } from '@/lib/guest-invite';
 
 interface TierSelection {
   tierId: string;
@@ -727,6 +728,14 @@ export async function POST(request: NextRequest) {
         } catch (emailErr) {
           console.error('[Checkout] Free order email failed:', emailErr);
         }
+      }
+
+      // 6. Guest purchase → invite them to finish signup (Auth0 set-password email).
+      // Guest = no authenticated session (user?.sub absent → freeUserId null).
+      // Fire-and-forget: inviteGuestToFinishSignup never throws, so it cannot
+      // break order fulfillment; tickets + emails are already done above.
+      if (!freeUserId && freeEmail) {
+        await inviteGuestToFinishSignup({ email: freeEmail, name: freeName });
       }
 
       return NextResponse.json({ url: `${appBaseUrl}/checkout/success?order_id=${freeOrder.id}` });
