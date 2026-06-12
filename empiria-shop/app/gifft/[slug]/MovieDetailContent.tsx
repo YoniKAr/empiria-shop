@@ -59,8 +59,10 @@ export default function MovieDetailContent({
     return h > 0 ? `${h}h ${m}m` : `${m} min`;
   };
 
+  // Platform timezone: showtimes render in America/Toronto everywhere.
   const formatDate = (dateStr: string) =>
     new Date(dateStr).toLocaleDateString('en-CA', {
+      timeZone: 'America/Toronto',
       weekday: 'long',
       year: 'numeric',
       month: 'long',
@@ -69,6 +71,7 @@ export default function MovieDetailContent({
 
   const formatTime = (dateStr: string) =>
     new Date(dateStr).toLocaleTimeString('en-CA', {
+      timeZone: 'America/Toronto',
       hour: '2-digit',
       minute: '2-digit',
       hour12: true,
@@ -295,10 +298,10 @@ export default function MovieDetailContent({
                     {/* Date box */}
                     <div className="flex-shrink-0 border border-gray-200 rounded-lg px-3 py-2 text-center min-w-[60px] shadow-sm">
                       <span className="block text-[#F15A29] text-[10px] font-bold uppercase tracking-widest">
-                        {new Date(occ.starts_at).toLocaleDateString('en-CA', { month: 'short' }).toUpperCase()}
+                        {new Date(occ.starts_at).toLocaleDateString('en-CA', { timeZone: 'America/Toronto', month: 'short' }).toUpperCase()}
                       </span>
                       <span className="block text-slate-900 text-xl font-extrabold leading-tight mt-0.5">
-                        {new Date(occ.starts_at).getDate()}
+                        {new Date(occ.starts_at).toLocaleDateString('en-CA', { timeZone: 'America/Toronto', day: 'numeric' })}
                       </span>
                     </div>
 

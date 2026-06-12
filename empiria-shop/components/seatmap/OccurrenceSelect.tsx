@@ -9,12 +9,17 @@ export interface OccurrenceChoice {
 export function formatOccurrence(occ: OccurrenceChoice): string {
   const d = new Date(occ.starts_at);
   const date = d.toLocaleDateString("en-US", {
+    timeZone: "America/Toronto",
     weekday: "short",
     month: "short",
     day: "numeric",
     year: "numeric",
   });
-  const time = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  const time = d.toLocaleTimeString("en-US", {
+    timeZone: "America/Toronto",
+    hour: "numeric",
+    minute: "2-digit",
+  });
   return `${date} · ${time}${occ.label ? ` — ${occ.label}` : ""}`;
 }
 

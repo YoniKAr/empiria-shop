@@ -1,6 +1,35 @@
-export function emailLayout({ title, bodyHtml }: { title: string; bodyHtml: string }): string {
-  return `
-<!DOCTYPE html>
+// Shared layout wrapper for all shop transactional emails.
+// Header and outer table chrome are identical across every template; the
+// footer text varies, so it is parameterized (with a sensible default).
+
+const DEFAULT_FOOTER_HTML =
+  'This email was sent by Empiria. If you have questions about your order, please contact the event organizer.';
+
+/**
+ * Escapes user-supplied text for safe interpolation into email HTML.
+ * Organizer/attendee-controlled strings (subjects, messages, titles, reasons,
+ * names) MUST pass through this before being embedded in a template —
+ * otherwise an organizer can inject arbitrary HTML into mail sent from
+ * info@empiria.events.
+ */
+export function escapeHtml(str: string): string {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+interface EmailLayoutOptions {
+  title: string;
+  bodyHtml: string;
+  /** Inner HTML for the footer paragraph. Defaults to the standard footer text. */
+  footerHtml?: string;
+}
+
+export function emailLayout({ title, bodyHtml, footerHtml = DEFAULT_FOOTER_HTML }: EmailLayoutOptions): string {
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
@@ -24,7 +53,7 @@ ${bodyHtml}
           <tr>
             <td style="padding: 20px 32px; background: #f9fafb; border-top: 1px solid #e5e7eb;">
               <p style="margin: 0; font-size: 12px; color: #9ca3af; text-align: center; line-height: 1.5;">
-                This email was sent by Empiria. If you have questions about your order, please contact the event organizer.
+                ${footerHtml}
               </p>
             </td>
           </tr>

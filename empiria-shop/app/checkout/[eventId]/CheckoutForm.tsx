@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import type { CustomField } from "@/lib/eventFields";
 import { computeFees } from "@/lib/fees";
+import { getCurrencySymbol } from "@/lib/utils";
 import StripeBadge from "@/components/StripeBadge";
 
 interface Tier {
@@ -167,8 +168,7 @@ export function CheckoutForm({
   });
   const customerTotal = fees.customerTotal;
 
-  const currencySymbol =
-    currency === "inr" ? "₹" : currency === "cad" ? "CA$" : "$";
+  const currencySymbol = getCurrencySymbol(currency);
   const formatPrice = (amount: number) => {
     if (amount === 0) return "FREE";
     return `${currencySymbol}${amount.toLocaleString(undefined, {
@@ -447,6 +447,7 @@ export function CheckoutForm({
                   <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs font-medium backdrop-blur-sm">
                     <Calendar className="h-3.5 w-3.5" />
                     {occurrenceDate.toLocaleDateString("en-US", {
+                      timeZone: "America/Toronto",
                       weekday: "short",
                       month: "short",
                       day: "numeric",
@@ -454,6 +455,7 @@ export function CheckoutForm({
                     })}
                     {" · "}
                     {occurrenceDate.toLocaleTimeString("en-US", {
+                      timeZone: "America/Toronto",
                       hour: "numeric",
                       minute: "2-digit",
                       hour12: true,
@@ -690,6 +692,7 @@ export function CheckoutForm({
                       <div className="min-w-0">
                         <p className="text-sm font-semibold text-gray-900">
                           {d.toLocaleDateString("en-US", {
+                            timeZone: "America/Toronto",
                             weekday: "short",
                             month: "short",
                             day: "numeric",
@@ -697,6 +700,7 @@ export function CheckoutForm({
                           })}
                           {" · "}
                           {d.toLocaleTimeString("en-US", {
+                            timeZone: "America/Toronto",
                             hour: "numeric",
                             minute: "2-digit",
                             hour12: true,
@@ -1021,6 +1025,7 @@ export function CheckoutForm({
                 {new Date(selectedOccurrence.starts_at).toLocaleDateString(
                   "en-US",
                   {
+                    timeZone: "America/Toronto",
                     weekday: "short",
                     month: "short",
                     day: "numeric",
@@ -1030,7 +1035,12 @@ export function CheckoutForm({
                 &middot;{" "}
                 {new Date(selectedOccurrence.starts_at).toLocaleTimeString(
                   "en-US",
-                  { hour: "numeric", minute: "2-digit", hour12: true }
+                  {
+                    timeZone: "America/Toronto",
+                    hour: "numeric",
+                    minute: "2-digit",
+                    hour12: true,
+                  }
                 )}
               </p>
             )}

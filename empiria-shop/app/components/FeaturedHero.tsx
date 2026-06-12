@@ -143,12 +143,14 @@ export default function FeaturedHero({ featuredEvents, query, setQuery }: Featur
                     <span className="flex items-center gap-1.5">
                       <Calendar className="w-4 h-4" />
                       {eventDate.toLocaleDateString('en-US', {
+                        timeZone: 'America/Toronto',
                         weekday: 'short',
                         month: 'short',
                         day: 'numeric',
                       })}
                       {' at '}
                       {eventDate.toLocaleTimeString('en-US', {
+                        timeZone: 'America/Toronto',
                         hour: 'numeric',
                         minute: '2-digit',
                         hour12: true,

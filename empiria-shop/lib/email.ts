@@ -57,8 +57,8 @@ export async function sendOrderConfirmationEmail(data: OrderEmailData) {
   const eventData = {
     id: data.orderId, // Use orderId as fallback since we don't have event id
     title: data.eventTitle,
-    start_at: data.eventDate,
-    end_at: data.eventEndDate || null,
+    starts_at: data.eventDate,
+    ends_at: data.eventEndDate || null,
     venue_name: data.venueName,
     city: data.city,
   };

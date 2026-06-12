@@ -370,12 +370,14 @@ export default function ZoneSelector({
                   >
                     <div className="font-medium text-sm">
                       {occDate.toLocaleDateString("en-US", {
+                        timeZone: "America/Toronto",
                         weekday: "short",
                         month: "short",
                         day: "numeric",
                       })}
                       {" at "}
                       {occDate.toLocaleTimeString("en-US", {
+                        timeZone: "America/Toronto",
                         hour: "numeric",
                         minute: "2-digit",
                       })}

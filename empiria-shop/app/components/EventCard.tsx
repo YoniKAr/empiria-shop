@@ -36,10 +36,12 @@ export function EventCard({
     coHostCount = 0,
 }: EventCardProps) {
     const eventDate = startAt ? new Date(startAt) : null;
-    const month = eventDate?.toLocaleDateString('en-US', { month: 'short' }).toUpperCase();
-    const day = eventDate?.getDate();
-    const dayName = eventDate?.toLocaleDateString('en-US', { weekday: 'short' });
-    const time = eventDate?.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    // Platform timezone: dates render in America/Toronto everywhere.
+    const TZ = 'America/Toronto';
+    const month = eventDate?.toLocaleDateString('en-US', { timeZone: TZ, month: 'short' }).toUpperCase();
+    const day = eventDate?.toLocaleDateString('en-US', { timeZone: TZ, day: 'numeric' });
+    const dayName = eventDate?.toLocaleDateString('en-US', { timeZone: TZ, weekday: 'short' });
+    const time = eventDate?.toLocaleTimeString('en-US', { timeZone: TZ, hour: 'numeric', minute: '2-digit', hour12: true });
 
     const isFree = minPrice === 0;
 

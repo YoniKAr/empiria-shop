@@ -24,7 +24,10 @@ interface EventHeroProps {
     attendeeCount?: number
 }
 
-const TIME_FMT: Intl.DateTimeFormatOptions = { hour: "numeric", minute: "2-digit" }
+// Platform timezone: all dates render in America/Toronto regardless of
+// server (UTC on Vercel) or visitor timezone.
+const TORONTO_TZ = "America/Toronto"
+const TIME_FMT: Intl.DateTimeFormatOptions = { timeZone: TORONTO_TZ, hour: "numeric", minute: "2-digit" }
 
 function AvatarCircle({ name, avatarUrl, size }: { name: string; avatarUrl?: string | null; size: "md" | "sm" }) {
     const cls = size === "md" ? "w-7 h-7 text-xs" : "w-5 h-5 text-[10px]"
@@ -67,6 +70,7 @@ export function EventHero({
     const end = endAt ? new Date(endAt) : null
 
     const formattedDate = start.toLocaleDateString("en-US", {
+        timeZone: TORONTO_TZ,
         weekday: "long",
         year: "numeric",
         month: "long",
@@ -74,13 +78,15 @@ export function EventHero({
     })
     const startTime = start.toLocaleTimeString("en-US", TIME_FMT)
 
+    // Same-calendar-day check must use Toronto days, not the server's TZ.
+    const torontoDay = (d: Date) => d.toLocaleDateString("en-CA", { timeZone: TORONTO_TZ })
     let timeRange = startTime
     if (end && end.getTime() > start.getTime()) {
         const endTime = end.toLocaleTimeString("en-US", TIME_FMT)
         timeRange =
-            start.toDateString() === end.toDateString()
+            torontoDay(start) === torontoDay(end)
                 ? `${startTime} – ${endTime}`
-                : `${startTime} – ${end.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}, ${endTime}`
+                : `${startTime} – ${end.toLocaleDateString("en-US", { timeZone: TORONTO_TZ, weekday: "short", month: "short", day: "numeric" })}, ${endTime}`
     }
 
     const mapsQuery = [venueName, addressText, city].filter(Boolean).join(", ")
