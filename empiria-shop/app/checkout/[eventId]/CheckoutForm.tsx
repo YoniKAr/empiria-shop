@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import {
-  ShieldCheck,
   Minus,
   Plus,
   Loader2,
@@ -21,6 +20,7 @@ import {
 } from "lucide-react";
 import type { CustomField } from "@/lib/eventFields";
 import { computeFees } from "@/lib/fees";
+import StripeBadge from "@/components/StripeBadge";
 
 interface Tier {
   id: string;
@@ -60,6 +60,8 @@ interface CheckoutFormProps {
   } | null;
   sharedCapacity?: boolean;
   sharedRemaining?: number;
+  /** Pre-selected occurrence (?occ=<id>, validated server-side). */
+  initialOccurrenceId?: string;
 }
 
 export function CheckoutForm({
@@ -76,6 +78,7 @@ export function CheckoutForm({
   user,
   sharedCapacity = false,
   sharedRemaining = 0,
+  initialOccurrenceId,
 }: CheckoutFormProps) {
   const [step, setStep] = useState<"select" | "review">("select");
   const [quantities, setQuantities] = useState<Record<string, number>>(() => {
@@ -110,7 +113,14 @@ export function CheckoutForm({
     }));
   };
 
-  const selectedOccurrence = occurrences[0];
+  // Multi-occurrence events: the buyer picks WHICH date they're buying for
+  // (selector renders above ticket selection). Single-occurrence events keep
+  // the old behavior — the lone occurrence is used automatically.
+  const [selectedOccurrenceId, setSelectedOccurrenceId] = useState<string>(
+    () => initialOccurrenceId ?? occurrences[0]?.id ?? ""
+  );
+  const selectedOccurrence =
+    occurrences.find((o) => o.id === selectedOccurrenceId) ?? occurrences[0];
 
   const totalItems = Object.values(quantities).reduce((s, q) => s + q, 0);
   const subtotal = tiers.reduce(
@@ -622,12 +632,7 @@ export function CheckoutForm({
                   )}
                 </button>
 
-                <div className="mt-3 flex items-center justify-center gap-1.5">
-                  <ShieldCheck className="h-3.5 w-3.5 text-gray-600" />
-                  <p className="text-xs text-gray-600">
-                    Secure checkout powered by Stripe
-                  </p>
-                </div>
+                <StripeBadge className="mt-3" />
               </div>
             </div>
 
@@ -651,6 +656,60 @@ export function CheckoutForm({
       >
         {/* LEFT COLUMN */}
         <div className="space-y-6">
+          {/* Occurrence picker — buyers choose WHICH date first */}
+          {occurrences.length > 1 && (
+            <div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-black/5" data-testid="checkout-occurrences">
+              <h2 className="mb-4 flex items-center gap-2 text-lg font-bold text-gray-900">
+                <Calendar className="h-4 w-4 text-[#F15A29]" />
+                Choose a Date
+              </h2>
+              <div className="space-y-3">
+                {occurrences.map((occ) => {
+                  const d = new Date(occ.starts_at);
+                  const isSelected = selectedOccurrenceId === occ.id;
+                  return (
+                    <button
+                      key={occ.id}
+                      type="button"
+                      onClick={() => setSelectedOccurrenceId(occ.id)}
+                      data-testid={`checkout-occurrence-${occ.id}`}
+                      className={`flex w-full items-center justify-between rounded-xl border-2 p-4 text-left transition-all ${
+                        isSelected
+                          ? "border-[#F15A29] bg-orange-50"
+                          : "border-gray-200 hover:border-orange-300"
+                      }`}
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-gray-900">
+                          {d.toLocaleDateString("en-US", {
+                            weekday: "short",
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                          })}
+                          {" · "}
+                          {d.toLocaleTimeString("en-US", {
+                            hour: "numeric",
+                            minute: "2-digit",
+                            hour12: true,
+                          })}
+                        </p>
+                        {occ.label && (
+                          <p className="mt-0.5 truncate text-xs text-gray-700">{occ.label}</p>
+                        )}
+                      </div>
+                      {isSelected && (
+                        <span className="ml-3 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#F15A29]">
+                          <CheckCircle2 className="h-3.5 w-3.5 text-white" />
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Tier selection */}
           <div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-black/5">
             <h2 className="mb-4 flex items-center gap-2 text-lg font-bold text-gray-900">
@@ -991,12 +1050,7 @@ export function CheckoutForm({
               </button>
             </div>
 
-            <div className="flex items-center justify-center gap-2 mt-4">
-              <ShieldCheck className="w-3.5 h-3.5 text-gray-700" />
-              <p className="text-xs text-gray-700">
-                Secure checkout powered by Stripe
-              </p>
-            </div>
+            <StripeBadge className="mt-4" />
           </div>
         </div>
       </div>

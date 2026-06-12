@@ -4,8 +4,17 @@ import { CheckoutForm } from './CheckoutForm';
 import { redirect } from 'next/navigation';
 import { DEFAULT_FEE_PERCENT, DEFAULT_FIXED_PER_TICKET } from '@/lib/fees';
 
-export default async function CheckoutPage({ params }: { params: Promise<{ eventId: string }> }) {
+export default async function CheckoutPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ eventId: string }>;
+  searchParams: Promise<{ occ?: string }>;
+}) {
   const { eventId } = await params;
+  // Optional ?occ=<id> pre-selects an occurrence (validated below against
+  // this event's future occurrences).
+  const { occ } = await searchParams;
   const session = await getSafeSession();
   const user = session?.user ?? null;
 
@@ -20,7 +29,7 @@ export default async function CheckoutPage({ params }: { params: Promise<{ event
       shared_capacity, total_capacity, total_tickets_sold,
       platform_fee_percent, platform_fee_fixed,
       ticket_tiers (id, name, description, price, currency, remaining_quantity, min_per_order, max_per_order),
-      event_occurrences (id, starts_at, ends_at, label)
+      event_occurrences (id, starts_at, ends_at, label, is_cancelled)
     `)
     .eq('id', eventId)
     .eq('status', 'published')
@@ -59,12 +68,28 @@ export default async function CheckoutPage({ params }: { params: Promise<{ event
     currency: t.currency || event.currency || 'cad',
   }));
 
-  const occurrences = (event.event_occurrences ?? []).map((o: any) => ({
-    id: o.id,
-    starts_at: o.starts_at,
-    ends_at: o.ends_at,
-    label: o.label,
-  }));
+  // Sorted, non-cancelled occurrences; the picker only offers FUTURE dates
+  // (falls back to all when none are upcoming, preserving old behavior).
+  const allOccurrences = (event.event_occurrences ?? [])
+    .filter((o: any) => !o.is_cancelled)
+    .sort(
+      (a: any, b: any) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime()
+    );
+  const futureOccurrences = allOccurrences.filter(
+    (o: any) => new Date(o.starts_at) > new Date()
+  );
+  const occurrences = (futureOccurrences.length > 0 ? futureOccurrences : allOccurrences).map(
+    (o: any) => ({
+      id: o.id,
+      starts_at: o.starts_at,
+      ends_at: o.ends_at,
+      label: o.label,
+    })
+  );
+
+  // ?occ=<id> must match one of the event's FUTURE occurrences to pre-select.
+  const initialOccurrenceId =
+    occ && futureOccurrences.some((o: any) => String(o.id) === occ) ? occ : undefined;
 
   // Shared-capacity pool: the EVENT pool is the constraint in shared mode.
   const sharedCapacity = !!(event as any).shared_capacity;
@@ -91,6 +116,7 @@ export default async function CheckoutPage({ params }: { params: Promise<{ event
           user={user}
           sharedCapacity={sharedCapacity}
           sharedRemaining={sharedRemaining}
+          initialOccurrenceId={initialOccurrenceId}
         />
       </div>
     </div>

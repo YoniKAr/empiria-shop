@@ -6,6 +6,7 @@
 
 import { useState } from 'react';
 import { Minus, Plus, Loader2, AlertCircle } from 'lucide-react';
+import StripeBadge from '@/components/StripeBadge';
 
 interface TicketTier {
   id: string;
@@ -335,7 +336,7 @@ export default function TicketSelector({
         )}
       </button>
 
-      <p className="text-xs text-center text-gray-700 mt-4">Secure checkout powered by Stripe</p>
+      <StripeBadge className="mt-4" />
     </div>
   );
 }

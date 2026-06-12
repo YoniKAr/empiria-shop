@@ -9,6 +9,7 @@ import SponsorSections from '@/app/components/SponsorSections';
 import { EventCard } from '@/app/components/EventCard';
 import { TicketWidget } from '@/app/components/TicketWidget';
 import SeatQuantityCTA from '@/components/seatmap/SeatQuantityCTA';
+import SeatsCTA from '@/components/seatmap/SeatsCTA';
 import { computeSeatQuantityCap } from '@/lib/seat-quantity';
 import Footer from '@/components/Footer';
 import type { SeatingConfig } from '@/lib/seatmap-types';
@@ -39,9 +40,18 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
     const firstOcc = allOccurrences[0];
     const isPast = allOccurrences.length > 0 && futureOccurrences.length === 0;
 
-    const heroStartAt = firstOcc?.starts_at || event.start_at || new Date().toISOString();
-    const heroEndAt = firstOcc?.ends_at || event.end_at || heroStartAt;
+    // Hero shows the first UPCOMING date (falls back to the first occurrence
+    // for past events), with a "+N more dates" hint for multi-date events.
+    const heroOcc = futureOccurrences[0] || firstOcc;
+    const heroStartAt = heroOcc?.starts_at || event.start_at || new Date().toISOString();
+    const heroEndAt = heroOcc?.ends_at || event.end_at || heroStartAt;
+    const moreDatesCount = Math.max(0, futureOccurrences.length - 1);
     const categoryName = (event as any).categories?.name || 'Event';
+
+    // Online events show "Online event" in the hero instead of a maps link.
+    const isOnline =
+        (event as any).location_type === 'virtual' ||
+        (!event.venue_name && !!(event as any).meeting_link);
 
     // Look up the event owner's profile from the users table
     const { data: ownerProfile } = event.organizer_id
@@ -171,6 +181,14 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
     const sortedTiers = [...(event.ticket_tiers || [])]
         .sort((a: any, b: any) => a.price - b.price);
 
+    // Future occurrences for the seated-event CTA date picker (multi-date events
+    // pick their date BEFORE heading to the seat page; travels as ?occ=<id>).
+    const ctaOccurrences = futureOccurrences.map((o: any) => ({
+        id: String(o.id),
+        starts_at: o.starts_at as string,
+        label: (o.label as string) || '',
+    }));
+
     const currency = event.currency || 'cad';
     const currencySymbol = getCurrencySymbol(currency);
 
@@ -257,8 +275,15 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                 title={event.title}
                 coverImageUrl={coverImageUrl}
                 startAt={heroStartAt}
+                endAt={heroEndAt}
+                moreDatesCount={moreDatesCount}
                 venueName={event.venue_name}
                 city={event.city}
+                addressText={event.address_text}
+                isOnline={isOnline}
+                organizer={organizer}
+                organizerAvatarUrl={organizerAvatarUrl}
+                coOrganizers={coOrganizers}
                 category={isPast ? 'Past Event' : categoryName}
             />
 
@@ -279,14 +304,6 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                                 return event.description as string;
                             }
                         })()}
-                        startAt={heroStartAt}
-                        endAt={heroEndAt}
-                        venueName={event.venue_name}
-                        city={event.city}
-                        addressText={event.address_text}
-                        organizer={organizer}
-                        organizerAvatarUrl={organizerAvatarUrl}
-                        coOrganizers={coOrganizers}
                         galleryUrls={galleryUrls}
                         whatToExpect={whatToExpect}
                         trailerUrl={(event as any).trailer_url || ''}
@@ -318,17 +335,16 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                                 <SeatQuantityCTA
                                     eventId={String(event.id)}
                                     maxQuantity={computeSeatQuantityCap(sortedTiers)}
+                                    occurrences={ctaOccurrences}
                                 />
                             ) : (
-                                <a
-                                    href={`/checkout/${event.id}/seats`}
-                                    className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-[#F15A29] py-4 font-bold text-white transition-colors hover:bg-[#d94d1f]"
-                                >
-                                    {seatingType === 'assigned_seating'
+                                <SeatsCTA
+                                    eventId={String(event.id)}
+                                    label={seatingType === 'assigned_seating'
                                         ? 'Select your seats'
-                                        : 'Choose tickets'}{' '}
-                                    →
-                                </a>
+                                        : 'Choose tickets'}
+                                    occurrences={ctaOccurrences}
+                                />
                             )}
                         </div>
                     ) : (

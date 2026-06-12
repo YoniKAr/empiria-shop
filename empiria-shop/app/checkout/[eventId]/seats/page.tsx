@@ -18,12 +18,13 @@ export default async function SeatSelectionPage({
   searchParams,
 }: {
   params: Promise<{ eventId: string }>;
-  searchParams: Promise<{ qty?: string }>;
+  searchParams: Promise<{ qty?: string; occ?: string }>;
 }) {
   const { eventId } = await params;
   // Deep-linked seat count (?qty=2). SeatSelector validates against its own
   // max and falls back to the quantity step when out of range.
-  const { qty } = await searchParams;
+  // ?occ=<id> pre-selects the occurrence chosen on the event page.
+  const { qty, occ } = await searchParams;
   const parsedQty = qty ? Number.parseInt(qty, 10) : NaN;
   const initialQuantity = Number.isInteger(parsedQty) && parsedQty > 0 ? parsedQty : undefined;
   const supabase = getSupabaseAdmin();
@@ -63,6 +64,10 @@ export default async function SeatSelectionPage({
     label: o.label || '',
   }));
 
+  // Validate the deep-linked occurrence against this event's future occurrences.
+  const initialOccurrenceId =
+    occ && occurrences.some((o: any) => String(o.id) === occ) ? occ : undefined;
+
   const session = await getSafeSession();
   const user = session?.user;
   let blockedBuyer = false;
@@ -100,6 +105,7 @@ export default async function SeatSelectionPage({
             blockedBuyer={blockedBuyer}
             allowSeatChoice={seatingConfig.allow_seat_choice ?? false}
             occurrences={occurrences}
+            initialOccurrenceId={initialOccurrenceId}
           />
         ) : seatingType === 'seat_map' ? (
           <SeatSelector
@@ -113,6 +119,7 @@ export default async function SeatSelectionPage({
             blockedBuyer={blockedBuyer}
             occurrences={occurrences}
             initialQuantity={initialQuantity}
+            initialOccurrenceId={initialOccurrenceId}
           />
         ) : (
           <ZoneSelector
@@ -125,6 +132,7 @@ export default async function SeatSelectionPage({
             userName={user?.name}
             blockedBuyer={blockedBuyer}
             occurrences={occurrences}
+            initialOccurrenceId={initialOccurrenceId}
           />
         )}
       </div>

@@ -1,8 +1,9 @@
 "use client"
 
 import { useState } from "react"
-import { Check, ExternalLink, Minus, Plus, ShieldCheck, Ticket } from "lucide-react"
+import { Check, ExternalLink, Minus, Plus, Ticket } from "lucide-react"
 import Link from "next/link"
+import StripeBadge from "@/components/StripeBadge"
 import { ctaButtonText, isSafeUrl } from "@/lib/eventFields"
 
 interface TicketTier {
@@ -214,12 +215,7 @@ function TicketedWidget({ tiers, eventId, currency = "cad", ctaLabel, sharedCapa
                         <p className="mt-2 text-center text-xs font-medium text-red-600">Must be an attendee to buy</p>
                     )}
 
-                    <div className="flex items-center justify-center gap-2 mt-4">
-                        <ShieldCheck className="w-3.5 h-3.5 text-gray-700" />
-                        <p className="text-xs text-gray-700">
-                            Secure checkout powered by Stripe
-                        </p>
-                    </div>
+                    <StripeBadge className="mt-4" />
                 </div>
             </div>
         </div>

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Minus, Plus, Loader2, AlertCircle } from "lucide-react";
 import SeatmapViewer from "./SeatmapViewer";
+import StripeBadge from "@/components/StripeBadge";
 import type { SeatingConfig, ZoneDefinition, ZoneTier } from "@/lib/seatmap-types";
 import { migrateSeatingConfig } from "@/lib/migrate-seating-config";
 
@@ -34,6 +35,9 @@ interface ZoneSelectorProps {
   userName?: string;
   occurrences?: OccurrenceOption[];
   blockedBuyer?: boolean;
+  /** Deep-linked occurrence (?occ=<id>) — pre-selects the date picked on the
+   *  event page; the dropdown stays usable so users can still change it. */
+  initialOccurrenceId?: string;
 }
 
 interface TierSelection {
@@ -75,6 +79,7 @@ export default function ZoneSelector({
   userName,
   occurrences = [],
   blockedBuyer = false,
+  initialOccurrenceId,
 }: ZoneSelectorProps) {
   const migratedConfig = migrateSeatingConfig(config);
 
@@ -84,9 +89,12 @@ export default function ZoneSelector({
   const [error, setError] = useState<string | null>(null);
   const [shake, setShake] = useState(false);
   const [showBuyBlock, setShowBuyBlock] = useState(false);
-  const [selectedOccurrenceId, setSelectedOccurrenceId] = useState<string>(
-    occurrences.length === 1 ? occurrences[0].id : ""
-  );
+  const [selectedOccurrenceId, setSelectedOccurrenceId] = useState<string>(() => {
+    if (initialOccurrenceId && occurrences.some((o) => String(o.id) === initialOccurrenceId)) {
+      return initialOccurrenceId;
+    }
+    return occurrences.length === 1 ? occurrences[0].id : "";
+  });
   const [guestEmail, setGuestEmail] = useState("");
   const [guestName, setGuestName] = useState("");
 
@@ -605,9 +613,7 @@ export default function ZoneSelector({
           </p>
         )}
 
-        <p className="text-xs text-center text-gray-700 mt-4">
-          Secure checkout powered by Stripe
-        </p>
+        <StripeBadge className="mt-4" />
       </div>
     </div>
   );

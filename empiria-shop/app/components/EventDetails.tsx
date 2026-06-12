@@ -1,20 +1,12 @@
 "use client"
 
 import { useState, useRef, useCallback, useEffect } from "react"
-import { Clock, MapPin, Info, Share2, X, Copy, Check, ChevronLeft, ChevronRight, ZoomIn } from "lucide-react"
+import { Share2, X, Copy, Check, ChevronLeft, ChevronRight, ZoomIn } from "lucide-react"
 import Image from "next/image"
 import { sanitizeRichText } from "@/lib/sanitize-html"
 
 interface EventDetailsProps {
     description: string
-    startAt: string
-    endAt: string
-    venueName: string
-    city: string
-    addressText?: string
-    organizer: string
-    organizerAvatarUrl?: string | null
-    coOrganizers?: { name: string; avatarUrl?: string | null }[]
     galleryUrls?: string[]
     whatToExpect?: string[]
     trailerUrl?: string
@@ -22,14 +14,6 @@ interface EventDetailsProps {
 
 export function EventDetails({
     description,
-    startAt,
-    endAt,
-    venueName,
-    city,
-    addressText,
-    organizer,
-    organizerAvatarUrl = null,
-    coOrganizers = [],
     galleryUrls = [],
     whatToExpect = [],
     trailerUrl,
@@ -49,15 +33,6 @@ export function EventDetails({
         setCanScrollLeft(el.scrollLeft > 4)
         setCanScrollRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 4)
     }, [])
-
-    const formatDateTime = (date: string) =>
-        new Date(date).toLocaleString("en-IN", {
-            weekday: "short",
-            month: "short",
-            day: "numeric",
-            hour: "2-digit",
-            minute: "2-digit",
-        })
 
     const eventUrl = typeof window !== "undefined" ? window.location.href : ""
 
@@ -132,85 +107,6 @@ export function EventDetails({
 
     return (
         <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 md:p-8 flex flex-col gap-10">
-            {/* Quick info cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-white border border-gray-200 rounded-xl p-5 flex items-start gap-4">
-                    <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-orange-50 flex items-center justify-center">
-                        <Clock className="w-5 h-5 text-[#F15A29]" />
-                    </div>
-                    <div>
-                        <p className="text-xs text-gray-700 uppercase tracking-wider font-medium mb-1">When</p>
-                        <p className="text-sm text-gray-900 font-medium">{formatDateTime(startAt)}</p>
-                        <p className="text-xs text-gray-700 mt-0.5">to {formatDateTime(endAt)}</p>
-                    </div>
-                </div>
-
-                <a
-                    href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(addressText || [venueName, city].filter(Boolean).join(', '))}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="bg-white border border-gray-200 rounded-xl p-5 flex items-start gap-4 hover:border-[#F15A29]/40 hover:shadow-sm transition-all group"
-                >
-                    <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-orange-50 flex items-center justify-center">
-                        <MapPin className="w-5 h-5 text-[#F15A29]" />
-                    </div>
-                    <div>
-                        <p className="text-xs text-gray-700 uppercase tracking-wider font-medium mb-1">Where</p>
-                        <p className="text-sm text-gray-900 font-medium group-hover:text-[#F15A29] transition-colors">{venueName}</p>
-                        <p className="text-xs text-gray-700 mt-0.5">{addressText || city}</p>
-                        <p className="text-[10px] text-[#F15A29] font-medium mt-1.5 opacity-0 group-hover:opacity-100 transition-opacity">Get Directions &rarr;</p>
-                    </div>
-                </a>
-
-                <div className="bg-white border border-gray-200 rounded-xl p-5 flex items-start gap-4">
-                    <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-orange-50 flex items-center justify-center">
-                        <Info className="w-5 h-5 text-[#F15A29]" />
-                    </div>
-                    <div>
-                        <p className="text-xs text-gray-700 uppercase tracking-wider font-medium mb-1">Organized by</p>
-                        <div className="flex items-center gap-2">
-                            {organizerAvatarUrl ? (
-                                <Image
-                                    src={organizerAvatarUrl}
-                                    alt={organizer}
-                                    width={24}
-                                    height={24}
-                                    className="w-6 h-6 rounded-full object-cover flex-shrink-0"
-                                    unoptimized
-                                />
-                            ) : (
-                                <span className="w-6 h-6 rounded-full bg-orange-50 text-[#F15A29] text-[11px] font-semibold flex items-center justify-center flex-shrink-0">
-                                    {organizer.charAt(0).toUpperCase()}
-                                </span>
-                            )}
-                            <p className="text-sm text-gray-900 font-medium">{organizer}</p>
-                        </div>
-                        {coOrganizers.length > 0 && (
-                            <div className="mt-3 flex flex-col gap-2">
-                                {coOrganizers.map((co, i) => (
-                                    <div key={`${co.name}-${i}`} className="flex items-center gap-2">
-                                        {co.avatarUrl ? (
-                                            <Image
-                                                src={co.avatarUrl}
-                                                alt={co.name}
-                                                width={20}
-                                                height={20}
-                                                className="w-5 h-5 rounded-full object-cover flex-shrink-0"
-                                            />
-                                        ) : (
-                                            <span className="w-5 h-5 rounded-full bg-orange-50 text-[#F15A29] text-[10px] font-semibold flex items-center justify-center flex-shrink-0">
-                                                {co.name.charAt(0).toUpperCase()}
-                                            </span>
-                                        )}
-                                        <span className="text-sm text-gray-700">{co.name}</span>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                </div>
-            </div>
-
             {/* Gallery Carousel */}
             {galleryUrls.length > 0 && (
                 <div className="flex flex-col gap-5">

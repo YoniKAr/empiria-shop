@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { X, Loader2, AlertCircle, Clock, Minus, Plus } from "lucide-react";
 import SeatmapViewer from "./SeatmapViewer";
 import SchematicViewer from "./SchematicViewer";
+import StripeBadge from "@/components/StripeBadge";
 import { useSeatHolds } from "./useSeatHolds";
 import { computeSeatQuantityCap } from "@/lib/seat-quantity";
 import type { SeatingConfig, SectionDefinition, ZoneTier } from "@/lib/seatmap-types";
@@ -36,6 +37,9 @@ interface SeatSelectorProps {
   /** Deep-linked seat count (e.g. ?qty=2). If valid (1..max), the quantity
    *  step is skipped and the map opens locked to that count. */
   initialQuantity?: number;
+  /** Deep-linked occurrence (?occ=<id>) — pre-selects the date picked on the
+   *  event page; the dropdown stays usable so users can still change it. */
+  initialOccurrenceId?: string;
 }
 
 interface SelectedSeat {
@@ -69,6 +73,7 @@ export default function SeatSelector({
   occurrences = [],
   blockedBuyer = false,
   initialQuantity,
+  initialOccurrenceId,
 }: SeatSelectorProps) {
   const [sessionId] = useState(() => {
     if (typeof window === "undefined") return "";
@@ -95,9 +100,12 @@ export default function SeatSelector({
   const [error, setError] = useState<string | null>(null);
   const [shake, setShake] = useState(false);
   const [showBuyBlock, setShowBuyBlock] = useState(false);
-  const [selectedOccurrenceId, setSelectedOccurrenceId] = useState<string>(
-    occurrences.length === 1 ? occurrences[0].id : ""
-  );
+  const [selectedOccurrenceId, setSelectedOccurrenceId] = useState<string>(() => {
+    if (initialOccurrenceId && occurrences.some((o) => String(o.id) === initialOccurrenceId)) {
+      return initialOccurrenceId;
+    }
+    return occurrences.length === 1 ? occurrences[0].id : "";
+  });
   const [guestEmail, setGuestEmail] = useState("");
   const [guestName, setGuestName] = useState("");
   // Pending seat waiting for tier selection (multi-tier zones)
@@ -824,9 +832,7 @@ export default function SeatSelector({
           </p>
         )}
 
-        <p className="text-xs text-center text-gray-600 mt-4">
-          Secure checkout powered by Stripe
-        </p>
+        <StripeBadge className="mt-4" />
       </div>
     </div>
   );

@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { Minus, Plus, Loader2, AlertCircle, Check } from "lucide-react";
+import StripeBadge from "@/components/StripeBadge";
 import type { SeatRange } from "@/lib/seatmap-types";
 
 interface TicketTier {
@@ -33,6 +34,9 @@ interface AssignedSeatPickerProps {
   occurrences?: OccurrenceOption[];
   allowSeatChoice: boolean;
   blockedBuyer?: boolean;
+  /** Deep-linked occurrence (?occ=<id>) — pre-selects the date picked on the
+   *  event page; the dropdown stays usable so users can still change it. */
+  initialOccurrenceId?: string;
 }
 
 interface TierQuantitySelection {
@@ -59,14 +63,18 @@ export default function AssignedSeatPicker({
   occurrences = [],
   allowSeatChoice,
   blockedBuyer = false,
+  initialOccurrenceId,
 }: AssignedSeatPickerProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [shake, setShake] = useState(false);
   const [showBuyBlock, setShowBuyBlock] = useState(false);
-  const [selectedOccurrenceId, setSelectedOccurrenceId] = useState<string>(
-    occurrences.length === 1 ? occurrences[0].id : ""
-  );
+  const [selectedOccurrenceId, setSelectedOccurrenceId] = useState<string>(() => {
+    if (initialOccurrenceId && occurrences.some((o) => String(o.id) === initialOccurrenceId)) {
+      return initialOccurrenceId;
+    }
+    return occurrences.length === 1 ? occurrences[0].id : "";
+  });
   const [guestEmail, setGuestEmail] = useState("");
   const [guestName, setGuestName] = useState("");
 
@@ -653,9 +661,7 @@ export default function AssignedSeatPicker({
           </p>
         )}
 
-        <p className="text-xs text-center text-gray-600 mt-4">
-          Secure checkout powered by Stripe
-        </p>
+        <StripeBadge className="mt-4" />
       </div>
     </div>
   );
