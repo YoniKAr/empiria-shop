@@ -5,6 +5,11 @@ import forge from 'node-forge';
 import path from 'path';
 import { APEX_URL, SHOP_URL } from '@/lib/urls';
 
+// Dedicated Empiria wallet-pass logo (square, light background). Used as the
+// logo on every Google Wallet pass for consistent branding.
+const WALLET_LOGO_URL =
+  'https://ccotwfkcqghuykpzshjn.supabase.co/storage/v1/object/public/avatars/Screenshot%202026-06-13%20at%204.27.58%20PM.png';
+
 // ---------- Shared types ----------
 
 interface TicketData {
@@ -220,9 +225,7 @@ export async function generateGoogleWalletLink(
       hexBackgroundColor: '#F15A29', // Empiria brand orange
       logo: {
         sourceUri: {
-          // Organizer's logo (or the platform logo for platform-owned events);
-          // falls back to the Empiria logo.
-          uri: event.logoUrl || `${SHOP_URL}/logo.png`,
+          uri: WALLET_LOGO_URL,
         },
         contentDescription: {
           defaultValue: { language: 'en-US', value: 'Empiria' },
