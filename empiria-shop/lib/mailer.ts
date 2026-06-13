@@ -11,7 +11,7 @@ const sesClient = new SESv2Client({
 
 const transporter = nodemailer.createTransport({ SES: { sesClient, SendEmailCommand } });
 
-export const EMAIL_FROM = process.env.EMAIL_FROM || 'Empiria <info@empiria.events>';
+export const EMAIL_FROM = process.env.EMAIL_FROM || 'Empiria Events <info@empiria.events>';
 
 /** Drop-in replacement for resend.emails.send — same fields, normalized attachments. */
 export async function sendEmail(opts: {

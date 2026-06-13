@@ -12,7 +12,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { stripe } from '@/lib/stripe';
 import { getSupabaseAdmin } from '@/lib/supabase';
-import { sendOrderConfirmationEmail } from '@/lib/email';
+import { sendOrderConfirmationEmail, sendSaleNotificationEmail } from '@/lib/email';
 import { sendEmail } from '@/lib/mailer';
 
 // Vercel: webhook fulfillment (order + tickets + transfers + email) can exceed
@@ -477,7 +477,7 @@ async function handleCheckoutCompleted(session: any) {
     // 2. Fetch event details for confirmation email
     const { data: eventData } = await supabase
       .from('events')
-      .select('title, venue_name, city, location_type, meeting_link, cta_label, organizer_id, source_app')
+      .select('title, venue_name, city, location_type, meeting_link, cta_label, organizer_id, source_app, notify_on_sale')
       .eq('id', eventId)
       .single();
 
@@ -999,6 +999,42 @@ async function handleCheckoutCompleted(session: any) {
         console.log('[Webhook] Confirmation email sent to:', userEmail);
       } catch (emailError) {
         console.error('[Webhook] Failed to send confirmation email:', emailError);
+      }
+    }
+
+    // 6b. Notify the event owner of the sale (per-event notify_on_sale toggle;
+    // non-blocking). Owner = events.organizer_id (the real organizer, or the
+    // admin for platform-owned events). Skipped silently if toggled off.
+    if (eventData?.notify_on_sale && eventData.organizer_id) {
+      try {
+        const { data: ownerRow } = await supabase
+          .from('users')
+          .select('email, full_name')
+          .eq('auth0_id', eventData.organizer_id)
+          .single();
+        if (ownerRow?.email) {
+          await sendSaleNotificationEmail({
+            to: ownerRow.email,
+            organizerName: ownerRow.full_name || organizerName,
+            eventTitle: eventData.title,
+            orderId: order.id,
+            total: customerTotal,
+            currency: session.currency || 'cad',
+            quantity: totalTickets,
+            buyerName: userName,
+            buyerEmail: userEmail,
+            lineItems: tierSelections.map((s) => ({
+              tierName: s.tierName,
+              quantity: s.quantity,
+              unitPrice: s.unitPrice,
+            })),
+            organizerPayout: orderOrganizerPayout,
+            isPlatformEvent,
+          });
+          console.log('[Webhook] Sale notification sent to owner:', ownerRow.email);
+        }
+      } catch (notifyError) {
+        console.error('[Webhook] Failed to send sale notification:', notifyError);
       }
     }
 
