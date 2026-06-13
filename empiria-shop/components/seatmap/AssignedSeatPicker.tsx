@@ -4,6 +4,7 @@ import { useState, useMemo, useEffect } from "react";
 import { Minus, Plus, Loader2, AlertCircle, Check } from "lucide-react";
 import StripeBadge from "@/components/StripeBadge";
 import { BlockedBuyerNotice } from "@/components/BlockedBuyerNotice";
+import MobileActionBar from "./MobileActionBar";
 import type { SeatRange } from "@/lib/seatmap-types";
 
 interface TicketTier {
@@ -359,7 +360,7 @@ export default function AssignedSeatPicker({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pb-28 lg:pb-0">
       <div className="border border-gray-200 rounded-xl shadow-lg bg-white overflow-hidden">
         <div className="p-4 border-b bg-gray-50">
           <h3 className="font-bold text-lg text-gray-900">
@@ -409,7 +410,7 @@ export default function AssignedSeatPicker({
                               type="button"
                               disabled={isSold}
                               onClick={() => toggleSeat(seat)}
-                              className={`w-9 h-9 rounded text-xs font-medium transition-colors flex items-center justify-center ${
+                              className={`w-11 h-11 sm:w-9 sm:h-9 rounded text-xs font-medium transition-colors flex items-center justify-center ${
                                 isSold
                                   ? "bg-gray-200 text-gray-600 cursor-not-allowed"
                                   : isSelected
@@ -677,6 +678,24 @@ export default function AssignedSeatPicker({
 
         <StripeBadge className="mt-4" />
       </div>
+
+      {/* Mobile-only sticky checkout bar — mirrors the panel button above. */}
+      <MobileActionBar
+        count={totalItems}
+        totalLabel={
+          totalItems === 0
+            ? "Select tickets"
+            : totalPrice === 0
+              ? "Free"
+              : `${currencySymbol}${totalPrice.toLocaleString()}`
+        }
+        buttonLabel={totalItems === 0 ? "Select" : "Checkout"}
+        disabled={totalItems === 0 || loading}
+        loading={loading}
+        shake={shake}
+        buttonClassName="bg-orange-600 hover:bg-orange-700"
+        onAction={handleCheckout}
+      />
     </div>
   );
 }

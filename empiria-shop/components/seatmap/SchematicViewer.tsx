@@ -92,7 +92,7 @@ export default function SchematicViewer({
                               onSeatClick(seat.id, section.id, seat.label);
                             }
                           }}
-                          className={`w-7 h-7 rounded-full border-2 text-[10px] font-medium flex items-center justify-center transition-all ${seatStatusStyles[status]}`}
+                          className={`w-9 h-9 sm:w-7 sm:h-7 rounded-full border-2 text-[11px] sm:text-[10px] font-medium flex items-center justify-center transition-all ${seatStatusStyles[status]}`}
                           title={`${seat.label} - ${status === "sold" ? "Sold" : status === "other" ? "Reserved" : status === "mine" ? "Your selection" : "Available"}`}
                         >
                           {seat.label.replace(/^[A-Z]+/, "")}

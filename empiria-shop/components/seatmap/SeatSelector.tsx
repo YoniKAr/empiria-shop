@@ -6,6 +6,7 @@ import SeatmapViewer from "./SeatmapViewer";
 import SchematicViewer from "./SchematicViewer";
 import StripeBadge from "@/components/StripeBadge";
 import { BlockedBuyerNotice } from "@/components/BlockedBuyerNotice";
+import MobileActionBar from "./MobileActionBar";
 import { useSeatHolds } from "./useSeatHolds";
 import { computeSeatQuantityCap } from "@/lib/seat-quantity";
 import type { SeatingConfig, SectionDefinition, ZoneTier } from "@/lib/seatmap-types";
@@ -580,8 +581,10 @@ export default function SeatSelector({
   }
 
   // ── Phase 2: the seat map, locked to exactly N seats ─────────────────
+  // `pb-28 lg:pb-0`: reserve room on mobile for the sticky bottom action bar
+  // (lg+ never renders it, so desktop spacing is unchanged).
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pb-28 lg:pb-0">
       {/* Quantity summary */}
       <div className="flex items-center justify-between border border-gray-200 rounded-xl shadow-lg bg-white px-4 py-3">
         <div className="text-sm">
@@ -893,6 +896,29 @@ export default function SeatSelector({
 
         <StripeBadge className="mt-4" />
       </div>
+
+      {/* Mobile-only sticky checkout bar — mirrors the panel button above. */}
+      <MobileActionBar
+        count={selectedSeats.length}
+        totalLabel={
+          selectedSeats.length === 0
+            ? `Pick ${requiredQuantity} seat${requiredQuantity !== 1 ? "s" : ""}`
+            : totalPrice === 0
+              ? "Free"
+              : `${currencySymbol}${totalPrice.toLocaleString()}`
+        }
+        buttonLabel={
+          remainingToPick > 0
+            ? `Pick ${remainingToPick} more`
+            : "Checkout"
+        }
+        disabled={
+          selectedSeats.length !== requiredQuantity || !!pendingSeat || loading
+        }
+        loading={loading}
+        shake={shake}
+        onAction={handleCheckout}
+      />
     </div>
   );
 }

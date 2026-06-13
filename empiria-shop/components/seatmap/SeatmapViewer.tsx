@@ -4,6 +4,7 @@ import { useRef, useEffect, useCallback, useState } from "react";
 import { Canvas, Polygon, Circle, FabricImage, FabricText, Point } from "fabric";
 import type { SeatingConfig, ZoneDefinition, SectionDefinition } from "@/lib/seatmap-types";
 import { migrateSeatingConfig } from "@/lib/migrate-seating-config";
+import { useIsTouch } from "@/hooks/useIsTouch";
 
 interface SeatmapViewerProps {
   config: SeatingConfig;
@@ -35,8 +36,12 @@ const ZOOM_STEP = 1.5;
 // A press that moves more than this many screen px is a pan/drag, not a click.
 const CLICK_TOLERANCE_PX = 5;
 
-const ZOOM_BTN_CLASS =
-  "flex h-8 w-8 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-900 shadow-md transition hover:bg-gray-50 disabled:opacity-40 disabled:hover:bg-white";
+// Desktop keeps the original compact 8×8 buttons. Touch devices get larger,
+// thumb-friendly 11×11 targets (gated on `isTouch`, never affects desktop).
+const ZOOM_BTN_BASE =
+  "flex items-center justify-center rounded-md border border-gray-200 bg-white text-gray-900 shadow-md transition hover:bg-gray-50 disabled:opacity-40 disabled:hover:bg-white";
+const ZOOM_BTN_CLASS = `h-8 w-8 ${ZOOM_BTN_BASE}`;
+const ZOOM_BTN_CLASS_TOUCH = `h-11 w-11 ${ZOOM_BTN_BASE}`;
 
 // Helper to get/set custom data on fabric objects (not in TS types but works at runtime)
 function setObjData(obj: any, data: Record<string, any>) {
@@ -78,6 +83,13 @@ export default function SeatmapViewer({
   const [containerWidth, setContainerWidth] = useState(0);
   // Mirrors canvas.getZoom() so the overlay buttons can enable/disable.
   const [zoomLevel, setZoomLevel] = useState(1);
+  const isTouch = useIsTouch();
+  // Two-finger pinch state. While a pinch is active, single-touch pan/tap is
+  // suppressed (Fabric forwards only the first touch as mouse events, so a
+  // pinch would otherwise also be read as a one-finger pan and fight the zoom).
+  const pinchRef = useRef({ active: false, startDist: 0, startZoom: 1 });
+  // One-time "pinch to zoom" hint on touch devices, dismissed on first gesture.
+  const [showPinchHint, setShowPinchHint] = useState(false);
   // One press/drag gesture at a time (mouse or single touch).
   const gestureRef = useRef({
     active: false,
@@ -94,6 +106,14 @@ export default function SeatmapViewer({
   // Native image dimensions drive the canvas aspect ratio + coord projection.
   const imgW = migrated.image_width || 1000;
   const imgH = migrated.image_height || 700;
+
+  // Show the pinch hint once on touch devices (auto-fades after a few seconds).
+  useEffect(() => {
+    if (!isTouch) return;
+    setShowPinchHint(true);
+    const t = setTimeout(() => setShowPinchHint(false), 4000);
+    return () => clearTimeout(t);
+  }, [isTouch]);
 
   // Responsive width via ResizeObserver
   useEffect(() => {
@@ -175,6 +195,9 @@ export default function SeatmapViewer({
   // Press started: remember the pressed object's data; if the press did NOT
   // start on a seat/zone and we're zoomed in, this gesture may become a pan.
   function beginPointer(canvas: Canvas, ev: any, data?: Record<string, any>) {
+    // A two-finger touch is a pinch (handled natively below) — never start a
+    // single-touch pan/tap gesture for it.
+    if (pinchRef.current.active || (ev?.touches && ev.touches.length > 1)) return;
     const p = eventClientXY(ev);
     if (!p) return;
     const g = gestureRef.current;
@@ -191,6 +214,13 @@ export default function SeatmapViewer({
   // when panning, translate the viewport (clamped).
   function trackPointer(canvas: Canvas, ev: any) {
     const g = gestureRef.current;
+    // Pinch took over after a single-finger press began: abandon the pan so it
+    // can't drift the viewport while the user is zooming.
+    if (pinchRef.current.active) {
+      g.active = false;
+      g.panning = false;
+      return;
+    }
     if (!g.active) return;
     const p = eventClientXY(ev);
     if (!p) return;
@@ -234,8 +264,63 @@ export default function SeatmapViewer({
       height: ch,
       backgroundColor: "#f8fafc",
       selection: false,
+      // We own touch gestures (pinch below + Fabric's single-touch pan); stop
+      // the browser from scrolling/zooming the page while interacting with the
+      // map. Paired with `touch-action: none` on the wrapper.
+      allowTouchScrolling: false,
     });
     fabricRef.current = canvas;
+
+    // --- Pinch-to-zoom (native two-finger touch) ----------------------------
+    // Fabric forwards only the first touch as mouse events, so pinch must be
+    // handled at the DOM level on the interaction surface (upperCanvasEl).
+    // Anchored at the pinch midpoint via zoomToPoint, clamped MIN..MAX_ZOOM.
+    const upperEl = canvas.upperCanvasEl as HTMLCanvasElement | undefined;
+    const touchDist = (t: TouchList) =>
+      Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    const pinchMidpoint = (t: TouchList) => {
+      const rect = upperEl?.getBoundingClientRect();
+      const cx = (t[0].clientX + t[1].clientX) / 2 - (rect?.left ?? 0);
+      const cy = (t[0].clientY + t[1].clientY) / 2 - (rect?.top ?? 0);
+      return new Point(cx, cy);
+    };
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        e.preventDefault();
+        pinchRef.current = {
+          active: true,
+          startDist: touchDist(e.touches),
+          startZoom: canvas.getZoom(),
+        };
+        setShowPinchHint(false);
+      }
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      if (pinchRef.current.active && e.touches.length === 2) {
+        e.preventDefault();
+        const dist = touchDist(e.touches);
+        if (pinchRef.current.startDist <= 0) return;
+        const ratio = dist / pinchRef.current.startDist;
+        const next = Math.min(
+          MAX_ZOOM,
+          Math.max(MIN_ZOOM, pinchRef.current.startZoom * ratio)
+        );
+        canvas.zoomToPoint(pinchMidpoint(e.touches), next);
+        clampViewport(canvas);
+        syncZoomUi(canvas, next);
+      }
+    };
+    const endPinch = (e: TouchEvent) => {
+      // Pinch ends once fewer than two fingers remain on screen.
+      if (e.touches.length < 2) pinchRef.current.active = false;
+    };
+    if (upperEl) {
+      // passive:false so preventDefault can stop browser page-zoom/scroll.
+      upperEl.addEventListener("touchstart", onTouchStart, { passive: false });
+      upperEl.addEventListener("touchmove", onTouchMove, { passive: false });
+      upperEl.addEventListener("touchend", endPinch);
+      upperEl.addEventListener("touchcancel", endPinch);
+    }
 
     // A fresh canvas (initial mount or container resize) starts at the fitted
     // view: zoom 1, identity pan. Reset the UI mirror so nothing drifts.
@@ -277,6 +362,13 @@ export default function SeatmapViewer({
     render();
 
     return () => {
+      if (upperEl) {
+        upperEl.removeEventListener("touchstart", onTouchStart);
+        upperEl.removeEventListener("touchmove", onTouchMove);
+        upperEl.removeEventListener("touchend", endPinch);
+        upperEl.removeEventListener("touchcancel", endPinch);
+      }
+      pinchRef.current.active = false;
       canvas.dispose();
       fabricRef.current = null;
     };
@@ -476,8 +568,17 @@ export default function SeatmapViewer({
     });
   }
 
+  // `touch-action: none` only on touch devices: it lets us own pinch/pan via
+  // preventDefault without the browser hijacking them. Desktop keeps the
+  // default (auto) so nothing about mouse behaviour changes.
+  const btnClass = isTouch ? ZOOM_BTN_CLASS_TOUCH : ZOOM_BTN_CLASS;
+
   return (
-    <div ref={containerRef} className="relative w-full rounded-lg border bg-slate-50 overflow-hidden">
+    <div
+      ref={containerRef}
+      className="relative w-full rounded-lg border bg-slate-50 overflow-hidden"
+      style={isTouch ? { touchAction: "none" } : undefined}
+    >
       <canvas ref={canvasRef} />
       <div className="absolute right-2 top-2 z-10 flex flex-col gap-1.5">
         <button
@@ -486,7 +587,7 @@ export default function SeatmapViewer({
           title="Zoom in"
           onClick={() => zoomBy(ZOOM_STEP)}
           disabled={zoomLevel >= MAX_ZOOM - 0.001}
-          className={ZOOM_BTN_CLASS}
+          className={btnClass}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
             <path d="M12 5v14M5 12h14" />
@@ -498,7 +599,7 @@ export default function SeatmapViewer({
           title="Zoom out"
           onClick={() => zoomBy(1 / ZOOM_STEP)}
           disabled={zoomLevel <= MIN_ZOOM + 0.001}
-          className={ZOOM_BTN_CLASS}
+          className={btnClass}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
             <path d="M5 12h14" />
@@ -510,7 +611,7 @@ export default function SeatmapViewer({
           title="Fit to view"
           onClick={resetZoom}
           disabled={zoomLevel <= MIN_ZOOM + 0.001}
-          className={ZOOM_BTN_CLASS}
+          className={btnClass}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M8 3H5a2 2 0 0 0-2 2v3" />
@@ -520,6 +621,15 @@ export default function SeatmapViewer({
           </svg>
         </button>
       </div>
+
+      {/* Touch-only hint: appears briefly, dismissed on first pinch. */}
+      {isTouch && showPinchHint && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-2 z-10 flex justify-center">
+          <span className="rounded-full bg-gray-900/80 px-3 py-1.5 text-xs font-medium text-white shadow-lg">
+            Pinch to zoom · drag to move
+          </span>
+        </div>
+      )}
     </div>
   );
 }
