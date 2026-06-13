@@ -217,7 +217,7 @@ export async function generateGoogleWalletLink(
       hexBackgroundColor: '#111827',
       logo: {
         sourceUri: {
-          uri: `${APEX_URL}/empiria_logo.png`,
+          uri: `${SHOP_URL}/logo.png`,
         },
         contentDescription: {
           defaultValue: { language: 'en-US', value: 'Empiria' },
