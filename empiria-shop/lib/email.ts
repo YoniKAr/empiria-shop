@@ -7,6 +7,7 @@ import { CtaLabel } from '@/lib/eventFields';
 import { render as ticketsTpl } from '@/designs/email-templates/order-confirmation-tickets';
 import { render as registrationTpl } from '@/designs/email-templates/order-confirmation-registration';
 import { render as rsvpTpl } from '@/designs/email-templates/order-confirmation-rsvp';
+import { render as saleNotificationTpl } from '@/designs/email-templates/sale-notification';
 
 interface TicketInfo {
   id: string;
@@ -53,6 +54,43 @@ export interface OrderEmailData {
   invoiceUrl?: string;
   invoicePdf?: string;
   ctaLabel?: CtaLabel;
+}
+
+export interface SaleNotificationEmailData {
+  to: string;
+  organizerName: string;
+  eventTitle: string;
+  orderId: string;
+  total: number;
+  currency: string;
+  quantity: number;
+  buyerName?: string;
+  buyerEmail?: string;
+  lineItems: LineItem[];
+  organizerPayout?: number;
+  isPlatformEvent?: boolean;
+}
+
+/** Notify the event owner that a ticket sold (per-event notify_on_sale toggle). */
+export async function sendSaleNotificationEmail(data: SaleNotificationEmailData) {
+  const html = saleNotificationTpl({
+    organizerName: data.organizerName,
+    eventTitle: data.eventTitle,
+    orderId: data.orderId,
+    total: data.total,
+    currency: data.currency,
+    quantity: data.quantity,
+    buyerName: data.buyerName,
+    buyerEmail: data.buyerEmail,
+    lineItems: data.lineItems,
+    organizerPayout: data.organizerPayout,
+    isPlatformEvent: data.isPlatformEvent,
+  });
+  await sendEmail({
+    to: data.to,
+    subject: `New sale: ${data.eventTitle}`,
+    html,
+  });
 }
 
 export async function sendOrderConfirmationEmail(data: OrderEmailData) {
