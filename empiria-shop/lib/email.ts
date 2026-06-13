@@ -103,6 +103,9 @@ export async function sendOrderConfirmationEmail(data: OrderEmailData) {
     ends_at: data.eventEndDate || null,
     venue_name: data.venueName,
     city: data.city,
+    // Organizer's logo (or platform logo for platform-owned events) for the
+    // wallet pass; falls back to the Empiria logo inside wallet.ts.
+    logoUrl: data.organizerAvatarUrl || null,
   };
 
   // Generate QR code PNGs and wallet passes in parallel

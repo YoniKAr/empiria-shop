@@ -20,6 +20,9 @@ interface EventData {
   ends_at?: string | null;
   venue_name?: string | null;
   city?: string | null;
+  /** Logo for the wallet pass: organizer's logo, or the platform logo for
+   *  platform-owned events. Falls back to the Empiria logo. */
+  logoUrl?: string | null;
 }
 
 interface TierData {
@@ -110,8 +113,8 @@ export async function generateApplePass(
         organizationName: 'Empiria',
         description: `Ticket for ${event.title}`,
         foregroundColor: 'rgb(255, 255, 255)',
-        backgroundColor: 'rgb(17, 24, 39)',
-        labelColor: 'rgb(156, 163, 175)',
+        backgroundColor: 'rgb(241, 90, 41)', // Empiria brand orange #F15A29
+        labelColor: 'rgb(255, 226, 214)',
       },
     );
 
@@ -214,10 +217,12 @@ export async function generateGoogleWalletLink(
       id: classId,
       issuerName: 'Empiria',
       reviewStatus: 'underReview',
-      hexBackgroundColor: '#111827',
+      hexBackgroundColor: '#F15A29', // Empiria brand orange
       logo: {
         sourceUri: {
-          uri: `${SHOP_URL}/logo.png`,
+          // Organizer's logo (or the platform logo for platform-owned events);
+          // falls back to the Empiria logo.
+          uri: event.logoUrl || `${SHOP_URL}/logo.png`,
         },
         contentDescription: {
           defaultValue: { language: 'en-US', value: 'Empiria' },
