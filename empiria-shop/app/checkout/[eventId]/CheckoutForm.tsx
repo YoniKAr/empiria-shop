@@ -17,11 +17,39 @@ import {
   QrCode,
   Tag,
   Users,
+  Info,
 } from "lucide-react";
 import type { CustomField } from "@/lib/eventFields";
 import { computeFees } from "@/lib/fees";
 import { getCurrencySymbol } from "@/lib/utils";
 import StripeBadge from "@/components/StripeBadge";
+
+/**
+ * Small info icon that reveals an explanation on hover (mouse) or focus
+ * (keyboard/tap). CSS-only via the `group` utility — no JS state, so it stays
+ * cheap inside the order-summary render. `tabIndex`/`role` make it accessible;
+ * the native `title` is kept as a fallback for assistive tech.
+ */
+function FeeInfo({ text }: { text: string }) {
+  return (
+    <span
+      className="group relative inline-flex items-center text-gray-400 hover:text-gray-600 focus:text-gray-600 cursor-help outline-none"
+      tabIndex={0}
+      role="note"
+      aria-label={text}
+      title={text}
+    >
+      <Info className="h-3.5 w-3.5" aria-hidden="true" />
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1.5 w-52 -translate-x-1/2 rounded-lg bg-gray-900 px-3 py-2 text-xs font-normal normal-case leading-snug text-white text-left opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus:opacity-100"
+      >
+        {text}
+        <span className="absolute left-1/2 top-full -translate-x-1/2 border-4 border-transparent border-t-gray-900" />
+      </span>
+    </span>
+  );
+}
 
 interface Tier {
   id: string;
@@ -343,9 +371,7 @@ export function CheckoutForm({
         >
           <span className="inline-flex items-center gap-1">
             Service fee
-            <span title="Covers the Empiria platform service." className="text-gray-600 cursor-help">
-              &#9432;
-            </span>
+            <FeeInfo text="Empiria's platform fee for operating the marketplace — secure ticketing, order management, and customer support." />
           </span>
           <span>{formatPrice(fees.platformFee)}</span>
         </div>
@@ -357,9 +383,7 @@ export function CheckoutForm({
         >
           <span className="inline-flex items-center gap-1">
             Processing fee
-            <span title="Secure card processing." className="text-gray-600 cursor-help">
-              &#9432;
-            </span>
+            <FeeInfo text="Covers the cost of securely processing your card payment through our payment provider, Stripe." />
           </span>
           <span>{formatPrice(fees.stripeOffset)}</span>
         </div>
