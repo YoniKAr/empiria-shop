@@ -267,14 +267,19 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
     if (similarEvents.length > 0) {
         const orgIds = [...new Set(similarEvents.map((e: any) => e.organizer_id).filter(Boolean))];
         const { data: profiles } = orgIds.length > 0
-            ? await supabase.from('users').select('auth0_id, full_name, role').in('auth0_id', orgIds)
+            ? await supabase.from('users').select('auth0_id, full_name, role, avatar_url').in('auth0_id', orgIds)
             : { data: [] };
         const pMap: Record<string, string> = {};
         const rMap: Record<string, string> = {};
-        (profiles || []).forEach((p: any) => { pMap[p.auth0_id] = p.full_name; rMap[p.auth0_id] = p.role; });
+        const aMap: Record<string, string | null> = {};
+        (profiles || []).forEach((p: any) => { pMap[p.auth0_id] = p.full_name; rMap[p.auth0_id] = p.role; aMap[p.auth0_id] = p.avatar_url || null; });
+        const { data: simPlatformSetting } = await supabase
+            .from('platform_settings').select('value').eq('key', 'platform_avatar_url').maybeSingle();
+        const simPlatformAvatar = (simPlatformSetting?.value as { url?: string | null } | null)?.url || null;
         similarEvents = similarEvents.map((e: any) => ({
             ...e,
             organizer_name: rMap[e.organizer_id] === 'admin' ? 'Empiria Events' : (pMap[e.organizer_id] || 'Empiria Events'),
+            organizer_avatar_url: rMap[e.organizer_id] === 'admin' ? simPlatformAvatar : (aMap[e.organizer_id] || null),
         }));
     }
 
@@ -406,6 +411,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                                         minPrice={minPrice}
                                         currencySymbol={sym}
                                         organizerName={se.organizer_name}
+                                        organizerAvatarUrl={se.organizer_avatar_url}
                                         entryType={se.entry_type}
                                         // TODO: surface co-host count on similar-event cards
                                         // (batch-fetch event_organizers visible counts like app/page.tsx).

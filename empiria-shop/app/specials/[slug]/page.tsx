@@ -62,13 +62,18 @@ export default async function SpecialPage({ params }: { params: Promise<{ slug: 
     const { data: profiles } = organizerIds.length > 0
       ? await supabase
           .from('users')
-          .select('auth0_id, full_name, role')
+          .select('auth0_id, full_name, role, avatar_url')
           .in('auth0_id', organizerIds)
       : { data: [] };
 
     const profileMap: Record<string, string> = {};
     const roleMap: Record<string, string> = {};
-    (profiles || []).forEach((p: any) => { profileMap[p.auth0_id] = p.full_name; roleMap[p.auth0_id] = p.role; });
+    const avatarMap: Record<string, string | null> = {};
+    (profiles || []).forEach((p: any) => { profileMap[p.auth0_id] = p.full_name; roleMap[p.auth0_id] = p.role; avatarMap[p.auth0_id] = p.avatar_url || null; });
+
+    const { data: spPlatformSetting } = await supabase
+      .from('platform_settings').select('value').eq('key', 'platform_avatar_url').maybeSingle();
+    const spPlatformAvatar = (spPlatformSetting?.value as { url?: string | null } | null)?.url || null;
 
     events = rawEvents.map((e: any) => ({
       ...e,
@@ -78,6 +83,9 @@ export default async function SpecialPage({ params }: { params: Promise<{ slug: 
       organizer_name: roleMap[e.organizer_id] === 'admin'
         ? 'Empiria Events'
         : (profileMap[e.organizer_id] || 'Empiria Events'),
+      organizer_avatar_url: roleMap[e.organizer_id] === 'admin'
+        ? spPlatformAvatar
+        : (avatarMap[e.organizer_id] || null),
     }));
   }
 
