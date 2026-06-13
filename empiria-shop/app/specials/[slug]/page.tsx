@@ -23,7 +23,7 @@ export default async function SpecialPage({ params }: { params: Promise<{ slug: 
   // Fetch events: hand-picked (admin-curated) if event_ids is set, else by category
   const EVENT_COLUMNS = `
       id, title, slug, cover_image_url,
-      venue_name, city, currency, organizer_id, source_app,
+      venue_name, city, currency, organizer_id, source_app, entry_type,
       categories (name),
       ticket_tiers (price),
       event_occurrences (starts_at)

@@ -226,7 +226,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
             .from('events')
             .select(`
                 id, title, slug, cover_image_url,
-                venue_name, city, currency, organizer_id, source_app,
+                venue_name, city, currency, organizer_id, source_app, entry_type,
                 categories (name),
                 ticket_tiers (price),
                 event_occurrences (starts_at)
@@ -248,7 +248,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
             .from('events')
             .select(`
                 id, title, slug, cover_image_url,
-                venue_name, city, currency, organizer_id, source_app,
+                venue_name, city, currency, organizer_id, source_app, entry_type,
                 categories (name),
                 ticket_tiers (price),
                 event_occurrences (starts_at)
@@ -406,6 +406,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                                         minPrice={minPrice}
                                         currencySymbol={sym}
                                         organizerName={se.organizer_name}
+                                        entryType={se.entry_type}
                                         // TODO: surface co-host count on similar-event cards
                                         // (batch-fetch event_organizers visible counts like app/page.tsx).
                                     />

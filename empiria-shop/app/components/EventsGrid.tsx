@@ -19,6 +19,7 @@ interface Event {
     start_at?: string;
     organizer_name?: string;
     co_host_count?: number;
+    entry_type?: string;
 }
 
 interface EventsGridProps {
@@ -138,6 +139,7 @@ export default function EventsGrid({ events, query, setQuery, categories, active
                                     currencySymbol={symbol}
                                     organizerName={event.organizer_name}
                                     coHostCount={event.co_host_count}
+                                    entryType={event.entry_type}
                                 />
                             );
                         })}

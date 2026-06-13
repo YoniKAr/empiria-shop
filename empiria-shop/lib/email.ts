@@ -34,6 +34,7 @@ export interface OrderEmailData {
   orderId: string;
   eventTitle: string;
   organizerName?: string;
+  organizerAvatarUrl?: string | null;
   eventDate: string;
   eventEndDate?: string;
   venueName: string;

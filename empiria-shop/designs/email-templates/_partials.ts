@@ -101,8 +101,8 @@ export function eventDetailsBlock(data: OrderEmailData): string {
                         <td style="padding: 0 0 10px; font-size: 14px; color: ${INK}; vertical-align: top;">${escapeHtml(venue)}</td>
                       </tr>` : ''}
                       ${data.organizerName ? `<tr>
-                        <td style="padding: 0 0 10px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: ${MUTED}; vertical-align: top;">Host</td>
-                        <td style="padding: 0 0 10px; font-size: 14px; color: ${INK}; vertical-align: top;">${escapeHtml(data.organizerName)}</td>
+                        <td style="padding: 0 0 10px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: ${MUTED}; vertical-align: middle;">Host</td>
+                        <td style="padding: 0 0 10px; font-size: 14px; color: ${INK}; vertical-align: middle;">${data.organizerAvatarUrl ? `<img src="${safeUrl(data.organizerAvatarUrl)}" width="22" height="22" alt="" style="border-radius: 50%; vertical-align: middle; margin-right: 8px; object-fit: cover; border: 1px solid ${BORDER};" />` : ''}<span style="vertical-align: middle; font-weight: 600;">${escapeHtml(data.organizerName)}</span></td>
                       </tr>` : ''}
                       ${isOnline && data.meetingLink ? `<tr>
                         <td style="font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: ${MUTED}; vertical-align: top;">Online</td>

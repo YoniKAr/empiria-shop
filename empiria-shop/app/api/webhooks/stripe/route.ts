@@ -481,15 +481,29 @@ async function handleCheckoutCompleted(session: any) {
       .eq('id', eventId)
       .single();
 
-    // Resolve the organizer's display name (same convention as the event page)
+    // Resolve the organizer's display name + avatar (same convention as the
+    // event page): platform-owned (owner role 'admin') → "Empiria Events" + the
+    // shared platform avatar; an event owned by a real organizer (incl. ones an
+    // admin created on their behalf) → that organizer's name + profile photo.
     let organizerName = 'Empiria Events';
-    if (eventData?.source_app !== 'admin' && eventData?.organizer_id) {
+    let organizerAvatarUrl: string | null = null;
+    if (eventData?.organizer_id) {
       const { data: ownerProfile } = await supabase
         .from('users')
-        .select('full_name')
+        .select('full_name, role, avatar_url')
         .eq('auth0_id', eventData.organizer_id)
         .single();
-      organizerName = ownerProfile?.full_name || 'Empiria Events';
+      if (ownerProfile?.role === 'admin') {
+        const { data: platformSetting } = await supabase
+          .from('platform_settings')
+          .select('value')
+          .eq('key', 'platform_avatar_url')
+          .maybeSingle();
+        organizerAvatarUrl = (platformSetting?.value as { url?: string | null } | null)?.url || null;
+      } else {
+        organizerName = ownerProfile?.full_name || 'Empiria Events';
+        organizerAvatarUrl = ownerProfile?.avatar_url || null;
+      }
     }
 
     // Fetch occurrence dates for email (or first occurrence if no specific one)
@@ -974,6 +988,7 @@ async function handleCheckoutCompleted(session: any) {
           orderId: order.id,
           eventTitle: eventData.title,
           organizerName,
+          organizerAvatarUrl,
           eventDate: emailStartDate,
           eventEndDate: emailEndDate,
           venueName: eventData.venue_name || '',
