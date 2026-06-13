@@ -1,9 +1,9 @@
 // Shared layout wrapper for all shop transactional emails.
-// Header and outer table chrome are identical across every template; the
-// footer text varies, so it is parameterized (with a sensible default).
+// Logo header + accent bar + footer chrome are identical across every template;
+// the body sections are composed per-template from the partials.
 
 const DEFAULT_FOOTER_HTML =
-  'This email was sent by Empiria. If you have questions about your order, please contact the event organizer.';
+  'Questions about your order? Reply to this email or contact the event organizer.';
 
 /**
  * Escapes user-supplied text for safe interpolation into email HTML.
@@ -24,7 +24,7 @@ export function escapeHtml(str: string): string {
 interface EmailLayoutOptions {
   title: string;
   bodyHtml: string;
-  /** Inner HTML for the footer paragraph. Defaults to the standard footer text. */
+  /** Inner HTML for the footer's contact line. Defaults to the standard text. */
   footerHtml?: string;
 }
 
@@ -34,27 +34,37 @@ export function emailLayout({ title, bodyHtml, footerHtml = DEFAULT_FOOTER_HTML 
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="light only" />
   <title>${title}</title>
 </head>
-<body style="margin: 0; padding: 0; background-color: #f3f4f6; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
-  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color: #f3f4f6;">
+<body style="margin: 0; padding: 0; background-color: #F4F5F7; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased;">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color: #F4F5F7;">
     <tr>
       <td align="center" style="padding: 32px 16px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width: 600px; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width: 600px; background: #ffffff; border-radius: 18px; overflow: hidden; box-shadow: 0 4px 24px rgba(15,23,42,0.07);">
 
-          <!-- Header -->
+          <!-- Header / Logo -->
           <tr>
-            <td style="background: #111827; padding: 24px 32px; text-align: center;">
-              <h1 style="margin: 0; font-size: 22px; font-weight: 700; color: #ffffff; letter-spacing: -0.025em;">Empiria</h1>
+            <td style="padding: 28px 32px 22px; text-align: center; background: #ffffff;">
+              <img src="cid:empiria-logo" alt="Empiria" width="150" height="50" style="display: inline-block; border: 0;" />
             </td>
           </tr>
+          <tr><td style="height: 4px; background: #F15A29; line-height: 4px; font-size: 0;">&nbsp;</td></tr>
 ${bodyHtml}
           <!-- Footer -->
           <tr>
-            <td style="padding: 20px 32px; background: #f9fafb; border-top: 1px solid #e5e7eb;">
-              <p style="margin: 0; font-size: 12px; color: #9ca3af; text-align: center; line-height: 1.5;">
-                ${footerHtml}
-              </p>
+            <td style="padding: 28px 32px 32px;">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-top: 1px solid #E8EAED;">
+                <tr>
+                  <td style="padding: 22px 0 0; text-align: center;">
+                    <img src="cid:empiria-logo" alt="Empiria" width="108" height="36" style="display: inline-block; border: 0; opacity: 0.7;" />
+                    <p style="margin: 14px 0 0; font-size: 12px; line-height: 1.6; color: #94A3B8;">
+                      ${footerHtml}<br />
+                      &copy; ${new Date().getFullYear()} Empiria &middot; empiria.events
+                    </p>
+                  </td>
+                </tr>
+              </table>
             </td>
           </tr>
 

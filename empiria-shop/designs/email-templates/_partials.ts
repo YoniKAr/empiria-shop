@@ -2,6 +2,13 @@ import { formatCurrency } from '@/lib/utils';
 import { SHOP_URL } from '@/lib/urls';
 import type { OrderEmailData, WalletResult } from '@/lib/email';
 
+// ---- Palette ----
+const ACCENT = '#F15A29'; // Empiria orange
+const INK = '#0F172A';    // headings
+const BODY = '#64748B';   // body text
+const MUTED = '#94A3B8';  // captions
+const BORDER = '#E8EAED'; // hairlines
+
 /**
  * Escape a value for safe interpolation into email HTML. User-controlled fields
  * (event title, organizer/attendee names, venue, tier names, seat labels,
@@ -56,12 +63,15 @@ export function formatEventDate(startDate: string, endDate?: string): string {
 
 export function confirmationMessage(data: OrderEmailData, confirmation: string): string {
   return `
-          <!-- Confirmation Message -->
+          <!-- Hero / Confirmation -->
           <tr>
-            <td style="padding: 32px 32px 16px;">
-              <h2 style="margin: 0 0 8px; font-size: 20px; font-weight: 700; color: #111827;">You're all set, ${escapeHtml(data.attendeeName || 'there')}!</h2>
-              <p style="margin: 0; font-size: 15px; color: #6b7280; line-height: 1.5;">
-                Your order has been confirmed. ${confirmation}
+            <td style="padding: 36px 32px 8px; text-align: center;">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin: 0 auto 18px;">
+                <tr><td style="width: 64px; height: 64px; background: #DCFCE7; border-radius: 50%; text-align: center; vertical-align: middle; font-size: 32px; line-height: 64px; color: #16A34A;">&#10003;</td></tr>
+              </table>
+              <h1 style="margin: 0 0 8px; font-size: 26px; font-weight: 800; color: ${INK}; letter-spacing: -0.02em;">You're all set, ${escapeHtml(data.attendeeName || 'there')}!</h1>
+              <p style="margin: 0 auto; max-width: 420px; font-size: 15px; line-height: 1.55; color: ${BODY};">
+                Your order is confirmed. ${confirmation}
               </p>
             </td>
           </tr>
@@ -71,19 +81,34 @@ export function confirmationMessage(data: OrderEmailData, confirmation: string):
 export function eventDetailsBlock(data: OrderEmailData): string {
   const eventDateFormatted = formatEventDate(data.eventDate, data.eventEndDate);
   const venue = [data.venueName, data.city].filter(Boolean).join(', ');
+  const isOnline = data.locationType === 'virtual' || data.locationType === 'hybrid';
 
   return `
           <!-- Event Details -->
           <tr>
-            <td style="padding: 16px 32px;">
-              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background: #f0f9ff; border-radius: 8px; border: 1px solid #bae6fd;">
+            <td style="padding: 28px 32px 8px;">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background: #FBFBFC; border: 1px solid ${BORDER}; border-left: 4px solid ${ACCENT}; border-radius: 12px;">
                 <tr>
-                  <td style="padding: 20px;">
-                    <h3 style="margin: 0 0 8px; font-size: 17px; font-weight: 700; color: #0c4a6e;">${escapeHtml(data.eventTitle)}</h3>
-                    <p style="margin: 0 0 4px; font-size: 14px; color: #0369a1;">${eventDateFormatted}</p>
-                    ${venue ? `<p style="margin: 0 0 4px; font-size: 14px; color: #0369a1;">${escapeHtml(venue)}</p>` : ''}
-                    ${data.organizerName ? `<p style="margin: 0 0 4px; font-size: 14px; color: #0369a1;">Hosted by ${escapeHtml(data.organizerName)}</p>` : ''}
-                    ${(data.locationType === 'virtual' || data.locationType === 'hybrid') && data.meetingLink ? `<p style="margin: 0; font-size: 14px;"><a href="${safeUrl(data.meetingLink)}" style="color: #0369a1; text-decoration: underline; font-weight: 600;" target="_blank">Join Online Meeting</a></p>` : ''}
+                  <td style="padding: 22px 24px;">
+                    <h2 style="margin: 0 0 16px; font-size: 19px; font-weight: 700; color: ${INK};">${escapeHtml(data.eventTitle)}</h2>
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+                      <tr>
+                        <td style="padding: 0 0 10px; width: 92px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: ${MUTED}; vertical-align: top;">When</td>
+                        <td style="padding: 0 0 10px; font-size: 14px; color: ${INK}; vertical-align: top;">${eventDateFormatted}</td>
+                      </tr>
+                      ${venue ? `<tr>
+                        <td style="padding: 0 0 10px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: ${MUTED}; vertical-align: top;">Where</td>
+                        <td style="padding: 0 0 10px; font-size: 14px; color: ${INK}; vertical-align: top;">${escapeHtml(venue)}</td>
+                      </tr>` : ''}
+                      ${data.organizerName ? `<tr>
+                        <td style="padding: 0 0 10px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: ${MUTED}; vertical-align: top;">Host</td>
+                        <td style="padding: 0 0 10px; font-size: 14px; color: ${INK}; vertical-align: top;">${escapeHtml(data.organizerName)}</td>
+                      </tr>` : ''}
+                      ${isOnline && data.meetingLink ? `<tr>
+                        <td style="font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: ${MUTED}; vertical-align: top;">Online</td>
+                        <td style="font-size: 14px; vertical-align: top;"><a href="${safeUrl(data.meetingLink)}" target="_blank" style="color: ${ACCENT}; font-weight: 600; text-decoration: none;">Join the meeting &rarr;</a></td>
+                      </tr>` : ''}
+                    </table>
                   </td>
                 </tr>
               </table>
@@ -93,87 +118,49 @@ export function eventDetailsBlock(data: OrderEmailData): string {
 }
 
 export function orderSummaryTable(data: OrderEmailData): string {
+  const summaryRow = (label: string, value: string, color = BODY) => `
+                    <tr>
+                      <td style="padding: 9px 0; font-size: 14px; color: ${color};">${label}</td>
+                      <td style="padding: 9px 0; font-size: 14px; color: ${color}; text-align: right;">${value}</td>
+                    </tr>`;
+
   const lineItemRows = data.lineItems
     .map(
       (item) => `
-      <tr>
-        <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 14px; color: #374151;">
-          ${escapeHtml(item.tierName)}
-        </td>
-        <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 14px; color: #374151; text-align: center;">
-          ${item.quantity}
-        </td>
-        <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 14px; color: #374151; text-align: right;">
-          ${formatCurrency(item.unitPrice, data.currency)}
-        </td>
-        <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 14px; color: #374151; text-align: right;">
-          ${formatCurrency(item.unitPrice * item.quantity, data.currency)}
-        </td>
-      </tr>`
+                    <tr>
+                      <td style="padding: 9px 0; font-size: 14px; color: ${INK};">
+                        ${escapeHtml(item.tierName)}
+                        <span style="color: ${MUTED}; font-weight: 400;">&times; ${item.quantity}</span>
+                      </td>
+                      <td style="padding: 9px 0; font-size: 14px; color: ${INK}; text-align: right;">
+                        ${formatCurrency(item.unitPrice * item.quantity, data.currency)}
+                      </td>
+                    </tr>`
     )
     .join('');
 
   return `
           <!-- Order Summary -->
           <tr>
-            <td style="padding: 16px 32px;">
-              <h3 style="margin: 0 0 12px; font-size: 15px; font-weight: 600; color: #111827;">Order Summary</h3>
-              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden;">
-                <tr style="background: #f9fafb;">
-                  <th style="padding: 8px 12px; font-size: 12px; font-weight: 600; color: #6b7280; text-align: left; text-transform: uppercase;">Tier</th>
-                  <th style="padding: 8px 12px; font-size: 12px; font-weight: 600; color: #6b7280; text-align: center; text-transform: uppercase;">Qty</th>
-                  <th style="padding: 8px 12px; font-size: 12px; font-weight: 600; color: #6b7280; text-align: right; text-transform: uppercase;">Price</th>
-                  <th style="padding: 8px 12px; font-size: 12px; font-weight: 600; color: #6b7280; text-align: right; text-transform: uppercase;">Total</th>
-                </tr>
-                ${lineItemRows}
-                ${data.convenienceFee && data.convenienceFee > 0 ? `
-                <tr>
-                  <td colspan="3" style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 13px; color: #6b7280; text-align: right;">
-                    Service Fee
-                  </td>
-                  <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 13px; color: #6b7280; text-align: right;">
-                    ${formatCurrency(data.convenienceFee, data.currency)}
-                  </td>
-                </tr>` : ''}
-                ${data.convenienceFeeHST && data.convenienceFeeHST > 0 ? `
-                <tr>
-                  <td colspan="3" style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 13px; color: #6b7280; text-align: right;">
-                    HST on Service Fee
-                  </td>
-                  <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 13px; color: #6b7280; text-align: right;">
-                    ${formatCurrency(data.convenienceFeeHST, data.currency)}
-                  </td>
-                </tr>` : ''}
-                ${data.ticketTax && data.ticketTax > 0 ? `
-                <tr>
-                  <td colspan="3" style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 13px; color: #6b7280; text-align: right;">
-                    Sales Tax (HST 13%)
-                  </td>
-                  <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 13px; color: #6b7280; text-align: right;">
-                    ${formatCurrency(data.ticketTax, data.currency)}
-                  </td>
-                </tr>` : ''}
-                ${data.discountAmount && data.discountAmount > 0 ? `
-                <tr>
-                  <td colspan="3" style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 13px; color: #059669; text-align: right;">
-                    Discount${data.couponCode ? ` (${escapeHtml(data.couponCode)})` : ''}
-                  </td>
-                  <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 13px; color: #059669; text-align: right;">
-                    -${formatCurrency(data.discountAmount, data.currency)}
-                  </td>
-                </tr>` : ''}
-                <tr style="background: #f9fafb;">
-                  <td colspan="3" style="padding: 10px 12px; font-size: 14px; font-weight: 700; color: #111827; text-align: right;">
-                    Total
-                  </td>
-                  <td style="padding: 10px 12px; font-size: 14px; font-weight: 700; color: #111827; text-align: right;">
-                    ${formatCurrency(data.total, data.currency)}
-                  </td>
-                </tr>
+            <td style="padding: 20px 32px 8px;">
+              <h3 style="margin: 0 0 12px; font-size: 16px; font-weight: 700; color: ${INK};">Order summary</h3>
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background: #FBFBFC; border: 1px solid ${BORDER}; border-radius: 12px;">
+                <tr><td style="padding: 6px 20px;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+                    ${lineItemRows}
+                    ${data.convenienceFee && data.convenienceFee > 0 ? summaryRow('Service fee', formatCurrency(data.convenienceFee, data.currency), MUTED) : ''}
+                    ${data.convenienceFeeHST && data.convenienceFeeHST > 0 ? summaryRow('HST on service fee', formatCurrency(data.convenienceFeeHST, data.currency), MUTED) : ''}
+                    ${data.ticketTax && data.ticketTax > 0 ? summaryRow('Sales tax (HST 13%)', formatCurrency(data.ticketTax, data.currency), MUTED) : ''}
+                    ${data.discountAmount && data.discountAmount > 0 ? summaryRow(`Discount${data.couponCode ? ` (${escapeHtml(data.couponCode)})` : ''}`, `-${formatCurrency(data.discountAmount, data.currency)}`, '#16A34A') : ''}
+                    <tr><td colspan="2" style="border-top: 1px solid ${BORDER}; font-size: 0; line-height: 0;">&nbsp;</td></tr>
+                    <tr>
+                      <td style="padding: 12px 0 6px; font-size: 16px; font-weight: 800; color: ${INK};">Total paid</td>
+                      <td style="padding: 12px 0 6px; font-size: 16px; font-weight: 800; color: ${INK}; text-align: right;">${formatCurrency(data.total, data.currency)}</td>
+                    </tr>
+                  </table>
+                </td></tr>
               </table>
-              <p style="margin: 8px 0 0; font-size: 12px; color: #9ca3af;">
-                Order #${data.orderId.slice(0, 8)}
-              </p>
+              <p style="margin: 10px 0 0; font-size: 12px; color: ${MUTED};">Order #${escapeHtml(data.orderId.slice(0, 8).toUpperCase())}</p>
             </td>
           </tr>
 `;
@@ -186,19 +173,12 @@ export function receiptLinks(data: OrderEmailData): string {
   return `
           <!-- Payment Receipt & Invoice -->
           <tr>
-            <td style="padding: 4px 32px 16px;">
-              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-                <tr>
-                  <td align="center" style="padding: 12px 0;">
-                    ${data.receiptUrl ? `<a href="${safeUrl(data.receiptUrl)}" target="_blank" style="display: inline-block; padding: 10px 20px; background: #111827; color: #ffffff; font-size: 14px; font-weight: 600; text-decoration: none; border-radius: 6px;">View Payment Receipt</a>` : ''}
-                    ${data.invoiceUrl ? `<a href="${safeUrl(data.invoiceUrl)}" target="_blank" style="display: inline-block; padding: 10px 20px; background: #ffffff; color: #111827; font-size: 14px; font-weight: 600; text-decoration: none; border-radius: 6px; border: 1px solid #d1d5db; margin-left: 8px;">View Invoice</a>` : ''}
-                    ${data.invoicePdf ? `<a href="${safeUrl(data.invoicePdf)}" target="_blank" style="display: inline-block; padding: 10px 20px; background: #ffffff; color: #111827; font-size: 14px; font-weight: 600; text-decoration: none; border-radius: 6px; border: 1px solid #d1d5db; margin-left: 8px;">Download Invoice PDF</a>` : ''}
-                  </td>
-                </tr>
-              </table>
+            <td style="padding: 20px 32px 8px; text-align: center;">
+              ${data.receiptUrl ? `<a href="${safeUrl(data.receiptUrl)}" target="_blank" style="display: inline-block; margin: 4px; padding: 11px 22px; background: ${INK}; color: #ffffff; font-size: 14px; font-weight: 600; text-decoration: none; border-radius: 9px;">View receipt</a>` : ''}
+              ${data.invoiceUrl ? `<a href="${safeUrl(data.invoiceUrl)}" target="_blank" style="display: inline-block; margin: 4px; padding: 11px 22px; background: #ffffff; color: ${INK}; font-size: 14px; font-weight: 600; text-decoration: none; border-radius: 9px; border: 1px solid #D1D5DB;">View invoice</a>` : ''}
+              ${data.invoicePdf ? `<a href="${safeUrl(data.invoicePdf)}" target="_blank" style="display: inline-block; margin: 4px; padding: 11px 22px; background: #ffffff; color: ${INK}; font-size: 14px; font-weight: 600; text-decoration: none; border-radius: 9px; border: 1px solid #D1D5DB;">Invoice PDF</a>` : ''}
             </td>
-          </tr>
-          `;
+          </tr>`;
 }
 
 export function ticketsList(data: OrderEmailData, walletResults: WalletResult[], sectionHeading: string): string {
@@ -208,38 +188,42 @@ export function ticketsList(data: OrderEmailData, walletResults: WalletResult[],
         const wallet = walletResults.find((w) => w.ticketId === ticket.id);
         const hasWallet = wallet && (wallet.applePass || wallet.googleLink);
         return `
-      <tr>
-        <td style="padding: 8px 0;">
-          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px;">
-            <tr>
-              <td style="padding: 16px; text-align: center;">
-                <img src="cid:qr-${ticket.id}" alt="QR Code" width="160" height="160" style="display: block; margin: 0 auto;" />
-              </td>
-              <td style="padding: 16px; vertical-align: middle;">
-                <p style="margin: 0 0 4px; font-size: 14px; font-weight: 600; color: #111827;">${escapeHtml(ticket.tierName)}</p>
-                ${ticket.seatLabel ? `<p style="margin: 0 0 4px; font-size: 13px; color: #374151;">Seat: ${escapeHtml(ticket.seatLabel)}</p>` : ''}
-                <p style="margin: 0; font-size: 12px; color: #6b7280;">Ticket #${ticket.id.slice(0, 8)}</p>
-              </td>
-            </tr>${hasWallet ? `
-            <tr>
-              <td colspan="2" style="padding: 4px 16px 12px; text-align: center;">
-                ${wallet.applePass ? `<a href="cid:pass-${ticket.id}" style="display:inline-block; margin:4px; text-decoration:none;">
-                  <span style="display:inline-block; background:#000; color:#fff; padding:8px 16px; border-radius:8px; font-size:13px; font-weight:600;">&#63743; Add to Apple Wallet</span>
-                </a>` : ''}
-                ${wallet.googleLink ? `<a href="${safeUrl(wallet.googleLink)}" style="display:inline-block; margin:4px; text-decoration:none;" target="_blank">
-                  <span style="display:inline-block; background:#1a73e8; color:#fff; padding:8px 16px; border-radius:8px; font-size:13px; font-weight:600;">Add to Google Wallet</span>
-                </a>` : ''}
-              </td>
-            </tr>` : ''}
-            <tr>
-              <td colspan="2" style="padding: 0 16px 14px; text-align: center;">
-                <a href="${SHOP_URL}/t/${ticket.qr_code_secret}" target="_blank" style="font-size: 13px; color: #ea580c; font-weight: 600; text-decoration: none;">&#8599; Share this ticket</a>
-                <span style="display: block; font-size: 11px; color: #9ca3af; margin-top: 3px;">Coming with someone? Send them their ticket to add to their own wallet.</span>
-              </td>
-            </tr>
-          </table>
-        </td>
-      </tr>`;
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border: 1px solid ${BORDER}; border-radius: 14px; overflow: hidden; margin-bottom: 14px; background: #ffffff;">
+                <tr>
+                  <td style="padding: 18px 20px;">
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+                      <tr>
+                        <td width="128" valign="top" style="padding-right: 18px;">
+                          <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border: 1px solid ${BORDER}; border-radius: 10px;">
+                            <tr><td style="padding: 7px;">
+                              <img src="cid:qr-${ticket.id}" alt="Entry QR code" width="110" height="110" style="display: block; border-radius: 4px;" />
+                            </td></tr>
+                          </table>
+                        </td>
+                        <td valign="middle">
+                          <p style="margin: 0 0 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: ${ACCENT};">Admit One</p>
+                          <p style="margin: 0 0 4px; font-size: 17px; font-weight: 700; color: ${INK};">${escapeHtml(ticket.tierName)}</p>
+                          ${ticket.seatLabel ? `<p style="margin: 0 0 4px; font-size: 14px; color: ${BODY};">Seat <strong style="color: ${INK};">${escapeHtml(ticket.seatLabel)}</strong></p>` : ''}
+                          <p style="margin: 6px 0 0; font-size: 12px; color: ${MUTED}; font-family: ui-monospace, 'SF Mono', Menlo, monospace;">#${escapeHtml(ticket.id.slice(0, 8).toUpperCase())}</p>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 0 20px 18px;">
+                    <div style="border-top: 1px dashed ${BORDER}; padding-top: 14px;">
+                      ${wallet?.applePass ? `<a href="${SHOP_URL}/api/wallet/apple/share/${ticket.qr_code_secret}" target="_blank" style="display: inline-block; margin: 0 8px 4px 0; text-decoration: none;"><img src="cid:apple-wallet-badge" alt="Add to Apple Wallet" height="40" style="display: inline-block; height: 40px; width: auto; border: 0;" /></a>` : ''}
+                      ${wallet?.googleLink ? `<a href="${safeUrl(wallet.googleLink)}" target="_blank" style="display: inline-block; margin: 0 0 4px; text-decoration: none;"><img src="cid:google-wallet-badge" alt="Add to Google Wallet" height="40" style="display: inline-block; height: 40px; width: auto; border: 0;" /></a>` : ''}
+                      ${hasWallet ? `<p style="margin: 10px 0 2px; font-size: 11px; color: ${MUTED};">Your wallet passes are also attached to this email.</p>` : ''}
+                      <p style="margin: 10px 0 0; font-size: 13px;">
+                        <a href="${SHOP_URL}/t/${ticket.qr_code_secret}" target="_blank" style="color: ${ACCENT}; font-weight: 600; text-decoration: none;">&#8599; Share this ticket</a>
+                        <span style="color: ${MUTED}; font-size: 12px;">&nbsp; &mdash; coming with someone? send them their ticket to add to their own wallet.</span>
+                      </p>
+                    </div>
+                  </td>
+                </tr>
+              </table>`;
       }
     )
     .join('');
@@ -247,14 +231,12 @@ export function ticketsList(data: OrderEmailData, walletResults: WalletResult[],
   return `
           <!-- Tickets -->
           <tr>
-            <td style="padding: 16px 32px 24px;">
-              <h3 style="margin: 0 0 12px; font-size: 15px; font-weight: 600; color: #111827;">${sectionHeading}</h3>
-              <p style="margin: 0 0 12px; font-size: 13px; color: #6b7280;">
-                Show the QR code at the venue entrance for check-in.
+            <td style="padding: 28px 32px 8px;">
+              <h3 style="margin: 0 0 4px; font-size: 16px; font-weight: 700; color: ${INK};">${escapeHtml(sectionHeading)}</h3>
+              <p style="margin: 0 0 16px; font-size: 13px; color: ${BODY};">
+                Show the QR code at the entrance, or add your tickets to your phone's wallet.
               </p>
-              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-                ${ticketCards}
-              </table>
+              ${ticketCards}
             </td>
           </tr>
 `;

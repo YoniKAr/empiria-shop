@@ -1,4 +1,6 @@
 import QRCodeLib from 'qrcode';
+import { readFile } from 'fs/promises';
+import path from 'path';
 import { sendEmail } from '@/lib/mailer';
 import { generateApplePass, generateGoogleWalletLink } from './wallet';
 import { CtaLabel } from '@/lib/eventFields';
@@ -96,6 +98,24 @@ export async function sendOrderConfirmationEmail(data: OrderEmailData) {
   const pick = ({ buy_tickets: ticketsTpl, register: registrationTpl, rsvp: rsvpTpl } as const)[(data.ctaLabel as CtaLabel) ?? 'buy_tickets'] ?? ticketsTpl;
   const { subject, html } = pick(data, walletResults);
 
+  // Inline images the templates reference via cid: — the Empiria logo and the
+  // official Apple/Google wallet badges. Attached so they render even when a
+  // mail client blocks remote images.
+  const anyApplePass = walletResults.some((w) => w.applePass);
+  const anyGoogleLink = walletResults.some((w) => w.googleLink);
+  const publicDir = path.join(process.cwd(), 'public');
+  const [logoBuffer, appleBadgeBuffer, googleBadgeBuffer] = await Promise.all([
+    readFile(path.join(publicDir, 'logo.png')).catch(() => null),
+    anyApplePass
+      ? readFile(path.join(publicDir, 'wallet', 'add-to-apple-wallet.png')).catch(() => null)
+      : null,
+    anyGoogleLink
+      ? readFile(path.join(publicDir, 'wallet', 'add-to-google-wallet.png')).catch(() => null)
+      : null,
+  ]);
+  const inlineImage = (buf: Buffer | null, filename: string, cid: string) =>
+    buf ? [{ filename, content: buf, contentType: 'image/png' as const, cid }] : [];
+
   // Build wallet .pkpass attachments
   const walletAttachments = walletResults
     .filter((w) => w.applePass)
@@ -110,6 +130,9 @@ export async function sendOrderConfirmationEmail(data: OrderEmailData) {
     subject,
     html,
     attachments: [
+      ...inlineImage(logoBuffer, 'logo.png', 'empiria-logo'),
+      ...inlineImage(appleBadgeBuffer, 'add-to-apple-wallet.png', 'apple-wallet-badge'),
+      ...inlineImage(googleBadgeBuffer, 'add-to-google-wallet.png', 'google-wallet-badge'),
       ...qrAttachments.map((a) => ({
         filename: a.filename,
         content: a.content,
