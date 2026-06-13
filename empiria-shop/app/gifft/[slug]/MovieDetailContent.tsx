@@ -149,7 +149,7 @@ export default function MovieDetailContent({
   return (
     <>
       {/* Hero Section - Two Column */}
-      <section className="relative bg-gradient-to-b from-black via-neutral-900 via-70% to-white">
+      <section className="relative bg-black">
         <div className="absolute inset-0 opacity-10">
           <div className="absolute top-0 right-0 w-96 h-96 bg-white rounded-full blur-[128px]" />
         </div>
