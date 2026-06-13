@@ -355,37 +355,33 @@ export function CheckoutForm({
           <span>-{formatPrice(discountAmount)}</span>
         </div>
       )}
-      {fees.customerTax > 0 && (
+      {/* Ticket tax only (HST on the ticket price). The HST charged on the
+          platform fee is folded into the combined "Fees" line below. */}
+      {fees.hstOnBase > 0 && (
         <div
           className="flex justify-between text-sm text-gray-600 tabular-nums"
           data-testid="checkout-ticket-tax"
         >
           <span>Tax (HST 13%)</span>
-          <span>{formatPrice(fees.customerTax)}</span>
+          <span>{formatPrice(fees.hstOnBase)}</span>
         </div>
       )}
-      {passProcessingFee && fees.platformFee > 0 && (
+      {/* Single combined fee line = platform (service) fee + its HST + the
+          card-processing fee. Only shown in pass-fee mode. */}
+      {passProcessingFee && fees.platformFee + fees.stripeOffset > 0 && (
         <div
           className="flex justify-between text-sm text-gray-600 tabular-nums"
-          data-testid="checkout-convenience-fee"
+          data-testid="checkout-fees"
         >
           <span className="inline-flex items-center gap-1">
-            Service fee
-            <FeeInfo text="Empiria's platform fee for operating the marketplace — secure ticketing, order management, and customer support." />
+            Fees
+            <FeeInfo text="Includes the platform fee and payment processing fee." />
           </span>
-          <span>{formatPrice(fees.platformFee)}</span>
-        </div>
-      )}
-      {passProcessingFee && fees.stripeOffset > 0 && (
-        <div
-          className="flex justify-between text-sm text-gray-600 tabular-nums"
-          data-testid="checkout-processing-fee"
-        >
-          <span className="inline-flex items-center gap-1">
-            Processing fee
-            <FeeInfo text="Covers the cost of securely processing your card payment through our payment provider, Stripe." />
+          <span>
+            {formatPrice(
+              Math.round((fees.platformFee + fees.hstOnFee + fees.stripeOffset) * 100) / 100
+            )}
           </span>
-          <span>{formatPrice(fees.stripeOffset)}</span>
         </div>
       )}
     </div>

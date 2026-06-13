@@ -2,7 +2,7 @@
 export const STRIPE_PERCENT = 0.029;     // domestic card estimate; webhook reconciles with the real fee
 export const STRIPE_FIXED = 0.30;        // CAD, per order
 export const HST_RATE = 0.13;            // flat 13% HST, computed by us (not Stripe automatic_tax)
-export const DEFAULT_FEE_PERCENT = 0.6;  // platform percentage fee [TEST: temporarily 0.6%, normally 3.5%]
+export const DEFAULT_FEE_PERCENT = 0.6;  // platform percentage fee
 export const DEFAULT_FIXED_PER_TICKET = 1.35; // platform fixed fee per PAID ticket
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
