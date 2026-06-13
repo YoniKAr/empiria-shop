@@ -149,16 +149,12 @@ export default function MovieDetailContent({
   return (
     <>
       {/* Hero Section - Two Column */}
-      <section className="relative bg-black">
-        <div className="absolute inset-0 opacity-10">
-          <div className="absolute top-0 right-0 w-96 h-96 bg-white rounded-full blur-[128px]" />
-        </div>
-
+      <section className="relative bg-white">
         <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 py-12 md:py-16">
           <div className="grid grid-cols-1 md:grid-cols-[300px_1fr] lg:grid-cols-[350px_1fr] gap-8 md:gap-12 items-start">
             {/* Left: Poster */}
             <div className="mx-auto md:mx-0 w-[250px] md:w-full">
-              <div className="aspect-[2/3] relative rounded-2xl overflow-hidden shadow-2xl border border-black/10">
+              <div className="aspect-[2/3] relative rounded-2xl overflow-hidden shadow-[0_25px_60px_-15px_rgba(0,0,0,0.45)] ring-1 ring-black/5">
                 {posterUrl ? (
                   <Image
                     src={posterUrl}
@@ -183,32 +179,32 @@ export default function MovieDetailContent({
             <div className="text-center md:text-left">
               {/* Genre badge */}
               {movie.genre && (
-                <span className="inline-block bg-white/15 text-white text-xs font-bold uppercase tracking-[0.15em] px-3 py-1 rounded-full border border-white/30 mb-4">
+                <span className="inline-block bg-neutral-700 text-white text-xs font-bold uppercase tracking-[0.15em] px-3 py-1 rounded-full mb-4">
                   {movie.genre}
                 </span>
               )}
 
               {/* Title */}
-              <h1 className="text-3xl md:text-5xl lg:text-6xl font-bold text-white mb-5 tracking-tight leading-tight font-[family-name:var(--font-space-grotesk)]">
+              <h1 className="text-3xl md:text-5xl lg:text-6xl font-bold text-gray-900 mb-5 tracking-tight leading-tight font-[family-name:var(--font-space-grotesk)]">
                 {event.title}
               </h1>
 
               {/* Meta pills */}
               <div className="flex flex-wrap justify-center md:justify-start gap-3 mb-6">
                 {movie.duration_minutes && (
-                  <span className="inline-flex items-center gap-1.5 bg-white/15 text-white text-sm px-3 py-1.5 rounded-full">
+                  <span className="inline-flex items-center gap-1.5 bg-neutral-700 text-white text-sm px-3 py-1.5 rounded-full">
                     <Clock className="w-3.5 h-3.5" />
                     {formatDuration(movie.duration_minutes)}
                   </span>
                 )}
                 {movie.language && (
-                  <span className="inline-flex items-center gap-1.5 bg-white/15 text-white text-sm px-3 py-1.5 rounded-full">
+                  <span className="inline-flex items-center gap-1.5 bg-neutral-700 text-white text-sm px-3 py-1.5 rounded-full">
                     <Globe className="w-3.5 h-3.5" />
                     {movie.language}
                   </span>
                 )}
                 {movie.subtitles && (
-                  <span className="inline-flex items-center gap-1.5 bg-white/15 text-white text-sm px-3 py-1.5 rounded-full">
+                  <span className="inline-flex items-center gap-1.5 bg-neutral-700 text-white text-sm px-3 py-1.5 rounded-full">
                     Subtitles: {movie.subtitles}
                   </span>
                 )}
@@ -217,20 +213,20 @@ export default function MovieDetailContent({
               {/* Director */}
               {movie.director && (
                 <div className="mb-4">
-                  <p className="text-xs text-white/60 uppercase tracking-widest font-medium mb-1">Director</p>
-                  <p className="text-lg text-white font-medium">{movie.director}</p>
+                  <p className="text-xs text-gray-500 uppercase tracking-widest font-medium mb-1">Director</p>
+                  <p className="text-lg text-gray-900 font-medium">{movie.director}</p>
                 </div>
               )}
 
               {/* Cast */}
               {castMembers.length > 0 && (
                 <div className="mb-6">
-                  <p className="text-xs text-white/60 uppercase tracking-widest font-medium mb-2">Cast</p>
+                  <p className="text-xs text-gray-500 uppercase tracking-widest font-medium mb-2">Cast</p>
                   <div className="flex flex-wrap justify-center md:justify-start gap-2">
                     {castMembers.map((member, i) => (
                       <span
                         key={i}
-                        className="bg-white/15 border border-white/30 text-white text-sm px-3 py-1 rounded-full"
+                        className="bg-neutral-700 text-white text-sm px-3 py-1 rounded-full"
                       >
                         {member}
                       </span>
@@ -242,14 +238,14 @@ export default function MovieDetailContent({
               {/* Synopsis */}
               {(movie.synopsis || description) && (
                 <div>
-                  <p className="text-xs text-white/60 uppercase tracking-widest font-medium mb-2">Synopsis</p>
+                  <p className="text-xs text-gray-500 uppercase tracking-widest font-medium mb-2">Synopsis</p>
                   {movie.synopsis ? (
-                    <p className="text-white/85 leading-relaxed text-sm md:text-base max-w-2xl">
+                    <p className="text-gray-700 leading-relaxed text-sm md:text-base max-w-2xl">
                       {movie.synopsis}
                     </p>
                   ) : (
                     <div
-                      className="text-white/85 leading-relaxed text-sm md:text-base max-w-2xl whitespace-pre-line [&_a]:text-white [&_a]:underline [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5"
+                      className="text-gray-700 leading-relaxed text-sm md:text-base max-w-2xl whitespace-pre-line [&_a]:text-gray-900 [&_a]:underline [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5"
                       dangerouslySetInnerHTML={{ __html: sanitizeRichText(description) }}
                     />
                   )}
@@ -259,8 +255,8 @@ export default function MovieDetailContent({
               {/* Rating */}
               {movie.rating && (
                 <div className="mt-4">
-                  <p className="text-xs text-white/60 uppercase tracking-widest font-medium mb-1">Rating</p>
-                  <span className="inline-flex items-center gap-1.5 bg-white/15 border border-white/30 text-white text-sm px-3 py-1.5 rounded-full">
+                  <p className="text-xs text-gray-500 uppercase tracking-widest font-medium mb-1">Rating</p>
+                  <span className="inline-flex items-center gap-1.5 bg-neutral-700 text-white text-sm px-3 py-1.5 rounded-full">
                     <Star className="w-3.5 h-3.5" /> {movie.rating}
                   </span>
                 </div>
