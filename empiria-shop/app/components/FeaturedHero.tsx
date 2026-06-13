@@ -102,13 +102,13 @@ export default function FeaturedHero({ featuredEvents, query, setQuery }: Featur
           {/* Search Bar */}
           <div className="bg-white/95 backdrop-blur-sm p-2 rounded-full shadow-2xl max-w-3xl mx-auto flex flex-col sm:flex-row gap-2">
             <div className="flex-1 flex items-center px-4 h-12 bg-gray-50 sm:bg-transparent rounded-full sm:rounded-none">
-              <Search className="text-gray-400 w-5 h-5 mr-3 flex-shrink-0" />
+              <Search className="text-gray-700 w-5 h-5 mr-3 flex-shrink-0" />
               <input
                 type="text"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Search events, artists, categories, city..."
-                className="bg-transparent w-full outline-none text-sm font-medium placeholder:text-gray-400 text-slate-900"
+                className="bg-transparent w-full outline-none text-sm font-medium placeholder:text-gray-700 text-slate-900"
               />
             </div>
             <button
@@ -117,7 +117,7 @@ export default function FeaturedHero({ featuredEvents, query, setQuery }: Featur
                   document.getElementById('events-section')?.scrollIntoView({ behavior: 'smooth' });
                 }
               }}
-              className="bg-[#F15A29] text-white h-12 px-8 rounded-full font-bold hover:brightness-110 transition-all cursor-pointer"
+              className="bg-[#F15A29] text-white h-12 px-8 rounded-full font-bold hover:bg-[#d6420f] transition-all cursor-pointer"
             >
               Search
             </button>
@@ -143,12 +143,14 @@ export default function FeaturedHero({ featuredEvents, query, setQuery }: Featur
                     <span className="flex items-center gap-1.5">
                       <Calendar className="w-4 h-4" />
                       {eventDate.toLocaleDateString('en-US', {
+                        timeZone: 'America/Toronto',
                         weekday: 'short',
                         month: 'short',
                         day: 'numeric',
                       })}
                       {' at '}
                       {eventDate.toLocaleTimeString('en-US', {
+                        timeZone: 'America/Toronto',
                         hour: 'numeric',
                         minute: '2-digit',
                         hour12: true,

@@ -3,6 +3,7 @@ import { readFile } from 'fs/promises';
 import { SignJWT, importPKCS8 } from 'jose';
 import forge from 'node-forge';
 import path from 'path';
+import { APEX_URL, SHOP_URL } from '@/lib/urls';
 
 // ---------- Shared types ----------
 
@@ -15,8 +16,8 @@ interface TicketData {
 interface EventData {
   id: string;
   title: string;
-  start_at: string;
-  end_at?: string | null;
+  starts_at: string;
+  ends_at?: string | null;
   venue_name?: string | null;
   city?: string | null;
 }
@@ -74,7 +75,7 @@ export async function generateApplePass(
       readFile(path.join(walletDir, 'strip@2x.png')),
     ]);
 
-    const eventDate = new Date(event.start_at);
+    const eventDate = new Date(event.starts_at);
     const dateStr = eventDate.toLocaleDateString('en-US', {
       weekday: 'short',
       month: 'short',
@@ -163,7 +164,7 @@ export async function generateApplePass(
       {
         key: 'organizer',
         label: 'Powered by',
-        value: 'Empiria — empiriaindia.com',
+        value: `Empiria — ${new URL(APEX_URL).hostname.replace(/^www\./, '')}`,
       },
     );
 
@@ -202,14 +203,12 @@ export async function generateGoogleWalletLink(
       Buffer.from(keyBase64, 'base64').toString('utf8'),
     );
 
-    const eventDate = new Date(event.start_at);
+    const eventDate = new Date(event.starts_at);
     const venue = [event.venue_name, event.city].filter(Boolean).join(', ');
     // One class per EVENT (Google shows event name/venue/date/logo from the
     // class), one object per TICKET (seat/barcode/type live on the object).
     const classId = `${issuerId}.event-${event.id}`;
     const objectId = `${issuerId}.ticket-${ticket.id}`;
-    // Public base URL — used for the (publicly fetchable) pass logo and origins
-    const baseUrl = (process.env.APP_BASE_URL || 'https://empiriaindia.com').replace(/\/$/, '');
 
     const eventTicketClass = {
       id: classId,
@@ -218,7 +217,7 @@ export async function generateGoogleWalletLink(
       hexBackgroundColor: '#111827',
       logo: {
         sourceUri: {
-          uri: `${baseUrl}/logo-white.png`,
+          uri: `${APEX_URL}/empiria_logo.png`,
         },
         contentDescription: {
           defaultValue: { language: 'en-US', value: 'Empiria' },
@@ -237,7 +236,7 @@ export async function generateGoogleWalletLink(
       },
       dateTime: {
         start: eventDate.toISOString(),
-        ...(event.end_at ? { end: new Date(event.end_at).toISOString() } : {}),
+        ...(event.ends_at ? { end: new Date(event.ends_at).toISOString() } : {}),
       },
     };
 
@@ -268,7 +267,7 @@ export async function generateGoogleWalletLink(
       iss: serviceAccountEmail,
       aud: 'google',
       typ: 'savetowallet',
-      origins: [baseUrl],
+      origins: [APEX_URL, SHOP_URL],
       payload: {
         // Include class definition so Google creates it if it doesn't exist yet
         eventTicketClasses: [eventTicketClass],

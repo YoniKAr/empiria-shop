@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { Minus, Plus, Loader2, AlertCircle } from "lucide-react";
 import SeatmapViewer from "./SeatmapViewer";
+import StripeBadge from "@/components/StripeBadge";
+import { BlockedBuyerNotice } from "@/components/BlockedBuyerNotice";
 import type { SeatingConfig, ZoneDefinition, ZoneTier } from "@/lib/seatmap-types";
 import { migrateSeatingConfig } from "@/lib/migrate-seating-config";
 
@@ -33,6 +35,10 @@ interface ZoneSelectorProps {
   userEmail?: string;
   userName?: string;
   occurrences?: OccurrenceOption[];
+  blockedBuyer?: boolean;
+  /** Deep-linked occurrence (?occ=<id>) — pre-selects the date picked on the
+   *  event page; the dropdown stays usable so users can still change it. */
+  initialOccurrenceId?: string;
 }
 
 interface TierSelection {
@@ -73,6 +79,8 @@ export default function ZoneSelector({
   userEmail,
   userName,
   occurrences = [],
+  blockedBuyer = false,
+  initialOccurrenceId,
 }: ZoneSelectorProps) {
   const migratedConfig = migrateSeatingConfig(config);
 
@@ -80,19 +88,45 @@ export default function ZoneSelector({
   const [selections, setSelections] = useState<TierSelection[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedOccurrenceId, setSelectedOccurrenceId] = useState<string>(
-    occurrences.length === 1 ? occurrences[0].id : ""
-  );
+  const [shake, setShake] = useState(false);
+  const [showBuyBlock, setShowBuyBlock] = useState(false);
+  const [selectedOccurrenceId, setSelectedOccurrenceId] = useState<string>(() => {
+    if (initialOccurrenceId && occurrences.some((o) => String(o.id) === initialOccurrenceId)) {
+      return initialOccurrenceId;
+    }
+    return occurrences.length === 1 ? occurrences[0].id : "";
+  });
   const [guestEmail, setGuestEmail] = useState("");
   const [guestName, setGuestName] = useState("");
 
   const tierMap = new Map(tiers.map((t) => [t.id, t]));
   const zones = migratedConfig.zones || [];
 
+  // Configs saved before tier-id remapping shipped can carry designer-generated
+  // ids that don't match ticket_tiers rows — fall back to the tier NAME the
+  // wizard derives from the zone ("Zone" or "Zone — Tier"), returning REAL ids.
+  const tierByName = new Map(tiers.map((t) => [t.name.trim().toLowerCase(), t]));
+  function resolveZoneTierIds(zone: ZoneDefinition): string[] {
+    const candidates = getZoneTierIds(zone);
+    const multi = (zone.tiers?.length || 0) > 1;
+    const resolved: string[] = [];
+    for (const tid of candidates) {
+      if (tierMap.has(tid)) {
+        resolved.push(tid);
+        continue;
+      }
+      const zt = zone.tiers?.find((z) => z.id === tid);
+      const derivedName = zt && multi ? `${zone.name} — ${zt.name}` : zone.name;
+      const byName = tierByName.get(derivedName.trim().toLowerCase());
+      if (byName) resolved.push(byName.id);
+    }
+    return resolved;
+  }
+
   // Build zone-level availability: zone.id → total remaining across all zone tiers
   const zoneAvailability: Record<string, number> = {};
   for (const zone of zones) {
-    const tierIds = getZoneTierIds(zone);
+    const tierIds = resolveZoneTierIds(zone);
     let total = 0;
     for (const tid of tierIds) {
       const t = tierMap.get(tid);
@@ -157,6 +191,14 @@ export default function ZoneSelector({
   );
 
   async function handleCheckout() {
+    if (blockedBuyer) {
+      setShowBuyBlock(true);
+      setShake(true);
+      if (typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate(60);
+      setTimeout(() => setShake(false), 450);
+      return;
+    }
+
     const activeSelections = selections.filter((s) => s.quantity > 0);
 
     if (activeSelections.length === 0) {
@@ -184,6 +226,14 @@ export default function ZoneSelector({
         quantity: s.quantity,
       }));
 
+      // Per-attempt idempotency key: a fresh uuid per submit CLICK. The server
+      // passes it to Stripe (sessions.create idempotencyKey) so a duplicated /
+      // retried request can never create two Checkout Sessions.
+      const attemptId =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
       const response = await fetch("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -195,6 +245,7 @@ export default function ZoneSelector({
           occurrenceId:
             selectedOccurrenceId ||
             (occurrences.length === 1 ? occurrences[0].id : undefined),
+          attemptId,
         }),
       });
 
@@ -217,7 +268,7 @@ export default function ZoneSelector({
   // Get tiers available for the selected zone
   const selectedZoneTiers: { zoneTier: ZoneTier | undefined; ticketTier: TicketTier }[] = [];
   if (selectedZone) {
-    const tierIds = getZoneTierIds(selectedZone);
+    const tierIds = resolveZoneTierIds(selectedZone);
     for (const tid of tierIds) {
       const tt = tierMap.get(tid);
       if (tt) {
@@ -229,7 +280,7 @@ export default function ZoneSelector({
 
   // Price range for zone legend
   function getZonePriceLabel(zone: ZoneDefinition): string {
-    const tierIds = getZoneTierIds(zone);
+    const tierIds = resolveZoneTierIds(zone);
     const prices = tierIds
       .map((tid) => tierMap.get(tid)?.price)
       .filter((p): p is number => p !== undefined);
@@ -247,7 +298,7 @@ export default function ZoneSelector({
       <div className="border border-gray-200 rounded-xl shadow-lg bg-white overflow-hidden">
         <div className="p-4 border-b bg-gray-50">
           <h3 className="font-bold text-lg">Select Your Zone</h3>
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-700">
             Click on a zone to see pricing and availability
           </p>
         </div>
@@ -285,10 +336,10 @@ export default function ZoneSelector({
                       backgroundColor: isSoldOut ? "#9ca3af" : zone.color,
                     }}
                   />
-                  <span className={isSoldOut ? "text-gray-400 line-through" : "text-gray-700"}>
+                  <span className={isSoldOut ? "text-gray-700 line-through" : "text-gray-900"}>
                     {zone.name}
                   </span>
-                  <span className="text-gray-400">
+                  <span className="text-gray-700">
                     {isSoldOut ? "Sold out" : getZonePriceLabel(zone)}
                   </span>
                 </button>
@@ -305,7 +356,7 @@ export default function ZoneSelector({
         {/* Occurrence picker */}
         {occurrences.length > 1 && (
           <div className="mb-5">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+            <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
               Select a Date
             </p>
             <div className="space-y-2">
@@ -328,18 +379,20 @@ export default function ZoneSelector({
                   >
                     <div className="font-medium text-sm">
                       {occDate.toLocaleDateString("en-US", {
+                        timeZone: "America/Toronto",
                         weekday: "short",
                         month: "short",
                         day: "numeric",
                       })}
                       {" at "}
                       {occDate.toLocaleTimeString("en-US", {
+                        timeZone: "America/Toronto",
                         hour: "numeric",
                         minute: "2-digit",
                       })}
                     </div>
                     {occ.label && (
-                      <div className="text-xs text-gray-500 mt-0.5">
+                      <div className="text-xs text-gray-700 mt-0.5">
                         {occ.label}
                       </div>
                     )}
@@ -379,18 +432,18 @@ export default function ZoneSelector({
                   >
                     <div className="flex items-center justify-between">
                       <div>
-                        <span className={`text-sm font-medium ${isSoldOut ? "text-gray-400" : "text-gray-900"}`}>
+                        <span className={`text-sm font-medium ${isSoldOut ? "text-gray-700" : "text-gray-900"}`}>
                           {tierLabel}
                         </span>
                         {ticketTier.description && (
-                          <p className="text-xs text-gray-500 mt-0.5">{ticketTier.description}</p>
+                          <p className="text-xs text-gray-700 mt-0.5">{ticketTier.description}</p>
                         )}
                       </div>
                       <div className="text-right">
-                        <span className={`text-sm font-bold ${isSoldOut ? "text-gray-400" : "text-gray-900"}`}>
+                        <span className={`text-sm font-bold ${isSoldOut ? "text-gray-700" : "text-gray-900"}`}>
                           {ticketTier.price === 0 ? "Free" : `${currencySymbol}${ticketTier.price}`}
                         </span>
-                        <p className="text-[10px] text-gray-400">
+                        <p className="text-[10px] text-gray-700">
                           {isSoldOut ? "Sold out" : `${ticketTier.remaining_quantity} left`}
                         </p>
                       </div>
@@ -414,12 +467,12 @@ export default function ZoneSelector({
         {/* Cart: tier quantity selections */}
         <div className="space-y-3 mb-5">
           {selections.length === 0 ? (
-            <p className="text-sm text-gray-400 py-4 text-center">
+            <p className="text-sm text-gray-700 py-4 text-center">
               Click on a zone in the map to add tickets
             </p>
           ) : (
             <>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
                 Your Tickets
               </p>
               {selections.map((sel) => {
@@ -445,7 +498,7 @@ export default function ZoneSelector({
                           <span className="font-semibold text-sm truncate block">
                             {sel.tierName}
                           </span>
-                          <span className="text-[10px] text-gray-400">
+                          <span className="text-[10px] text-gray-700">
                             {sel.zoneName}
                           </span>
                         </div>
@@ -459,7 +512,7 @@ export default function ZoneSelector({
                         <button
                           type="button"
                           onClick={() => removeSelection(sel.tierId)}
-                          className="text-gray-400 hover:text-red-500 text-xs"
+                          className="text-gray-700 hover:text-red-500 text-xs"
                           title="Remove"
                         >
                           &times;
@@ -500,7 +553,7 @@ export default function ZoneSelector({
         {/* Guest contact fields */}
         {!userEmail && totalItems > 0 && (
           <div className="space-y-3 mb-5 pt-4 border-t border-gray-100">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+            <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
               Contact Info
             </p>
             <input
@@ -520,7 +573,7 @@ export default function ZoneSelector({
               }}
               className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
             />
-            <p className="text-xs text-gray-400">
+            <p className="text-xs text-gray-700">
               Your tickets will be sent to this email.
             </p>
           </div>
@@ -552,7 +605,7 @@ export default function ZoneSelector({
           type="button"
           onClick={handleCheckout}
           disabled={totalItems === 0 || loading}
-          className="w-full bg-orange-600 text-white text-center py-4 rounded-xl font-bold hover:bg-orange-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          className={`w-full bg-orange-600 text-white text-center py-4 rounded-xl font-bold hover:bg-orange-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 ${shake ? "animate-shake" : ""}`}
         >
           {loading ? (
             <>
@@ -566,9 +619,9 @@ export default function ZoneSelector({
           )}
         </button>
 
-        <p className="text-xs text-center text-gray-400 mt-4">
-          Secure checkout powered by Stripe
-        </p>
+        {showBuyBlock && <BlockedBuyerNotice className="mt-2" />}
+
+        <StripeBadge className="mt-4" />
       </div>
     </div>
   );

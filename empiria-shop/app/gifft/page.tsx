@@ -18,22 +18,30 @@ export default async function GifftPage() {
     .eq('is_active', true)
     .order('display_order');
 
-  // Fetch published GIFFT movies
+  // Fetch published, public GIFFT movies. Occurrence filters apply to the
+  // embedded rows only (the movie itself stays listed): hide cancelled and
+  // past showtimes so the calendar/cards never surface them.
+  const nowIso = new Date().toISOString();
   const { data: movies } = await supabase
     .from('events')
     .select(`
       id, title, slug, city, cover_image_url, currency,
-      event_occurrences(starts_at),
+      event_occurrences(starts_at, is_cancelled),
       gifft_movie_details(*)
     `)
     .eq('event_type', 'gifft_movie')
     .eq('status', 'published')
+    .eq('visibility', 'public')
+    .eq('event_occurrences.is_cancelled', false)
+    .gte('event_occurrences.starts_at', nowIso)
     .order('created_at', { ascending: false });
 
-  // Fetch featured movies
+  // Fetch featured movies — inner join so drafts/private movies drop out.
   const { data: featured } = await supabase
     .from('gifft_featured_movies')
-    .select('*, events:event_id(id, title, slug, city, cover_image_url, gifft_movie_details(*))')
+    .select('*, events:event_id!inner(id, title, slug, city, cover_image_url, status, visibility, gifft_movie_details(*))')
+    .eq('events.status', 'published')
+    .eq('events.visibility', 'public')
     .order('display_order');
 
   // Fetch city sponsors

@@ -79,13 +79,25 @@ export async function POST(request: NextRequest) {
     // 5. Check scope matches the event
     const { data: event, error: eventError } = await supabase
       .from('events')
-      .select('id, organizer_id, category_id')
+      .select('id, organizer_id, category_id, currency')
       .eq('id', eventId)
       .single();
 
     if (eventError || !event) {
       return NextResponse.json(
         { valid: false, error: 'Event not found' },
+        { status: 200 }
+      );
+    }
+
+    // 5a. Currency must match the event (S15): a flat amount / discount cap in
+    // another currency would silently apply at the event-currency face value.
+    if (
+      coupon.currency &&
+      coupon.currency.toLowerCase() !== (event.currency || 'cad').toLowerCase()
+    ) {
+      return NextResponse.json(
+        { valid: false, error: "This coupon is not valid for this event's currency" },
         { status: 200 }
       );
     }

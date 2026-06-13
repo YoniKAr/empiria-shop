@@ -17,6 +17,7 @@ interface Event {
   event_occurrences?: { starts_at: string }[];
   start_at?: string;
   organizer_name?: string;
+  co_host_count?: number;
 }
 
 interface FeaturedEvent {
@@ -35,10 +36,11 @@ interface FeaturedEvent {
 interface HomeContentProps {
   events: Event[];
   featuredEvents: FeaturedEvent[];
-  categories: { id: string; name: string }[];
+  categories: { id: string; name: string; slug: string }[];
+  activeCategory: string | null;
 }
 
-export default function HomeContent({ events, featuredEvents, categories }: HomeContentProps) {
+export default function HomeContent({ events, featuredEvents, categories, activeCategory }: HomeContentProps) {
   const [query, setQuery] = useState('');
 
   return (
@@ -49,7 +51,13 @@ export default function HomeContent({ events, featuredEvents, categories }: Home
         setQuery={setQuery}
       />
       <div id="events-section">
-        <EventsGrid events={events} query={query} setQuery={setQuery} categories={categories} />
+        <EventsGrid
+          events={events}
+          query={query}
+          setQuery={setQuery}
+          categories={categories}
+          activeCategory={activeCategory}
+        />
       </div>
     </>
   );

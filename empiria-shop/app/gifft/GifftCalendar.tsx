@@ -7,37 +7,46 @@ interface CalMovie {
   title: string;
   slug: string;
   posterUrl?: string;
-  event_occurrences?: { starts_at: string }[];
+  event_occurrences?: { starts_at: string; is_cancelled?: boolean }[];
 }
 
 interface DayGroup {
+  /** Toronto calendar day, 'YYYY-MM-DD'. */
+  key: string;
+  /** Representative instant within the day (first show seen) — for sorting/format. */
   date: Date;
   items: Map<string, { movie: CalMovie; times: Date[] }>;
 }
 
+// Platform timezone: the calendar groups and renders showtimes in
+// America/Toronto regardless of the visitor's (or server's) timezone.
+const TORONTO_TZ = 'America/Toronto';
+
 export default function GifftCalendar({ movies }: { movies: CalMovie[] }) {
-  // Flatten every (movie, showtime) pair
+  // Flatten every (movie, showtime) pair. Defensively hide cancelled and
+  // already-started showtimes (the server query filters these too).
+  const now = Date.now();
   const shows = movies
     .flatMap((m) =>
-      (m.event_occurrences ?? []).map((o) => ({ movie: m, start: new Date(o.starts_at) }))
+      (m.event_occurrences ?? [])
+        .filter((o) => !o.is_cancelled)
+        .map((o) => ({ movie: m, start: new Date(o.starts_at) }))
     )
-    .filter((s) => !isNaN(s.start.getTime()));
+    .filter((s) => !isNaN(s.start.getTime()) && s.start.getTime() >= now);
 
   if (shows.length === 0) {
-    return <p className="text-center text-gray-500 py-12">No scheduled showtimes yet.</p>;
+    return <p className="text-center text-gray-700 py-12">No scheduled showtimes yet.</p>;
   }
 
-  // Group shows by day, then by movie (collecting that movie's showtimes for the day)
-  const dayKey = (d: Date) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+  // Group shows by Toronto calendar day, then by movie (collecting that
+  // movie's showtimes for the day). en-CA yields 'YYYY-MM-DD'.
+  const dayKey = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: TORONTO_TZ });
   const dayMap = new Map<string, DayGroup>();
   for (const s of shows) {
     const key = dayKey(s.start);
     let day = dayMap.get(key);
     if (!day) {
-      day = {
-        date: new Date(s.start.getFullYear(), s.start.getMonth(), s.start.getDate()),
-        items: new Map(),
-      };
+      day = { key, date: s.start, items: new Map() };
       dayMap.set(key, day);
     }
     let item = day.items.get(s.movie.id);
@@ -49,32 +58,31 @@ export default function GifftCalendar({ movies }: { movies: CalMovie[] }) {
   }
 
   const days = Array.from(dayMap.values()).sort((a, b) => a.date.getTime() - b.date.getTime());
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const todayKey = dayKey(new Date());
   const fmtTime = (d: Date) =>
-    d.toLocaleTimeString('en-CA', { hour: 'numeric', minute: '2-digit' });
+    d.toLocaleTimeString('en-CA', { timeZone: TORONTO_TZ, hour: 'numeric', minute: '2-digit' });
 
   return (
     <div className="divide-y divide-gray-100 border border-gray-100 rounded-2xl overflow-hidden">
       {days.map((day) => {
-        const isToday = day.date.getTime() === today.getTime();
+        const isToday = day.key === todayKey;
         const items = Array.from(day.items.values()).map((it) => ({
           movie: it.movie,
           times: it.times.sort((a, b) => a.getTime() - b.getTime()),
         }));
         return (
-          <div key={day.date.toISOString()} className="flex flex-col sm:flex-row gap-4 p-4 sm:p-5">
+          <div key={day.key} className="flex flex-col sm:flex-row gap-4 p-4 sm:p-5">
             {/* Date column */}
             <div className="sm:w-44 flex-shrink-0 flex sm:flex-col items-baseline sm:items-start gap-2 sm:gap-0.5">
               <div
                 className={`text-xs font-semibold uppercase tracking-wide ${
-                  isToday ? 'text-[#F15A29]' : 'text-gray-400'
+                  isToday ? 'text-[#F15A29]' : 'text-gray-700'
                 }`}
               >
-                {day.date.toLocaleDateString('en-CA', { weekday: 'long' })}
+                {day.date.toLocaleDateString('en-CA', { timeZone: TORONTO_TZ, weekday: 'long' })}
               </div>
               <div className={`text-2xl font-bold ${isToday ? 'text-[#F15A29]' : 'text-slate-800'}`}>
-                {day.date.toLocaleDateString('en-CA', { month: 'short', day: 'numeric' })}
+                {day.date.toLocaleDateString('en-CA', { timeZone: TORONTO_TZ, month: 'short', day: 'numeric' })}
               </div>
               {isToday && (
                 <span className="text-[10px] font-bold text-[#F15A29] bg-[#F15A29]/10 px-2 py-0.5 rounded-full">

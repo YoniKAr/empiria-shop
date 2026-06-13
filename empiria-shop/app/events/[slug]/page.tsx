@@ -8,9 +8,9 @@ import { EventDetails } from '@/app/components/EventDetails';
 import SponsorSections from '@/app/components/SponsorSections';
 import { EventCard } from '@/app/components/EventCard';
 import { TicketWidget } from '@/app/components/TicketWidget';
-import ZoneSelector from '@/components/seatmap/ZoneSelector';
-import SeatSelector from '@/components/seatmap/SeatSelector';
-import AssignedSeatPicker from '@/components/seatmap/AssignedSeatPicker';
+import SeatQuantityCTA from '@/components/seatmap/SeatQuantityCTA';
+import SeatsCTA from '@/components/seatmap/SeatsCTA';
+import { computeSeatQuantityCap } from '@/lib/seat-quantity';
 import Footer from '@/components/Footer';
 import type { SeatingConfig } from '@/lib/seatmap-types';
 
@@ -18,11 +18,14 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
     const { slug } = await params;
     const supabase = getSupabaseAdmin();
 
-    // Fetch event + ticket tiers + occurrences
+    // Fetch event + ticket tiers + occurrences.
+    // event_type='event' ONLY — GIFFT movies live at /gifft/[slug] and must NOT
+    // render a second detail page here (that produced the duplicate HEN page).
     const { data: event } = await supabase
         .from('events')
         .select('*, categories(name), ticket_tiers(*), event_occurrences(*)')
         .eq('slug', slug)
+        .eq('event_type', 'event')
         .eq('status', 'published')
         .single();
 
@@ -40,55 +43,102 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
     const firstOcc = allOccurrences[0];
     const isPast = allOccurrences.length > 0 && futureOccurrences.length === 0;
 
-    const heroStartAt = firstOcc?.starts_at || event.start_at || new Date().toISOString();
-    const heroEndAt = firstOcc?.ends_at || event.end_at || heroStartAt;
+    // Hero shows the first UPCOMING date (falls back to the first occurrence
+    // for past events), with a "+N more dates" hint for multi-date events.
+    const heroOcc = futureOccurrences[0] || firstOcc;
+    const heroStartAt = heroOcc?.starts_at || event.start_at || new Date().toISOString();
+    const heroEndAt = heroOcc?.ends_at || event.end_at || heroStartAt;
+    const moreDatesCount = Math.max(0, futureOccurrences.length - 1);
     const categoryName = (event as any).categories?.name || 'Event';
 
-    // Look up the event owner's name from the users table
+    // Online events show "Online event" in the hero instead of a maps link.
+    const isOnline =
+        (event as any).location_type === 'virtual' ||
+        (!event.venue_name && !!(event as any).meeting_link);
+
+    // Look up the event owner's profile from the users table
     const { data: ownerProfile } = event.organizer_id
         ? await supabase
             .from('users')
-            .select('full_name')
+            .select('full_name, role, avatar_url')
             .eq('auth0_id', event.organizer_id)
             .single()
         : { data: null };
 
-    const organizer = event.source_app === 'admin'
+    // Role-based primary name: admin-owned events show "Empiria Events", but an
+    // event an admin created ON BEHALF of a real organizer (owner role !== admin)
+    // shows that organizer's name.
+    const isPlatformEvent = ownerProfile?.role === 'admin';
+    const organizer = isPlatformEvent
         ? 'Empiria Events'
         : (ownerProfile?.full_name || 'Empiria Events');
 
-    // Fetch gallery images
-    const safeOrganizerId = event.organizer_id?.replace(/\|/g, '_');
+    // Organizer avatar: platform-owned events show the single shared platform
+    // avatar (admin-managed in platform_settings); otherwise the owner's own.
+    let organizerAvatarUrl: string | null = ownerProfile?.avatar_url || null;
+    if (isPlatformEvent) {
+        const { data: platformSetting } = await supabase
+            .from('platform_settings')
+            .select('value')
+            .eq('key', 'platform_avatar_url')
+            .maybeSingle();
+        organizerAvatarUrl = (platformSetting?.value as { url?: string | null } | null)?.url || null;
+    }
 
-    let galleryUrls: string[] = [];
-    const possiblePaths = [
-        `${String(event.id)}`,
-        `${event.slug}`,
-        safeOrganizerId ? `${safeOrganizerId}/${String(event.id)}` : '',
-        safeOrganizerId ? `${safeOrganizerId}/${event.slug}` : '',
-        safeOrganizerId || '',
-        ''
-    ].filter(Boolean);
+    // Fetch visible co-organizers (additional hosts shown publicly).
+    const { data: coOrganizerRows } = await supabase
+        .from('event_organizers')
+        .select('sort_order, users:user_id(full_name, avatar_url)')
+        .eq('event_id', event.id)
+        .eq('is_visible', true)
+        .order('sort_order', { ascending: true });
 
-    for (const folder of possiblePaths) {
-        if (!folder) continue;
-        const { data: files } = await supabase.storage
-            .from('events_gallery')
-            .list(folder, { limit: 50 });
+    const coOrganizers = (coOrganizerRows || [])
+        .map((row: any) => ({
+            name: row.users?.full_name || null,
+            avatarUrl: row.users?.avatar_url || null,
+        }))
+        .filter((c: { name: string | null }) => !!c.name) as { name: string; avatarUrl?: string | null }[];
 
-        const urls = (files ?? [])
-            .filter((f: any) => f.name && !f.name.startsWith('.') && f.id)
-            .map((f: any) => {
-                const path = folder ? `${folder}/${f.name}` : f.name;
-                const { data } = supabase.storage
-                    .from('events_gallery')
-                    .getPublicUrl(path);
-                return data.publicUrl;
-            });
+    // Gallery images: prefer the stored gallery_images column; otherwise fall
+    // back to listing the storage bucket (for older events created before the
+    // column was populated).
+    let galleryUrls: string[] = Array.isArray((event as any).gallery_images)
+        ? ((event as any).gallery_images as string[]).filter(Boolean)
+        : [];
 
-        if (urls.length > 0) {
-            galleryUrls = urls;
-            break;
+    if (galleryUrls.length === 0) {
+        const safeOrganizerId = event.organizer_id?.replace(/\|/g, '_');
+
+        const possiblePaths = [
+            `${String(event.id)}`,
+            `${event.slug}`,
+            safeOrganizerId ? `${safeOrganizerId}/${String(event.id)}` : '',
+            safeOrganizerId ? `${safeOrganizerId}/${event.slug}` : '',
+            safeOrganizerId || '',
+            ''
+        ].filter(Boolean);
+
+        for (const folder of possiblePaths) {
+            if (!folder) continue;
+            const { data: files } = await supabase.storage
+                .from('events_gallery')
+                .list(folder, { limit: 50 });
+
+            const urls = (files ?? [])
+                .filter((f: any) => f.name && !f.name.startsWith('.') && f.id)
+                .map((f: any) => {
+                    const path = folder ? `${folder}/${f.name}` : f.name;
+                    const { data } = supabase.storage
+                        .from('events_gallery')
+                        .getPublicUrl(path);
+                    return data.publicUrl;
+                });
+
+            if (urls.length > 0) {
+                galleryUrls = urls;
+                break;
+            }
         }
     }
 
@@ -97,15 +147,25 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
         ? event.what_to_expect
         : [];
 
+    // Shared-capacity pool: in shared mode the EVENT pool is the constraint, not
+    // per-tier remaining_quantity (which is seeded to equal the pool).
+    const sharedRemaining = Math.max(0, ((event as any).total_capacity ?? 0) - ((event as any).total_tickets_sold ?? 0));
+
+    // Hidden tiers (is_hidden) are organizer-internal — never shown or sold
+    // through public widgets/pickers.
+    const visibleTierRows = (event.ticket_tiers || []).filter((t: any) => !t.is_hidden);
+
     // Map ticket_tiers to TicketWidget shape
-    const tiers = [...(event.ticket_tiers || [])]
+    const tiers = [...visibleTierRows]
         .sort((a: any, b: any) => a.price - b.price)
         .map((tier: any) => ({
             id: String(tier.id),
             name: tier.name,
             description: tier.description ?? '',
             price: tier.price ?? 0,
-            available: tier.remaining_quantity ?? tier.available ?? 0,
+            available: (event as any).shared_capacity ? sharedRemaining : (tier.remaining_quantity ?? 0),
+            minPerOrder: tier.min_per_order ?? 1,
+            maxPerOrder: tier.max_per_order ?? null,
         }));
 
     // Resolve cover image to a full URL
@@ -127,8 +187,16 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
             : null;
 
     // Sorted tiers for seatmap selectors (same data, different shape)
-    const sortedTiers = [...(event.ticket_tiers || [])]
+    const sortedTiers = [...visibleTierRows]
         .sort((a: any, b: any) => a.price - b.price);
+
+    // Future occurrences for the seated-event CTA date picker (multi-date events
+    // pick their date BEFORE heading to the seat page; travels as ?occ=<id>).
+    const ctaOccurrences = futureOccurrences.map((o: any) => ({
+        id: String(o.id),
+        starts_at: o.starts_at as string,
+        label: (o.label as string) || '',
+    }));
 
     const currency = event.currency || 'cad';
     const currencySymbol = getCurrencySymbol(currency);
@@ -136,6 +204,19 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
     // Get user session
     const session = await getSafeSession();
     const user = session?.user;
+
+    // Block non-attendee accounts (organizer/non_profit/admin) from buying.
+    // Guests (not logged in) and attendees are unaffected. Server enforces this
+    // at the checkout API + page; this flag drives the on-page UX guard.
+    let blockedBuyer = false;
+    if (user?.sub) {
+        const { data: buyerRow } = await supabase
+            .from('users')
+            .select('role')
+            .eq('auth0_id', user.sub)
+            .single();
+        blockedBuyer = !!buyerRow?.role && buyerRow.role !== 'attendee';
+    }
 
     // Fetch similar events (same category or overlapping tags)
     let similarEvents: any[] = [];
@@ -151,6 +232,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
             `)
             .eq('status', 'published')
             .eq('visibility', 'public')
+            .eq('event_type', 'event')
             .eq('category_id', event.category_id)
             .neq('id', event.id)
             .order('created_at', { ascending: false })
@@ -172,6 +254,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
             `)
             .eq('status', 'published')
             .eq('visibility', 'public')
+            .eq('event_type', 'event')
             .overlaps('tags', event.tags)
             .not('id', 'in', `(${existingIds.join(',')})`)
             .order('created_at', { ascending: false })
@@ -183,27 +266,35 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
     if (similarEvents.length > 0) {
         const orgIds = [...new Set(similarEvents.map((e: any) => e.organizer_id).filter(Boolean))];
         const { data: profiles } = orgIds.length > 0
-            ? await supabase.from('users').select('auth0_id, full_name').in('auth0_id', orgIds)
+            ? await supabase.from('users').select('auth0_id, full_name, role').in('auth0_id', orgIds)
             : { data: [] };
         const pMap: Record<string, string> = {};
-        (profiles || []).forEach((p: any) => { pMap[p.auth0_id] = p.full_name; });
+        const rMap: Record<string, string> = {};
+        (profiles || []).forEach((p: any) => { pMap[p.auth0_id] = p.full_name; rMap[p.auth0_id] = p.role; });
         similarEvents = similarEvents.map((e: any) => ({
             ...e,
-            organizer_name: e.source_app === 'admin' ? 'Empiria Events' : (pMap[e.organizer_id] || 'Empiria Events'),
+            organizer_name: rMap[e.organizer_id] === 'admin' ? 'Empiria Events' : (pMap[e.organizer_id] || 'Empiria Events'),
         }));
     }
 
     return (
         <div className="min-h-screen bg-white">
-            <Navbar />
+            <Navbar overlay />
 
             {/* EventHero banner */}
             <EventHero
                 title={event.title}
                 coverImageUrl={coverImageUrl}
                 startAt={heroStartAt}
+                endAt={heroEndAt}
+                moreDatesCount={moreDatesCount}
                 venueName={event.venue_name}
                 city={event.city}
+                addressText={event.address_text}
+                isOnline={isOnline}
+                organizer={organizer}
+                organizerAvatarUrl={organizerAvatarUrl}
+                coOrganizers={coOrganizers}
                 category={isPast ? 'Past Event' : categoryName}
             />
 
@@ -224,12 +315,6 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                                 return event.description as string;
                             }
                         })()}
-                        startAt={heroStartAt}
-                        endAt={heroEndAt}
-                        venueName={event.venue_name}
-                        city={event.city}
-                        addressText={event.address_text}
-                        organizer={organizer}
                         galleryUrls={galleryUrls}
                         whatToExpect={whatToExpect}
                         trailerUrl={(event as any).trailer_url || ''}
@@ -240,73 +325,39 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                 <div>
                     {isPast ? (
                         <div className="border border-gray-200 rounded-xl p-6 bg-gray-50 text-center">
-                            <p className="text-gray-500 font-medium">This event has ended</p>
+                            <p className="text-gray-700 font-medium">This event has ended</p>
                         </div>
-                    ) : seatingType === 'assigned_seating' && seatingConfig ? (
-                        <AssignedSeatPicker
-                            seatRanges={seatingConfig.seat_ranges || []}
-                            tiers={sortedTiers}
-                            eventId={event.id}
-                            eventCurrency={currency}
-                            currencySymbol={currencySymbol}
-                            userEmail={user?.email}
-                            userName={user?.name}
-                            allowSeatChoice={seatingConfig.allow_seat_choice ?? false}
-                            occurrences={futureOccurrences.map((o: any) => ({
-                                id: o.id,
-                                starts_at: o.starts_at,
-                                ends_at: o.ends_at,
-                                label: o.label || '',
-                            }))}
-                        />
-                    ) : seatingType === 'zone_admission' && seatingConfig ? (
-                        <ZoneSelector
-                            config={seatingConfig}
-                            tiers={sortedTiers}
-                            eventId={event.id}
-                            eventCurrency={currency}
-                            currencySymbol={currencySymbol}
-                            userEmail={user?.email}
-                            userName={user?.name}
-                            occurrences={futureOccurrences.map((o: any) => ({
-                                id: o.id,
-                                starts_at: o.starts_at,
-                                ends_at: o.ends_at,
-                                label: o.label || '',
-                            }))}
-                        />
-                    ) : seatingType === 'zone_map' && seatingConfig ? (
-                        <ZoneSelector
-                            config={seatingConfig}
-                            tiers={sortedTiers}
-                            eventId={event.id}
-                            eventCurrency={currency}
-                            currencySymbol={currencySymbol}
-                            userEmail={user?.email}
-                            userName={user?.name}
-                            occurrences={futureOccurrences.map((o: any) => ({
-                                id: o.id,
-                                starts_at: o.starts_at,
-                                ends_at: o.ends_at,
-                                label: o.label || '',
-                            }))}
-                        />
-                    ) : seatingType === 'seat_map' && seatingConfig ? (
-                        <SeatSelector
-                            config={seatingConfig}
-                            tiers={sortedTiers}
-                            eventId={event.id}
-                            eventCurrency={currency}
-                            currencySymbol={currencySymbol}
-                            userEmail={user?.email}
-                            userName={user?.name}
-                            occurrences={futureOccurrences.map((o: any) => ({
-                                id: o.id,
-                                starts_at: o.starts_at,
-                                ends_at: o.ends_at,
-                                label: o.label || '',
-                            }))}
-                        />
+                    ) : ['assigned_seating', 'zone_admission', 'zone_map', 'seat_map'].includes(seatingType) && seatingConfig ? (
+                        <div className="border border-gray-200 rounded-xl shadow-lg bg-white p-6">
+                            <h3 className="text-lg font-bold text-gray-900">Tickets</h3>
+                            <p className="mt-1 text-sm text-gray-700">
+                                {seatingType === 'seat_map' || seatingType === 'assigned_seating'
+                                    ? 'Pick your exact seats on the next step.'
+                                    : 'Choose your section on the next step.'}
+                            </p>
+                            {sortedTiers.length > 0 && (
+                                <p className="mt-4 text-2xl font-bold text-gray-900">
+                                    {currencySymbol}
+                                    {Number(sortedTiers[0].price).toFixed(2)}
+                                    <span className="ml-1 text-sm font-medium text-gray-600">onwards</span>
+                                </p>
+                            )}
+                            {seatingType === 'seat_map' ? (
+                                <SeatQuantityCTA
+                                    eventId={String(event.id)}
+                                    maxQuantity={computeSeatQuantityCap(sortedTiers)}
+                                    occurrences={ctaOccurrences}
+                                />
+                            ) : (
+                                <SeatsCTA
+                                    eventId={String(event.id)}
+                                    label={seatingType === 'assigned_seating'
+                                        ? 'Select your seats'
+                                        : 'Choose tickets'}
+                                    occurrences={ctaOccurrences}
+                                />
+                            )}
+                        </div>
                     ) : (
                         <TicketWidget
                             tiers={tiers}
@@ -315,6 +366,8 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                             ctaLabel={event.cta_label}
                             entryType={event.entry_type}
                             externalUrl={event.external_url}
+                            sharedCapacity={!!(event as any).shared_capacity}
+                            blockedBuyer={blockedBuyer}
                         />
                     )}
                 </div>
@@ -333,7 +386,9 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                                 const prices = se.ticket_tiers?.map((t: any) => t.price) || [];
                                 const minPrice = prices.length > 0 ? Math.min(...prices) : 0;
                                 const sym = getCurrencySymbol(se.currency || 'cad');
-                                const occs = se.event_occurrences || [];
+                                const occs = [...(se.event_occurrences || [])].sort(
+                                    (a: any, b: any) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime()
+                                );
                                 const startAt = occs[0]?.starts_at || undefined;
 
                                 return (
@@ -350,6 +405,8 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                                         minPrice={minPrice}
                                         currencySymbol={sym}
                                         organizerName={se.organizer_name}
+                                        // TODO: surface co-host count on similar-event cards
+                                        // (batch-fetch event_organizers visible counts like app/page.tsx).
                                     />
                                 );
                             })}

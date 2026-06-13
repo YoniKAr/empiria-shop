@@ -37,7 +37,7 @@ export default function CurrencySelector({ defaultCurrency }: { defaultCurrency?
                 className="flex items-center gap-1.5 text-sm font-medium text-slate-600 hover:text-slate-900 px-2.5 py-1.5 rounded-lg hover:bg-slate-50 transition-colors"
                 aria-label="Select currency"
             >
-                <span className="text-xs font-bold text-slate-400">{current.symbol}</span>
+                <span className="text-xs font-bold text-slate-700">{current.symbol}</span>
                 <span>{current.label}</span>
                 <svg className={`w-3 h-3 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -55,7 +55,7 @@ export default function CurrencySelector({ defaultCurrency }: { defaultCurrency?
                                     c.code === currency ? 'text-orange-600 font-semibold' : 'text-slate-700'
                                 }`}
                             >
-                                <span className="text-xs w-6 text-slate-400">{c.symbol}</span>
+                                <span className="text-xs w-6 text-slate-700">{c.symbol}</span>
                                 <span>{c.label}</span>
                             </button>
                         ))}

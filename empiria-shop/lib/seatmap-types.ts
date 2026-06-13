@@ -6,6 +6,17 @@ export interface ZonePolygon {
   id: string;
   points: [number, number][];
   seats?: SeatDefinition[]; // only for seat_map mode
+  /** Last-used seat-generation settings — lets the designer restore the panel
+   *  and keep the spread sliders live when a polygon is reselected. */
+  gen?: {
+    rows: number;
+    seatsPerRow: number;
+    rowSpacing: number;
+    seatSpacing: number;
+    startRow: string;
+    startSeat: number;
+    rowDirection: "horizontal" | "vertical" | "auto";
+  };
 }
 
 export interface ZoneDefinition {

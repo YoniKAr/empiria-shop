@@ -9,18 +9,44 @@ interface SeatRange {
   tier_id: string;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Active holds relevant to an occurrence scope, as raw seat keys. Stored
+ *  seat_ids may be occurrence-composed (`${occurrenceId}:${key}`); holds for
+ *  OTHER occurrences don't block this one, un-prefixed holds block all. */
+function heldKeysForScope(
+  holds: Array<{ seat_id: string }>,
+  occurrenceId?: string | null
+): Set<string> {
+  const out = new Set<string>();
+  for (const h of holds) {
+    const idx = h.seat_id.indexOf(':');
+    if (idx === -1) {
+      out.add(h.seat_id);
+    } else if (!occurrenceId || h.seat_id.slice(0, idx) === occurrenceId) {
+      // No requested scope → be conservative and treat every hold as blocking.
+      out.add(h.seat_id.slice(idx + 1));
+    }
+  }
+  return out;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { eventId, tierId, quantity, checkOnly } = body as {
+    const { eventId, tierId, quantity, checkOnly, occurrenceId } = body as {
       eventId: string;
       tierId: string;
       quantity: number;
       checkOnly?: boolean;
+      occurrenceId?: string;
     };
 
     if (!eventId) {
       return NextResponse.json({ error: 'Missing eventId' }, { status: 400 });
+    }
+    if (occurrenceId && !UUID_RE.test(occurrenceId)) {
+      return NextResponse.json({ error: 'Invalid occurrenceId' }, { status: 400 });
     }
 
     const supabase = getSupabaseAdmin();
@@ -66,13 +92,19 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 4. Query tickets table for already-sold seat labels
-    const { data: soldTickets, error: soldError } = await supabase
+    // 4. Query tickets table for already-sold seat labels. Occurrence-scoped
+    // (S5): a seat sold for occurrence A is still assignable for occurrence B;
+    // tickets with no occurrence_id are event-wide and block all occurrences.
+    let soldQuery = supabase
       .from('tickets')
       .select('seat_label')
       .eq('event_id', eventId)
       .not('seat_label', 'is', null)
-      .in('status', ['valid', 'checked_in']);
+      .in('status', ['valid', 'used']);
+    if (occurrenceId) {
+      soldQuery = soldQuery.or(`occurrence_id.eq.${occurrenceId},occurrence_id.is.null`);
+    }
+    const { data: soldTickets, error: soldError } = await soldQuery;
 
     if (soldError) {
       return NextResponse.json(
@@ -99,9 +131,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const heldLabels = new Set(
-      (activeHolds || []).map((h) => h.seat_id)
-    );
+    const heldLabels = heldKeysForScope(activeHolds || [], occurrenceId);
 
     // If checkOnly, return the sold seats list
     if (checkOnly) {

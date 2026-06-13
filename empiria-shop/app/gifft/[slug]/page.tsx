@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from '@/lib/supabase';
+import { getSafeSession } from '@/lib/auth0';
 import { notFound } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
@@ -17,6 +18,8 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     .select('title, description')
     .eq('slug', slug)
     .eq('event_type', 'gifft_movie')
+    .eq('status', 'published')
+    .eq('visibility', 'public')
     .single();
 
   return {
@@ -31,15 +34,22 @@ export default async function MovieDetailPage({ params }: PageProps) {
   const { slug } = await params;
   const supabase = getSupabaseAdmin();
 
-  // Fetch movie event
+  // Fetch movie event — drafts / archived / non-public movies are NOT
+  // publicly viewable by slug.
   const { data: event } = await supabase
     .from('events')
     .select('*, gifft_movie_details(*), ticket_tiers(*), event_occurrences(*), categories(name)')
     .eq('slug', slug)
     .eq('event_type', 'gifft_movie')
+    .eq('status', 'published')
+    .eq('visibility', 'public')
     .single();
 
   if (!event) notFound();
+
+  // Hidden tiers (is_hidden) are organizer-internal — strip them before the
+  // event object reaches any client widget/picker.
+  event.ticket_tiers = (event.ticket_tiers || []).filter((t: any) => !t.is_hidden);
 
   const movie = Array.isArray(event.gifft_movie_details)
     ? event.gifft_movie_details[0] || {}
@@ -72,6 +82,20 @@ export default async function MovieDetailPage({ params }: PageProps) {
     similarMovies = cityMovies || [];
   }
 
+  // Block non-attendee accounts (organizer/non_profit/admin) from buying — show
+  // the switch-accounts notice under Get Tickets instead of a checkout redirect
+  // loop. Guests/attendees are unaffected.
+  let blockedBuyer = false;
+  const session = await getSafeSession();
+  if (session?.user?.sub) {
+    const { data: buyerRow } = await supabase
+      .from('users')
+      .select('role')
+      .eq('auth0_id', session.user.sub)
+      .single();
+    blockedBuyer = !!buyerRow?.role && buyerRow.role !== 'attendee';
+  }
+
   // If not enough similar from same city, fetch others
   if (similarMovies.length < 4) {
     const existingIds = [event.id, ...similarMovies.map((m: any) => m.id)];
@@ -97,6 +121,7 @@ export default async function MovieDetailPage({ params }: PageProps) {
         movie={movie as any}
         futureOccurrences={futureOccurrences as any[]}
         similarMovies={similarMovies as any[]}
+        blockedBuyer={blockedBuyer}
       />
       <Footer />
     </div>

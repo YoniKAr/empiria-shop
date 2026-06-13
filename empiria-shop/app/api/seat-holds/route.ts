@@ -3,13 +3,27 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 
 const HOLD_DURATION_MINUTES = 10;
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Hold keying convention: holds are keyed by config seat ID (NOT the seat label
+// — labels are the keying for SOLD tickets). When the buyer has picked an
+// occurrence, the client (useSeatHolds) composes the stored seat_id as
+// `${occurrenceId}:${seatId}` so the (event_id, seat_id) unique constraint
+// scopes holds per occurrence. Un-prefixed seat_ids are event-wide holds.
 export async function POST(request: NextRequest) {
   try {
-    const { eventId, seatId, sessionId } = await request.json();
+    const { eventId, seatId, sessionId, seatLabel, occurrenceId } =
+      await request.json();
 
     if (!eventId || !seatId || !sessionId) {
       return NextResponse.json(
         { error: "Missing eventId, seatId, or sessionId" },
+        { status: 400 }
+      );
+    }
+    if (occurrenceId && !UUID_RE.test(occurrenceId)) {
+      return NextResponse.json(
+        { error: "Invalid occurrenceId" },
         { status: 400 }
       );
     }
@@ -26,21 +40,30 @@ export async function POST(request: NextRequest) {
         .lt("expires_at", new Date().toISOString());
     }
 
-    // Check if seat is already sold (ticket with this seat_label exists)
-    const { data: existingTicket } = await supabase
-      .from("tickets")
-      .select("id")
-      .eq("event_id", eventId)
-      .eq("seat_label", seatId)
-      .eq("status", "valid")
-      .limit(1)
-      .maybeSingle();
+    // Check if the seat is already sold. Tickets store seat LABELS, so the
+    // check uses seatLabel (the previous seatId-based check never matched).
+    // Occurrence-scoped: tickets for OTHER occurrences don't block this one;
+    // tickets with no occurrence_id are event-wide and block everything.
+    if (seatLabel) {
+      let soldQuery = supabase
+        .from("tickets")
+        .select("id")
+        .eq("event_id", eventId)
+        .eq("seat_label", seatLabel)
+        .in("status", ["valid", "used"]);
+      if (occurrenceId) {
+        soldQuery = soldQuery.or(
+          `occurrence_id.eq.${occurrenceId},occurrence_id.is.null`
+        );
+      }
+      const { data: existingTicket } = await soldQuery.limit(1).maybeSingle();
 
-    if (existingTicket) {
-      return NextResponse.json(
-        { error: "This seat has already been sold" },
-        { status: 409 }
-      );
+      if (existingTicket) {
+        return NextResponse.json(
+          { error: "This seat has already been sold" },
+          { status: 409 }
+        );
+      }
     }
 
     // Try to create the hold (UNIQUE constraint prevents double-holds)
@@ -60,8 +83,27 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) {
-      // Unique constraint violation = seat already held
+      // Unique constraint violation = a hold already exists for this seat.
       if (error.code === "23505") {
+        // If *this* session already holds it, treat as success and refresh the
+        // expiry — guards against double-fires, re-selects, and remounts.
+        const { data: existingHold } = await supabase
+          .from("seat_holds")
+          .select("*")
+          .eq("event_id", eventId)
+          .eq("seat_id", seatId)
+          .maybeSingle();
+
+        if (existingHold && existingHold.session_id === sessionId) {
+          const { data: refreshed } = await supabase
+            .from("seat_holds")
+            .update({ expires_at: expiresAt })
+            .eq("id", existingHold.id)
+            .select()
+            .single();
+          return NextResponse.json({ hold: refreshed ?? existingHold });
+        }
+
         return NextResponse.json(
           { error: "This seat is currently held by another customer" },
           { status: 409 }

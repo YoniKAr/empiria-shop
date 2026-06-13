@@ -24,7 +24,8 @@ export default async function ShareTicketPage({
     .from('tickets')
     .select(`
       id, qr_code_secret, seat_label, status,
-      event:events!tickets_event_id_fkey (title, start_at, venue_name, city),
+      event:events!tickets_event_id_fkey (title, venue_name, city),
+      occurrence:event_occurrences!tickets_occurrence_id_fkey (starts_at),
       tier:ticket_tiers!tickets_tier_id_fkey (name)
     `)
     .eq('qr_code_secret', token)
@@ -51,7 +52,8 @@ export default async function ShareTicketPage({
 
   const event = ticket.event as any;
   const tier = ticket.tier as any;
-  const eventDate = event?.start_at ? new Date(event.start_at) : null;
+  const occurrence = ticket.occurrence as any;
+  const eventDate = occurrence?.starts_at ? new Date(occurrence.starts_at) : null;
   const qrDataUrl = await generateQRCodeDataURL(ticket.qr_code_secret, { width: 220 });
   const venue = [event?.venue_name, event?.city].filter(Boolean).join(', ');
 

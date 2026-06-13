@@ -19,14 +19,14 @@ export default async function SpecialsIndex() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-10">
         <h1 className="text-2xl font-bold mb-6">Specials</h1>
         {(pages ?? []).length === 0 ? (
-          <p className="text-gray-500">No special pages yet.</p>
+          <p className="text-gray-700">No special pages yet.</p>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {(pages ?? []).map((p: any) => (
               <Link
                 key={p.slug}
                 href={`/specials/${p.slug}`}
-                className="group block rounded-2xl overflow-hidden border bg-white hover:shadow-lg transition"
+                className="group block rounded-2xl overflow-hidden border border-gray-200 bg-white hover:shadow-lg transition"
               >
                 <div className="aspect-video bg-gray-100 overflow-hidden">
                   {p.hero_media_type === "image" && p.hero_media_url ? (
@@ -36,7 +36,7 @@ export default async function SpecialsIndex() {
                       className="w-full h-full object-cover group-hover:scale-105 transition"
                     />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center text-gray-400">
+                    <div className="w-full h-full flex items-center justify-center text-gray-700">
                       {p.title}
                     </div>
                   )}
@@ -44,7 +44,7 @@ export default async function SpecialsIndex() {
                 <div className="p-4">
                   <h2 className="font-semibold">{p.title}</h2>
                   {p.category?.name && (
-                    <p className="text-sm text-gray-500">{p.category.name}</p>
+                    <p className="text-sm text-gray-700">{p.category.name}</p>
                   )}
                 </div>
               </Link>

@@ -62,16 +62,20 @@ export default async function SpecialPage({ params }: { params: Promise<{ slug: 
     const { data: profiles } = organizerIds.length > 0
       ? await supabase
           .from('users')
-          .select('auth0_id, full_name')
+          .select('auth0_id, full_name, role')
           .in('auth0_id', organizerIds)
       : { data: [] };
 
     const profileMap: Record<string, string> = {};
-    (profiles || []).forEach((p: any) => { profileMap[p.auth0_id] = p.full_name; });
+    const roleMap: Record<string, string> = {};
+    (profiles || []).forEach((p: any) => { profileMap[p.auth0_id] = p.full_name; roleMap[p.auth0_id] = p.role; });
 
     events = rawEvents.map((e: any) => ({
       ...e,
-      organizer_name: e.source_app === 'admin'
+      event_occurrences: [...(e.event_occurrences || [])].sort(
+        (a: any, b: any) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime()
+      ),
+      organizer_name: roleMap[e.organizer_id] === 'admin'
         ? 'Empiria Events'
         : (profileMap[e.organizer_id] || 'Empiria Events'),
     }));

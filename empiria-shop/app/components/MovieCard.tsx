@@ -83,7 +83,7 @@ export default function MovieCard({
 
           {/* Director */}
           {directorName && (
-            <p className="text-xs text-gray-400 mt-auto line-clamp-1">
+            <p className="text-xs text-gray-700 mt-auto line-clamp-1">
               Dir. {directorName}
             </p>
           )}

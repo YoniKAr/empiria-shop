@@ -1,18 +1,12 @@
 "use client"
 
 import { useState, useRef, useCallback, useEffect } from "react"
-import { Clock, MapPin, Info, Share2, X, Copy, Check, ChevronLeft, ChevronRight, ZoomIn } from "lucide-react"
+import { Share2, X, Copy, Check, ChevronLeft, ChevronRight, ZoomIn } from "lucide-react"
 import Image from "next/image"
 import { sanitizeRichText } from "@/lib/sanitize-html"
 
 interface EventDetailsProps {
     description: string
-    startAt: string
-    endAt: string
-    venueName: string
-    city: string
-    addressText?: string
-    organizer: string
     galleryUrls?: string[]
     whatToExpect?: string[]
     trailerUrl?: string
@@ -20,12 +14,6 @@ interface EventDetailsProps {
 
 export function EventDetails({
     description,
-    startAt,
-    endAt,
-    venueName,
-    city,
-    addressText,
-    organizer,
     galleryUrls = [],
     whatToExpect = [],
     trailerUrl,
@@ -45,15 +33,6 @@ export function EventDetails({
         setCanScrollLeft(el.scrollLeft > 4)
         setCanScrollRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 4)
     }, [])
-
-    const formatDateTime = (date: string) =>
-        new Date(date).toLocaleString("en-IN", {
-            weekday: "short",
-            month: "short",
-            day: "numeric",
-            hour: "2-digit",
-            minute: "2-digit",
-        })
 
     const eventUrl = typeof window !== "undefined" ? window.location.href : ""
 
@@ -128,47 +107,6 @@ export function EventDetails({
 
     return (
         <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 md:p-8 flex flex-col gap-10">
-            {/* Quick info cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-white border border-gray-200 rounded-xl p-5 flex items-start gap-4">
-                    <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-orange-50 flex items-center justify-center">
-                        <Clock className="w-5 h-5 text-[#F15A29]" />
-                    </div>
-                    <div>
-                        <p className="text-xs text-gray-500 uppercase tracking-wider font-medium mb-1">When</p>
-                        <p className="text-sm text-gray-900 font-medium">{formatDateTime(startAt)}</p>
-                        <p className="text-xs text-gray-500 mt-0.5">to {formatDateTime(endAt)}</p>
-                    </div>
-                </div>
-
-                <a
-                    href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(addressText || [venueName, city].filter(Boolean).join(', '))}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="bg-white border border-gray-200 rounded-xl p-5 flex items-start gap-4 hover:border-[#F15A29]/40 hover:shadow-sm transition-all group"
-                >
-                    <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-orange-50 flex items-center justify-center">
-                        <MapPin className="w-5 h-5 text-[#F15A29]" />
-                    </div>
-                    <div>
-                        <p className="text-xs text-gray-500 uppercase tracking-wider font-medium mb-1">Where</p>
-                        <p className="text-sm text-gray-900 font-medium group-hover:text-[#F15A29] transition-colors">{venueName}</p>
-                        <p className="text-xs text-gray-500 mt-0.5">{addressText || city}</p>
-                        <p className="text-[10px] text-[#F15A29] font-medium mt-1.5 opacity-0 group-hover:opacity-100 transition-opacity">Get Directions &rarr;</p>
-                    </div>
-                </a>
-
-                <div className="bg-white border border-gray-200 rounded-xl p-5 flex items-start gap-4">
-                    <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-orange-50 flex items-center justify-center">
-                        <Info className="w-5 h-5 text-[#F15A29]" />
-                    </div>
-                    <div>
-                        <p className="text-xs text-gray-500 uppercase tracking-wider font-medium mb-1">Organized by</p>
-                        <p className="text-sm text-gray-900 font-medium">{organizer}</p>
-                    </div>
-                </div>
-            </div>
-
             {/* Gallery Carousel */}
             {galleryUrls.length > 0 && (
                 <div className="flex flex-col gap-5">
@@ -240,7 +178,7 @@ export function EventDetails({
                     <div className="relative">
                         <button
                             onClick={() => setShowShare((v) => !v)}
-                            className="flex items-center gap-2 text-sm text-gray-500 hover:text-[#F15A29] transition-colors"
+                            className="flex items-center gap-2 text-sm text-gray-700 hover:text-[#F15A29] transition-colors"
                             aria-label="Share event"
                         >
                             <Share2 className="w-4 h-4" />
@@ -261,7 +199,7 @@ export function EventDetails({
                                         <p className="text-sm font-semibold text-gray-900">Share this event</p>
                                         <button
                                             onClick={() => setShowShare(false)}
-                                            className="text-gray-400 hover:text-gray-600 transition-colors"
+                                            className="text-gray-700 hover:text-gray-900 transition-colors"
                                         >
                                             <X className="w-4 h-4" />
                                         </button>
@@ -281,7 +219,7 @@ export function EventDetails({
                                             </div>
                                             <div>
                                                 <p className="text-sm font-medium text-gray-900">WhatsApp</p>
-                                                <p className="text-xs text-gray-500">Share via WhatsApp</p>
+                                                <p className="text-xs text-gray-700">Share via WhatsApp</p>
                                             </div>
                                         </button>
 
@@ -297,7 +235,7 @@ export function EventDetails({
                                             </div>
                                             <div>
                                                 <p className="text-sm font-medium text-gray-900">Instagram</p>
-                                                <p className="text-xs text-gray-500">Copy link for Instagram</p>
+                                                <p className="text-xs text-gray-700">Copy link for Instagram</p>
                                             </div>
                                         </button>
 
@@ -317,7 +255,7 @@ export function EventDetails({
                                                 <p className="text-sm font-medium text-gray-900">
                                                     {copied ? "Copied!" : "Copy Link"}
                                                 </p>
-                                                <p className="text-xs text-gray-500">Copy event URL</p>
+                                                <p className="text-xs text-gray-700">Copy event URL</p>
                                             </div>
                                         </button>
                                     </div>

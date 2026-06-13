@@ -1,7 +1,9 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Minus, Plus, Loader2, AlertCircle, Check } from "lucide-react";
+import StripeBadge from "@/components/StripeBadge";
+import { BlockedBuyerNotice } from "@/components/BlockedBuyerNotice";
 import type { SeatRange } from "@/lib/seatmap-types";
 
 interface TicketTier {
@@ -32,6 +34,10 @@ interface AssignedSeatPickerProps {
   userName?: string;
   occurrences?: OccurrenceOption[];
   allowSeatChoice: boolean;
+  blockedBuyer?: boolean;
+  /** Deep-linked occurrence (?occ=<id>) — pre-selects the date picked on the
+   *  event page; the dropdown stays usable so users can still change it. */
+  initialOccurrenceId?: string;
 }
 
 interface TierQuantitySelection {
@@ -57,12 +63,19 @@ export default function AssignedSeatPicker({
   userName,
   occurrences = [],
   allowSeatChoice,
+  blockedBuyer = false,
+  initialOccurrenceId,
 }: AssignedSeatPickerProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedOccurrenceId, setSelectedOccurrenceId] = useState<string>(
-    occurrences.length === 1 ? occurrences[0].id : ""
-  );
+  const [shake, setShake] = useState(false);
+  const [showBuyBlock, setShowBuyBlock] = useState(false);
+  const [selectedOccurrenceId, setSelectedOccurrenceId] = useState<string>(() => {
+    if (initialOccurrenceId && occurrences.some((o) => String(o.id) === initialOccurrenceId)) {
+      return initialOccurrenceId;
+    }
+    return occurrences.length === 1 ? occurrences[0].id : "";
+  });
   const [guestEmail, setGuestEmail] = useState("");
   const [guestName, setGuestName] = useState("");
 
@@ -75,7 +88,6 @@ export default function AssignedSeatPicker({
   const [selectedSeats, setSelectedSeats] = useState<SeatInfo[]>([]);
   const [soldSeatLabels, setSoldSeatLabels] = useState<Set<string>>(new Set());
   const [loadingAvailability, setLoadingAvailability] = useState(false);
-  const [availabilityLoaded, setAvailabilityLoaded] = useState(false);
 
   const tierMap = new Map(tiers.map((t) => [t.id, t]));
 
@@ -122,37 +134,41 @@ export default function AssignedSeatPicker({
     return tiers.filter((t) => tierIds.has(t.id));
   }, [seatRanges, tiers]);
 
-  // Load sold seats when in seat choice mode
-  async function loadAvailability() {
-    if (availabilityLoaded) return;
+  // Load sold seats in seat-choice mode — refetched whenever the selected
+  // occurrence changes (S5): seat availability is per occurrence, so the
+  // selection is also cleared (a kept seat might be sold for the new date).
+  useEffect(() => {
+    if (!allowSeatChoice) return;
+    let cancelled = false;
+    setSelectedSeats([]);
     setLoadingAvailability(true);
-    try {
-      const response = await fetch("/api/assign-seats", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          eventId,
-          tierId: tiersFromRanges[0]?.id || "",
-          quantity: 0,
-          checkOnly: true,
-        }),
-      });
-      const data = await response.json();
-      if (data.soldSeats) {
-        setSoldSeatLabels(new Set(data.soldSeats));
+    (async () => {
+      try {
+        const response = await fetch("/api/assign-seats", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            eventId,
+            tierId: "",
+            quantity: 0,
+            checkOnly: true,
+            occurrenceId: selectedOccurrenceId || undefined,
+          }),
+        });
+        const data = await response.json();
+        if (!cancelled && data.soldSeats) {
+          setSoldSeatLabels(new Set(data.soldSeats));
+        }
+      } catch {
+        // Silently fail, seats will show as available
+      } finally {
+        if (!cancelled) setLoadingAvailability(false);
       }
-      setAvailabilityLoaded(true);
-    } catch {
-      // Silently fail, seats will show as available
-    } finally {
-      setLoadingAvailability(false);
-    }
-  }
-
-  // Load availability on mount for seat choice mode
-  if (allowSeatChoice && !availabilityLoaded && !loadingAvailability) {
-    loadAvailability();
-  }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [allowSeatChoice, eventId, selectedOccurrenceId]);
 
   // Auto-assign mode: quantity controls
   function updateTierQuantity(tierId: string, delta: number) {
@@ -219,6 +235,14 @@ export default function AssignedSeatPicker({
       }, 0);
 
   async function handleCheckout() {
+    if (blockedBuyer) {
+      setShowBuyBlock(true);
+      setShake(true);
+      if (typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate(60);
+      setTimeout(() => setShake(false), 450);
+      return;
+    }
+
     if (totalItems === 0) {
       setError("Please select at least one ticket");
       return;
@@ -278,6 +302,9 @@ export default function AssignedSeatPicker({
               eventId,
               tierId: sel.tierId,
               quantity: sel.quantity,
+              occurrenceId:
+                selectedOccurrenceId ||
+                (occurrences.length === 1 ? occurrences[0].id : undefined),
             }),
           });
 
@@ -293,6 +320,14 @@ export default function AssignedSeatPicker({
         assignedSeats = allAssigned;
       }
 
+      // Per-attempt idempotency key: a fresh uuid per submit CLICK. The server
+      // passes it to Stripe (sessions.create idempotencyKey) so a duplicated /
+      // retried request can never create two Checkout Sessions.
+      const attemptId =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
       const response = await fetch("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -305,6 +340,7 @@ export default function AssignedSeatPicker({
             selectedOccurrenceId ||
             (occurrences.length === 1 ? occurrences[0].id : undefined),
           assignedSeats,
+          attemptId,
         }),
       });
 
@@ -326,10 +362,10 @@ export default function AssignedSeatPicker({
     <div className="space-y-4">
       <div className="border border-gray-200 rounded-xl shadow-lg bg-white overflow-hidden">
         <div className="p-4 border-b bg-gray-50">
-          <h3 className="font-bold text-lg">
+          <h3 className="font-bold text-lg text-gray-900">
             {allowSeatChoice ? "Choose Your Seats" : "Get Tickets"}
           </h3>
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-700">
             {allowSeatChoice
               ? "Select your preferred seats from the available options"
               : "Select the number of tickets you want"}
@@ -340,7 +376,7 @@ export default function AssignedSeatPicker({
           {allowSeatChoice ? (
             /* ───── SEAT CHOICE MODE ───── */
             loadingAvailability ? (
-              <div className="flex items-center justify-center py-12 text-gray-400">
+              <div className="flex items-center justify-center py-12 text-gray-600">
                 <Loader2 size={24} className="animate-spin mr-2" />
                 Loading seat availability...
               </div>
@@ -353,7 +389,7 @@ export default function AssignedSeatPicker({
                         <h4 className="font-semibold text-sm text-gray-700">
                           Row {prefix}
                         </h4>
-                        <span className="text-xs text-gray-500">
+                        <span className="text-xs text-gray-700">
                           {tierName} &middot;{" "}
                           {price === 0
                             ? "Free"
@@ -375,7 +411,7 @@ export default function AssignedSeatPicker({
                               onClick={() => toggleSeat(seat)}
                               className={`w-9 h-9 rounded text-xs font-medium transition-colors flex items-center justify-center ${
                                 isSold
-                                  ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+                                  ? "bg-gray-200 text-gray-600 cursor-not-allowed"
                                   : isSelected
                                   ? "bg-orange-500 text-white ring-2 ring-orange-300"
                                   : "bg-green-100 text-green-800 hover:bg-green-200 border border-green-300"
@@ -442,7 +478,7 @@ export default function AssignedSeatPicker({
                           {tier.name}
                         </span>
                         {tier.description && (
-                          <p className="text-xs text-gray-500 mt-0.5">
+                          <p className="text-xs text-gray-700 mt-0.5">
                             {tier.description}
                           </p>
                         )}
@@ -454,7 +490,7 @@ export default function AssignedSeatPicker({
                       </span>
                     </div>
                     <div className="flex items-center justify-between mt-3">
-                      <span className="text-xs text-gray-400">
+                      <span className="text-xs text-gray-600">
                         {tier.remaining_quantity} available
                       </span>
                       <div className="flex items-center gap-2">
@@ -492,14 +528,14 @@ export default function AssignedSeatPicker({
 
       {/* Checkout panel */}
       <div className="border border-gray-200 rounded-xl shadow-lg p-6 sticky top-24 bg-white">
-        <h3 className="font-bold text-xl mb-1">
+        <h3 className="font-bold text-xl mb-1 text-gray-900">
           {allowSeatChoice ? "Your Seats" : "Get Tickets"}
         </h3>
 
         {/* Occurrence picker */}
         {occurrences.length > 1 && (
           <div className="mb-5">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+            <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
               Select a Date
             </p>
             <div className="space-y-2">
@@ -522,18 +558,20 @@ export default function AssignedSeatPicker({
                   >
                     <div className="font-medium text-sm">
                       {occDate.toLocaleDateString("en-US", {
+                        timeZone: "America/Toronto",
                         weekday: "short",
                         month: "short",
                         day: "numeric",
                       })}
                       {" at "}
                       {occDate.toLocaleTimeString("en-US", {
+                        timeZone: "America/Toronto",
                         hour: "numeric",
                         minute: "2-digit",
                       })}
                     </div>
                     {occ.label && (
-                      <div className="text-xs text-gray-500 mt-0.5">
+                      <div className="text-xs text-gray-700 mt-0.5">
                         {occ.label}
                       </div>
                     )}
@@ -547,7 +585,7 @@ export default function AssignedSeatPicker({
         {/* Selected seats summary (seat choice mode) */}
         {allowSeatChoice && selectedSeats.length > 0 && (
           <div className="space-y-2 mb-4">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+            <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
               Selected Seats
             </p>
             <div className="flex flex-wrap gap-1.5">
@@ -569,7 +607,7 @@ export default function AssignedSeatPicker({
         {/* Guest contact fields */}
         {!userEmail && totalItems > 0 && (
           <div className="space-y-3 mb-5 pt-4 border-t border-gray-100">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+            <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
               Contact Info
             </p>
             <input
@@ -589,7 +627,7 @@ export default function AssignedSeatPicker({
               }}
               className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
             />
-            <p className="text-xs text-gray-400">
+            <p className="text-xs text-gray-600">
               Your tickets will be sent to this email.
             </p>
           </div>
@@ -621,7 +659,7 @@ export default function AssignedSeatPicker({
           type="button"
           onClick={handleCheckout}
           disabled={totalItems === 0 || loading}
-          className="w-full bg-orange-600 text-white text-center py-4 rounded-xl font-bold hover:bg-orange-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          className={`w-full bg-orange-600 text-white text-center py-4 rounded-xl font-bold hover:bg-orange-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 ${shake ? "animate-shake" : ""}`}
         >
           {loading ? (
             <>
@@ -635,9 +673,9 @@ export default function AssignedSeatPicker({
           )}
         </button>
 
-        <p className="text-xs text-center text-gray-400 mt-4">
-          Secure checkout powered by Stripe
-        </p>
+        {showBuyBlock && <BlockedBuyerNotice className="mt-2" />}
+
+        <StripeBadge className="mt-4" />
       </div>
     </div>
   );

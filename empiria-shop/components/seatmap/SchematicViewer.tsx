@@ -4,6 +4,8 @@ import type { SectionDefinition } from "@/lib/seatmap-types";
 
 interface SchematicViewerProps {
   sections: SectionDefinition[];
+  /** Sold seat LABELS — tickets store labels, so sold status is keyed by
+   *  `seat.label`. The two hold sets stay keyed by config seat ID. */
   soldSeats: Set<string>;
   myHeldSeats: Set<string>;
   otherHeldSeats: Set<string>;
@@ -17,10 +19,10 @@ export default function SchematicViewer({
   otherHeldSeats,
   onSeatClick,
 }: SchematicViewerProps) {
-  function getSeatStatus(seatId: string) {
-    if (soldSeats.has(seatId)) return "sold";
-    if (myHeldSeats.has(seatId)) return "mine";
-    if (otherHeldSeats.has(seatId)) return "other";
+  function getSeatStatus(seat: { id: string; label: string }) {
+    if (soldSeats.has(seat.label)) return "sold";
+    if (myHeldSeats.has(seat.id)) return "mine";
+    if (otherHeldSeats.has(seat.id)) return "other";
     return "available";
   }
 
@@ -71,12 +73,12 @@ export default function SchematicViewer({
             <div className="p-4 space-y-2 overflow-x-auto">
               {sortedRows.map(([rowLabel, seats]) => (
                 <div key={rowLabel} className="flex items-center gap-1.5">
-                  <span className="w-6 text-xs font-bold text-gray-500 text-center shrink-0">
+                  <span className="w-6 text-xs font-bold text-gray-700 text-center shrink-0">
                     {rowLabel}
                   </span>
                   <div className="flex gap-1.5">
                     {seats.map((seat) => {
-                      const status = getSeatStatus(seat.id);
+                      const status = getSeatStatus(seat);
                       const isClickable =
                         status === "available" || status === "mine";
 
