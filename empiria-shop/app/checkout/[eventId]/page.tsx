@@ -25,7 +25,7 @@ export default async function CheckoutPage({
   const { data: event, error } = await supabase
     .from('events')
     .select(`
-      id, title, slug, currency, status, pass_processing_fee, charge_ticket_tax,
+      id, title, slug, event_type, currency, status, pass_processing_fee, charge_ticket_tax,
       entry_type, custom_fields, seating_type, seating_config,
       shared_capacity, total_capacity, total_tickets_sold,
       platform_fee_percent, platform_fee_fixed,
@@ -40,8 +40,16 @@ export default async function CheckoutPage({
     redirect('/');
   }
 
+  // The event's public detail page — GIFFT movies live at /gifft/[slug], regular
+  // events at /events/[slug]. Bounces must go to the correct one (a movie has no
+  // /events/ page anymore).
+  const detailPath =
+    (event as any).event_type === 'gifft_movie'
+      ? `/gifft/${event.slug}`
+      : `/events/${event.slug}`;
+
   // Only attendees (and guests) can purchase. Bounce organizer/non-profit/admin accounts
-  // back to the event page (the checkout API also blocks them server-side).
+  // back to the detail page (the checkout API also blocks them server-side).
   if (user?.sub) {
     const { data: buyer } = await supabase
       .from('users')
@@ -49,13 +57,13 @@ export default async function CheckoutPage({
       .eq('auth0_id', user.sub)
       .single();
     if (buyer?.role && buyer.role !== 'attendee') {
-      redirect(`/events/${event.slug}`);
+      redirect(detailPath);
     }
   }
 
-  // External events have no checkout — send the attendee to the event page to link out.
+  // External events have no checkout — send the attendee to the detail page to link out.
   if (event.entry_type === 'external') {
-    redirect(`/events/${event.slug}`);
+    redirect(detailPath);
   }
 
   // S3: seated events pick their seats/zones on the dedicated seats page —

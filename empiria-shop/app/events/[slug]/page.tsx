@@ -18,11 +18,14 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
     const { slug } = await params;
     const supabase = getSupabaseAdmin();
 
-    // Fetch event + ticket tiers + occurrences
+    // Fetch event + ticket tiers + occurrences.
+    // event_type='event' ONLY — GIFFT movies live at /gifft/[slug] and must NOT
+    // render a second detail page here (that produced the duplicate HEN page).
     const { data: event } = await supabase
         .from('events')
         .select('*, categories(name), ticket_tiers(*), event_occurrences(*)')
         .eq('slug', slug)
+        .eq('event_type', 'event')
         .eq('status', 'published')
         .single();
 
@@ -229,6 +232,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
             `)
             .eq('status', 'published')
             .eq('visibility', 'public')
+            .eq('event_type', 'event')
             .eq('category_id', event.category_id)
             .neq('id', event.id)
             .order('created_at', { ascending: false })
@@ -250,6 +254,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
             `)
             .eq('status', 'published')
             .eq('visibility', 'public')
+            .eq('event_type', 'event')
             .overlaps('tags', event.tags)
             .not('id', 'in', `(${existingIds.join(',')})`)
             .order('created_at', { ascending: false })
