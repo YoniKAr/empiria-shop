@@ -193,6 +193,51 @@ export async function generateApplePass(
 
 // ---------- Google Wallet ----------
 
+// Mint a short-lived access token for the Wallet REST API from the service
+// account (JWT-bearer grant).
+async function getGoogleWalletAccessToken(serviceAccountEmail: string, privateKeyPem: string): Promise<string | null> {
+  try {
+    const key = await importPKCS8(privateKeyPem, 'RS256');
+    const assertion = await new SignJWT({ scope: 'https://www.googleapis.com/auth/wallet_object.issuer' })
+      .setProtectedHeader({ alg: 'RS256', typ: 'JWT' })
+      .setIssuer(serviceAccountEmail)
+      .setSubject(serviceAccountEmail)
+      .setAudience('https://oauth2.googleapis.com/token')
+      .setIssuedAt()
+      .setExpirationTime('1h')
+      .sign(key);
+    const res = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+        assertion,
+      }),
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { access_token?: string };
+    return json.access_token ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// Create-or-update the per-event Wallet class via REST so it always reflects the
+// CURRENT event details/logo. Google ignores class changes embedded in the save
+// JWT once a class exists, so this is required for edits/logo to take effect.
+// Best-effort: any failure falls back to the JWT-embedded class.
+async function upsertEventTicketClass(accessToken: string, classId: string, classBody: Record<string, unknown>): Promise<void> {
+  const base = 'https://walletobjects.googleapis.com/walletobjects/v1/eventTicketClass';
+  const url = `${base}/${encodeURIComponent(classId)}`;
+  const authHeaders = { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' };
+  const getRes = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+  if (getRes.status === 404) {
+    await fetch(base, { method: 'POST', headers: authHeaders, body: JSON.stringify(classBody) });
+  } else if (getRes.ok) {
+    await fetch(url, { method: 'PUT', headers: authHeaders, body: JSON.stringify(classBody) });
+  }
+}
+
 export async function generateGoogleWalletLink(
   ticket: TicketData,
   event: EventData,
@@ -247,6 +292,16 @@ export async function generateGoogleWalletLink(
         ...(event.ends_at ? { end: new Date(event.ends_at).toISOString() } : {}),
       },
     };
+
+    // Keep the class current (logo / name / venue / date) via REST — Google
+    // won't update an existing class from the save JWT. Best-effort; on failure
+    // the JWT-embedded class below still creates it on first save.
+    try {
+      const accessToken = await getGoogleWalletAccessToken(serviceAccountEmail, keyJson.private_key);
+      if (accessToken) await upsertEventTicketClass(accessToken, classId, eventTicketClass);
+    } catch (e) {
+      console.error('[wallet] event class upsert failed (non-fatal):', e);
+    }
 
     const eventTicketObject = {
       id: objectId,
