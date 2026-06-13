@@ -154,7 +154,7 @@ export default function MovieDetailContent({
           <div className="grid grid-cols-1 md:grid-cols-[300px_1fr] lg:grid-cols-[350px_1fr] gap-8 md:gap-12 items-start">
             {/* Left: Poster */}
             <div className="mx-auto md:mx-0 w-[250px] md:w-full">
-              <div className="aspect-[2/3] relative rounded-2xl overflow-hidden shadow-[0_25px_60px_-15px_rgba(0,0,0,0.45)] ring-1 ring-black/5">
+              <div className="aspect-[2/3] relative rounded-2xl overflow-hidden shadow-[0_25px_60px_-10px_rgba(0,0,0,0.9)] ring-1 ring-black/10">
                 {posterUrl ? (
                   <Image
                     src={posterUrl}
