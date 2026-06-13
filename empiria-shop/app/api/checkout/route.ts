@@ -1187,23 +1187,28 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (fees.customerTax > 0) {
+    // Ticket tax only (HST on the ticket price). The HST on the platform fee is
+    // folded into the single combined "Fees" line below — matching the on-site
+    // checkout summary so Stripe shows the same line breakdown.
+    if (fees.hstOnBase > 0) {
       lineItems.push({
-        price_data: { currency, product_data: { name: 'Tax (HST 13%)' }, unit_amount: toStripeAmount(fees.customerTax, currency) },
+        price_data: { currency, product_data: { name: 'Tax (HST 13%)' }, unit_amount: toStripeAmount(fees.hstOnBase, currency) },
         quantity: 1,
       });
     }
-    if (passProcessingFee && fees.platformFee > 0) {
-      lineItems.push({
-        price_data: { currency, product_data: { name: 'Service fee', description: 'Platform service fee' }, unit_amount: toStripeAmount(fees.platformFee, currency) },
-        quantity: 1,
-      });
-    }
-    if (passProcessingFee && fees.stripeOffset > 0) {
-      lineItems.push({
-        price_data: { currency, product_data: { name: 'Processing fee', description: 'Secure card processing' }, unit_amount: toStripeAmount(fees.stripeOffset, currency) },
-        quantity: 1,
-      });
+    // One combined fee line = platform (service) fee + its HST + card processing.
+    if (passProcessingFee) {
+      const feesLineTotal = Math.round((fees.platformFee + fees.hstOnFee + fees.stripeOffset) * 100) / 100;
+      if (feesLineTotal > 0) {
+        lineItems.push({
+          price_data: {
+            currency,
+            product_data: { name: 'Fees', description: 'Platform fee and payment processing fee' },
+            unit_amount: toStripeAmount(feesLineTotal, currency),
+          },
+          quantity: 1,
+        });
+      }
     }
 
     // 7b. Check for multi-organizer revenue splits (co-organizers with a revenue share)
