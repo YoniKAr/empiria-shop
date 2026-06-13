@@ -33,6 +33,18 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# secrets / service-account keys — never commit
+google-wallet-key.json
+*-key.json
+*.serviceaccount.json
+
+# apple wallet cert material — never commit private keys / certs
+*.key
+*.p12
+*.csr
+*.cer
+*.pem
+
 # vercel
 .vercel
 

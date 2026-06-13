@@ -446,9 +446,20 @@ async function handleCheckoutCompleted(session: any) {
     // 2. Fetch event details for confirmation email
     const { data: eventData } = await supabase
       .from('events')
-      .select('title, venue_name, city, location_type, meeting_link, cta_label')
+      .select('title, venue_name, city, location_type, meeting_link, cta_label, organizer_id, source_app')
       .eq('id', eventId)
       .single();
+
+    // Resolve the organizer's display name (same convention as the event page)
+    let organizerName = 'Empiria Events';
+    if (eventData?.source_app !== 'admin' && eventData?.organizer_id) {
+      const { data: ownerProfile } = await supabase
+        .from('users')
+        .select('full_name')
+        .eq('auth0_id', eventData.organizer_id)
+        .single();
+      organizerName = ownerProfile?.full_name || 'Empiria Events';
+    }
 
     // Fetch occurrence dates for email (or first occurrence if no specific one)
     let emailStartDate = '';
@@ -613,7 +624,9 @@ async function handleCheckoutCompleted(session: any) {
           to: userEmail,
           attendeeName: userName,
           orderId: order.id,
+          eventId: eventId,
           eventTitle: eventData.title,
+          organizerName,
           eventDate: emailStartDate,
           eventEndDate: emailEndDate,
           venueName: eventData.venue_name || '',

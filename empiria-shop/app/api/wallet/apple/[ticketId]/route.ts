@@ -9,26 +9,47 @@ export async function GET(
 ) {
   const { ticketId } = await params;
 
-  // Auth check — user must own this ticket
+  const supabase = getSupabaseAdmin();
+
+  // Try Auth0 session first; fall back to Stripe session_id for guest purchases
   const session = await getSafeSession();
-  if (!session?.user?.sub) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  let ticket = null;
+
+  if (session?.user?.sub) {
+    const { data } = await supabase
+      .from('tickets')
+      .select(`
+        id, qr_code_secret, seat_label,
+        event:events!tickets_event_id_fkey (id, title, start_at, end_at, venue_name, city),
+        tier:ticket_tiers!tickets_tier_id_fkey (id, name)
+      `)
+      .eq('id', ticketId)
+      .eq('user_id', session.user.sub)
+      .single();
+    ticket = data;
+  } else {
+    // Guest: verify ownership via the Stripe session ID used at checkout
+    const stripeSessionId = request.nextUrl.searchParams.get('session_id');
+    if (stripeSessionId) {
+      const { data } = await supabase
+        .from('tickets')
+        .select(`
+          id, qr_code_secret, seat_label,
+          event:events!tickets_event_id_fkey (id, title, start_at, end_at, venue_name, city),
+          tier:ticket_tiers!tickets_tier_id_fkey (id, name),
+          order:orders!tickets_order_id_fkey (stripe_checkout_session_id)
+        `)
+        .eq('id', ticketId)
+        .single();
+
+      if (data && (data.order as any)?.stripe_checkout_session_id === stripeSessionId) {
+        ticket = data;
+      }
+    }
   }
 
-  const supabase = getSupabaseAdmin();
-  const { data: ticket } = await supabase
-    .from('tickets')
-    .select(`
-      id, qr_code_secret, seat_label,
-      event:events!tickets_event_id_fkey (id, title, start_at, end_at, venue_name, city),
-      tier:ticket_tiers!tickets_tier_id_fkey (id, name)
-    `)
-    .eq('id', ticketId)
-    .eq('user_id', session.user.sub)
-    .single();
-
   if (!ticket) {
-    return NextResponse.json({ error: 'Ticket not found' }, { status: 404 });
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   const event = ticket.event as any;

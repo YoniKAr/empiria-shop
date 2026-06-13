@@ -1,6 +1,7 @@
 import { PKPass } from 'passkit-generator';
 import { readFile } from 'fs/promises';
 import { SignJWT, importPKCS8 } from 'jose';
+import forge from 'node-forge';
 import path from 'path';
 
 // ---------- Shared types ----------
@@ -43,7 +44,23 @@ export async function generateApplePass(
   }
 
   try {
-    const signerCert = Buffer.from(certBase64, 'base64');
+    // Extract PEM cert and key from the p12 bundle using node-forge
+    const p12Der = Buffer.from(certBase64, 'base64').toString('binary');
+    const p12Asn1 = forge.asn1.fromDer(p12Der);
+    const p12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1, false, certPassword);
+
+    const certBags = p12.getBags({ bagType: forge.pki.oids.certBag });
+    const certBag = certBags[forge.pki.oids.certBag]?.[0];
+    const keyBags = p12.getBags({ bagType: forge.pki.oids.pkcs8ShroudedKeyBag });
+    const keyBag = keyBags[forge.pki.oids.pkcs8ShroudedKeyBag]?.[0];
+
+    if (!certBag?.cert || !keyBag?.key) {
+      console.error('Failed to extract cert/key from Apple p12');
+      return null;
+    }
+
+    const signerCert = forge.pki.certificateToPem(certBag.cert);
+    const signerKey = forge.pki.privateKeyToPem(keyBag.key as forge.pki.rsa.PrivateKey);
     const wwdr = Buffer.from(wwdrBase64, 'base64');
 
     // Load pass images
@@ -82,7 +99,7 @@ export async function generateApplePass(
       {
         wwdr,
         signerCert,
-        signerKey: signerCert, // .p12 contains both cert and key
+        signerKey,
         signerKeyPassphrase: certPassword,
       },
       {
@@ -187,16 +204,21 @@ export async function generateGoogleWalletLink(
 
     const eventDate = new Date(event.start_at);
     const venue = [event.venue_name, event.city].filter(Boolean).join(', ');
-    const objectSuffix = `${issuerId}.ticket-${ticket.id}`;
+    // One class per EVENT (Google shows event name/venue/date/logo from the
+    // class), one object per TICKET (seat/barcode/type live on the object).
+    const classId = `${issuerId}.event-${event.id}`;
+    const objectId = `${issuerId}.ticket-${ticket.id}`;
+    // Public base URL — used for the (publicly fetchable) pass logo and origins
+    const baseUrl = (process.env.APP_BASE_URL || 'https://empiriaindia.com').replace(/\/$/, '');
 
-    const eventTicketObject = {
-      id: objectSuffix,
-      classId: `${issuerId}.empiria-event-ticket`,
-      state: 'ACTIVE',
+    const eventTicketClass = {
+      id: classId,
+      issuerName: 'Empiria',
+      reviewStatus: 'underReview',
       hexBackgroundColor: '#111827',
       logo: {
         sourceUri: {
-          uri: 'https://empiriaindia.com/logo-white.png',
+          uri: `${baseUrl}/logo-white.png`,
         },
         contentDescription: {
           defaultValue: { language: 'en-US', value: 'Empiria' },
@@ -209,11 +231,20 @@ export async function generateGoogleWalletLink(
         name: {
           defaultValue: { language: 'en-US', value: venue || 'TBA' },
         },
+        address: {
+          defaultValue: { language: 'en-US', value: venue || 'TBA' },
+        },
       },
       dateTime: {
         start: eventDate.toISOString(),
         ...(event.end_at ? { end: new Date(event.end_at).toISOString() } : {}),
       },
+    };
+
+    const eventTicketObject = {
+      id: objectId,
+      classId,
+      state: 'ACTIVE',
       ticketType: {
         defaultValue: { language: 'en-US', value: tier.name },
       },
@@ -237,8 +268,10 @@ export async function generateGoogleWalletLink(
       iss: serviceAccountEmail,
       aud: 'google',
       typ: 'savetowallet',
-      origins: ['https://empiriaindia.com'],
+      origins: [baseUrl],
       payload: {
+        // Include class definition so Google creates it if it doesn't exist yet
+        eventTicketClasses: [eventTicketClass],
         eventTicketObjects: [eventTicketObject],
       },
     };
