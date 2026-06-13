@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Calendar, MapPin, Clock, Globe, Star, Users } from 'lucide-react';
@@ -7,6 +8,7 @@ import MovieCard from '@/app/components/MovieCard';
 import SponsorSections from '@/app/components/SponsorSections';
 import type { SponsorSection } from '@/lib/eventFields';
 import { sanitizeRichText } from '@/lib/sanitize-html';
+import { BlockedBuyerNotice } from '@/components/BlockedBuyerNotice';
 
 interface MovieDetail {
   director?: string;
@@ -43,6 +45,8 @@ interface MovieDetailContentProps {
   movie: MovieDetail;
   futureOccurrences: Occurrence[];
   similarMovies: SimilarMovie[];
+  /** Logged-in non-attendee (organizer/non_profit/admin) — can't buy. */
+  blockedBuyer?: boolean;
 }
 
 export default function MovieDetailContent({
@@ -50,8 +54,27 @@ export default function MovieDetailContent({
   movie,
   futureOccurrences,
   similarMovies,
+  blockedBuyer = false,
 }: MovieDetailContentProps) {
   const posterUrl = movie.poster_url || event.cover_image_url;
+
+  // When a blocked (non-attendee) user clicks any "Get Tickets", show the same
+  // red switch-accounts notice the event page uses instead of bouncing them
+  // into the checkout redirect loop.
+  const [showBuyBlock, setShowBuyBlock] = useState(false);
+
+  // Get Tickets control: a real link for attendees/guests; for blocked buyers a
+  // button that reveals the BlockedBuyerNotice (no navigation → no loop).
+  const GetTicketsButton = ({ href, className }: { href: string; className: string }) =>
+    blockedBuyer ? (
+      <button type="button" onClick={() => setShowBuyBlock(true)} className={className}>
+        Get Tickets
+      </button>
+    ) : (
+      <Link href={href} className={className}>
+        Get Tickets
+      </Link>
+    );
 
   const formatDuration = (minutes: number) => {
     const h = Math.floor(minutes / 60);
@@ -331,15 +354,14 @@ export default function MovieDetailContent({
                   {/* ?occ= carries THIS screening into checkout; the checkout
                       page redirects seated movies to /checkout/[id]/seats with
                       the occ preserved (S3). */}
-                  <Link
+                  <GetTicketsButton
                     href={`/checkout/${event.id}?occ=${encodeURIComponent(occ.id)}`}
-                    className="flex-shrink-0 bg-[#F15A29] hover:bg-[#e07d15] text-white font-bold text-sm px-6 py-2.5 rounded-full transition-colors text-center shadow-sm"
-                  >
-                    Get Tickets
-                  </Link>
+                    className="flex-shrink-0 bg-[#F15A29] hover:bg-[#d6420f] text-white font-bold text-sm px-6 py-2.5 rounded-full transition-colors text-center shadow-sm"
+                  />
                 </div>
               ))}
             </div>
+            {blockedBuyer && showBuyBlock && <BlockedBuyerNotice className="mt-4" />}
           </div>
         </div>
       )}
@@ -349,12 +371,11 @@ export default function MovieDetailContent({
         <div className="border-t border-gray-100">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 py-12 text-center">
             <p className="text-gray-700 mb-4">No upcoming screenings scheduled yet.</p>
-            <Link
+            <GetTicketsButton
               href={`/checkout/${event.id}`}
-              className="inline-block bg-[#F15A29] hover:bg-[#e07d15] text-white font-bold text-sm px-8 py-3 rounded-full transition-colors shadow-sm"
-            >
-              Get Tickets
-            </Link>
+              className="inline-block bg-[#F15A29] hover:bg-[#d6420f] text-white font-bold text-sm px-8 py-3 rounded-full transition-colors shadow-sm"
+            />
+            {blockedBuyer && showBuyBlock && <BlockedBuyerNotice className="mt-4" />}
           </div>
         </div>
       )}

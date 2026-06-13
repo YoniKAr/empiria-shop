@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from '@/lib/supabase';
+import { getSafeSession } from '@/lib/auth0';
 import { notFound } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
@@ -81,6 +82,20 @@ export default async function MovieDetailPage({ params }: PageProps) {
     similarMovies = cityMovies || [];
   }
 
+  // Block non-attendee accounts (organizer/non_profit/admin) from buying — show
+  // the switch-accounts notice under Get Tickets instead of a checkout redirect
+  // loop. Guests/attendees are unaffected.
+  let blockedBuyer = false;
+  const session = await getSafeSession();
+  if (session?.user?.sub) {
+    const { data: buyerRow } = await supabase
+      .from('users')
+      .select('role')
+      .eq('auth0_id', session.user.sub)
+      .single();
+    blockedBuyer = !!buyerRow?.role && buyerRow.role !== 'attendee';
+  }
+
   // If not enough similar from same city, fetch others
   if (similarMovies.length < 4) {
     const existingIds = [event.id, ...similarMovies.map((m: any) => m.id)];
@@ -106,6 +121,7 @@ export default async function MovieDetailPage({ params }: PageProps) {
         movie={movie as any}
         futureOccurrences={futureOccurrences as any[]}
         similarMovies={similarMovies as any[]}
+        blockedBuyer={blockedBuyer}
       />
       <Footer />
     </div>
