@@ -2,6 +2,31 @@ import { formatCurrency } from '@/lib/utils';
 import { SHOP_URL } from '@/lib/urls';
 import type { OrderEmailData, WalletResult } from '@/lib/email';
 
+/**
+ * Escape a value for safe interpolation into email HTML. User-controlled fields
+ * (event title, organizer/attendee names, venue, tier names, seat labels,
+ * coupon codes) flow into these templates raw and would otherwise allow HTML
+ * injection into the rendered email.
+ */
+function escapeHtml(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/**
+ * Whitelist a URL for an href attribute: only http(s)/mailto schemes are
+ * allowed (blocks javascript:/data: etc.), and the result is attribute-escaped.
+ * Anything else collapses to '#'.
+ */
+function safeUrl(url: unknown): string {
+  const s = String(url ?? '').trim();
+  return /^(https?:|mailto:)/i.test(s) ? escapeHtml(s) : '#';
+}
+
 export function formatEventDate(startDate: string, endDate?: string): string {
   const start = new Date(startDate);
   const dateStr = start.toLocaleDateString('en-US', {
@@ -34,7 +59,7 @@ export function confirmationMessage(data: OrderEmailData, confirmation: string):
           <!-- Confirmation Message -->
           <tr>
             <td style="padding: 32px 32px 16px;">
-              <h2 style="margin: 0 0 8px; font-size: 20px; font-weight: 700; color: #111827;">You're all set, ${data.attendeeName || 'there'}!</h2>
+              <h2 style="margin: 0 0 8px; font-size: 20px; font-weight: 700; color: #111827;">You're all set, ${escapeHtml(data.attendeeName || 'there')}!</h2>
               <p style="margin: 0; font-size: 15px; color: #6b7280; line-height: 1.5;">
                 Your order has been confirmed. ${confirmation}
               </p>
@@ -54,11 +79,11 @@ export function eventDetailsBlock(data: OrderEmailData): string {
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background: #f0f9ff; border-radius: 8px; border: 1px solid #bae6fd;">
                 <tr>
                   <td style="padding: 20px;">
-                    <h3 style="margin: 0 0 8px; font-size: 17px; font-weight: 700; color: #0c4a6e;">${data.eventTitle}</h3>
+                    <h3 style="margin: 0 0 8px; font-size: 17px; font-weight: 700; color: #0c4a6e;">${escapeHtml(data.eventTitle)}</h3>
                     <p style="margin: 0 0 4px; font-size: 14px; color: #0369a1;">${eventDateFormatted}</p>
-                    ${venue ? `<p style="margin: 0 0 4px; font-size: 14px; color: #0369a1;">${venue}</p>` : ''}
-                    ${data.organizerName ? `<p style="margin: 0 0 4px; font-size: 14px; color: #0369a1;">Hosted by ${data.organizerName}</p>` : ''}
-                    ${(data.locationType === 'virtual' || data.locationType === 'hybrid') && data.meetingLink ? `<p style="margin: 0; font-size: 14px;"><a href="${data.meetingLink}" style="color: #0369a1; text-decoration: underline; font-weight: 600;" target="_blank">Join Online Meeting</a></p>` : ''}
+                    ${venue ? `<p style="margin: 0 0 4px; font-size: 14px; color: #0369a1;">${escapeHtml(venue)}</p>` : ''}
+                    ${data.organizerName ? `<p style="margin: 0 0 4px; font-size: 14px; color: #0369a1;">Hosted by ${escapeHtml(data.organizerName)}</p>` : ''}
+                    ${(data.locationType === 'virtual' || data.locationType === 'hybrid') && data.meetingLink ? `<p style="margin: 0; font-size: 14px;"><a href="${safeUrl(data.meetingLink)}" style="color: #0369a1; text-decoration: underline; font-weight: 600;" target="_blank">Join Online Meeting</a></p>` : ''}
                   </td>
                 </tr>
               </table>
@@ -73,7 +98,7 @@ export function orderSummaryTable(data: OrderEmailData): string {
       (item) => `
       <tr>
         <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 14px; color: #374151;">
-          ${item.tierName}
+          ${escapeHtml(item.tierName)}
         </td>
         <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 14px; color: #374151; text-align: center;">
           ${item.quantity}
@@ -131,7 +156,7 @@ export function orderSummaryTable(data: OrderEmailData): string {
                 ${data.discountAmount && data.discountAmount > 0 ? `
                 <tr>
                   <td colspan="3" style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 13px; color: #059669; text-align: right;">
-                    Discount${data.couponCode ? ` (${data.couponCode})` : ''}
+                    Discount${data.couponCode ? ` (${escapeHtml(data.couponCode)})` : ''}
                   </td>
                   <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 13px; color: #059669; text-align: right;">
                     -${formatCurrency(data.discountAmount, data.currency)}
@@ -165,9 +190,9 @@ export function receiptLinks(data: OrderEmailData): string {
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
                 <tr>
                   <td align="center" style="padding: 12px 0;">
-                    ${data.receiptUrl ? `<a href="${data.receiptUrl}" target="_blank" style="display: inline-block; padding: 10px 20px; background: #111827; color: #ffffff; font-size: 14px; font-weight: 600; text-decoration: none; border-radius: 6px;">View Payment Receipt</a>` : ''}
-                    ${data.invoiceUrl ? `<a href="${data.invoiceUrl}" target="_blank" style="display: inline-block; padding: 10px 20px; background: #ffffff; color: #111827; font-size: 14px; font-weight: 600; text-decoration: none; border-radius: 6px; border: 1px solid #d1d5db; margin-left: 8px;">View Invoice</a>` : ''}
-                    ${data.invoicePdf ? `<a href="${data.invoicePdf}" target="_blank" style="display: inline-block; padding: 10px 20px; background: #ffffff; color: #111827; font-size: 14px; font-weight: 600; text-decoration: none; border-radius: 6px; border: 1px solid #d1d5db; margin-left: 8px;">Download Invoice PDF</a>` : ''}
+                    ${data.receiptUrl ? `<a href="${safeUrl(data.receiptUrl)}" target="_blank" style="display: inline-block; padding: 10px 20px; background: #111827; color: #ffffff; font-size: 14px; font-weight: 600; text-decoration: none; border-radius: 6px;">View Payment Receipt</a>` : ''}
+                    ${data.invoiceUrl ? `<a href="${safeUrl(data.invoiceUrl)}" target="_blank" style="display: inline-block; padding: 10px 20px; background: #ffffff; color: #111827; font-size: 14px; font-weight: 600; text-decoration: none; border-radius: 6px; border: 1px solid #d1d5db; margin-left: 8px;">View Invoice</a>` : ''}
+                    ${data.invoicePdf ? `<a href="${safeUrl(data.invoicePdf)}" target="_blank" style="display: inline-block; padding: 10px 20px; background: #ffffff; color: #111827; font-size: 14px; font-weight: 600; text-decoration: none; border-radius: 6px; border: 1px solid #d1d5db; margin-left: 8px;">Download Invoice PDF</a>` : ''}
                   </td>
                 </tr>
               </table>
@@ -191,8 +216,8 @@ export function ticketsList(data: OrderEmailData, walletResults: WalletResult[],
                 <img src="cid:qr-${ticket.id}" alt="QR Code" width="160" height="160" style="display: block; margin: 0 auto;" />
               </td>
               <td style="padding: 16px; vertical-align: middle;">
-                <p style="margin: 0 0 4px; font-size: 14px; font-weight: 600; color: #111827;">${ticket.tierName}</p>
-                ${ticket.seatLabel ? `<p style="margin: 0 0 4px; font-size: 13px; color: #374151;">Seat: ${ticket.seatLabel}</p>` : ''}
+                <p style="margin: 0 0 4px; font-size: 14px; font-weight: 600; color: #111827;">${escapeHtml(ticket.tierName)}</p>
+                ${ticket.seatLabel ? `<p style="margin: 0 0 4px; font-size: 13px; color: #374151;">Seat: ${escapeHtml(ticket.seatLabel)}</p>` : ''}
                 <p style="margin: 0; font-size: 12px; color: #6b7280;">Ticket #${ticket.id.slice(0, 8)}</p>
               </td>
             </tr>${hasWallet ? `
@@ -201,7 +226,7 @@ export function ticketsList(data: OrderEmailData, walletResults: WalletResult[],
                 ${wallet.applePass ? `<a href="cid:pass-${ticket.id}" style="display:inline-block; margin:4px; text-decoration:none;">
                   <span style="display:inline-block; background:#000; color:#fff; padding:8px 16px; border-radius:8px; font-size:13px; font-weight:600;">&#63743; Add to Apple Wallet</span>
                 </a>` : ''}
-                ${wallet.googleLink ? `<a href="${wallet.googleLink}" style="display:inline-block; margin:4px; text-decoration:none;" target="_blank">
+                ${wallet.googleLink ? `<a href="${safeUrl(wallet.googleLink)}" style="display:inline-block; margin:4px; text-decoration:none;" target="_blank">
                   <span style="display:inline-block; background:#1a73e8; color:#fff; padding:8px 16px; border-radius:8px; font-size:13px; font-weight:600;">Add to Google Wallet</span>
                 </a>` : ''}
               </td>
