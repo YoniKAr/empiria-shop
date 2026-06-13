@@ -346,14 +346,14 @@ export default async function CheckoutSuccessPage({
 
                 {/* Wallet buttons */}
                 <div className="px-6 pb-4 flex flex-wrap gap-3 justify-center sm:justify-start">
-                  <a href={`/api/wallet/apple/${ticket.id}?session_id=${session_id}`}>
+                  <a href={`/api/wallet/apple/share/${ticket.qr_code_secret}`}>
                     <img
                       src="/wallet/add-to-apple-wallet.svg"
                       alt="Add to Apple Wallet"
                       className="h-10"
                     />
                   </a>
-                  <a href={`/api/wallet/google/${ticket.id}?session_id=${session_id}`}>
+                  <a href={`/api/wallet/google/share/${ticket.qr_code_secret}`}>
                     <img
                       src="/wallet/add-to-google-wallet.svg"
                       alt="Add to Google Wallet"
