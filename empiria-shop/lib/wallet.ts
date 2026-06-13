@@ -215,7 +215,7 @@ export async function generateGoogleWalletLink(
 
     const eventTicketClass = {
       id: classId,
-      issuerName: 'Empiria',
+      issuerName: 'Empiria Events',
       reviewStatus: 'underReview',
       hexBackgroundColor: '#F15A29', // Empiria brand orange
       logo: {
