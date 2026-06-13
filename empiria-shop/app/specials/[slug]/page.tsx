@@ -36,7 +36,8 @@ export default async function SpecialPage({ params }: { params: Promise<{ slug: 
       .select(EVENT_COLUMNS)
       .in('id', page.event_ids)
       .eq('status', 'published')
-      .eq('visibility', 'public');
+      .eq('visibility', 'public')
+      .eq('event_type', 'event');
     // Preserve the admin-specified order
     const order = new Map<string, number>(
       page.event_ids.map((id: string, i: number) => [id, i] as [string, number])
@@ -51,6 +52,7 @@ export default async function SpecialPage({ params }: { params: Promise<{ slug: 
       .eq('status', 'published')
       .eq('visibility', 'public')
       .eq('category_id', page.category_id)
+      .eq('event_type', 'event')
       .order('created_at', { ascending: false });
     rawEvents = data;
   }
