@@ -40,6 +40,11 @@ interface SimilarMovie {
   gifft_movie_details?: MovieDetail[] | MovieDetail;
 }
 
+interface Organizer {
+  name: string;
+  avatarUrl?: string | null;
+}
+
 interface MovieDetailContentProps {
   event: any;
   movie: MovieDetail;
@@ -47,6 +52,26 @@ interface MovieDetailContentProps {
   similarMovies: SimilarMovie[];
   /** Logged-in non-attendee (organizer/non_profit/admin) — can't buy. */
   blockedBuyer?: boolean;
+  /** Primary owning organizer (or "Empiria Events" for platform-owned). */
+  organizer?: string;
+  organizerAvatarUrl?: string | null;
+  /** Visible co-organizers (additional hosts). */
+  coOrganizers?: Organizer[];
+}
+
+// Small circular avatar for the "By …" credit line. Dark-on-white friendly:
+// initials fall back to the brand orange.
+function OrganizerAvatar({ name, avatarUrl, size = 'md' }: { name: string; avatarUrl?: string | null; size?: 'md' | 'sm' }) {
+  const cls = size === 'md' ? 'w-6 h-6 text-[11px]' : 'w-5 h-5 text-[10px]';
+  if (avatarUrl) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={avatarUrl} alt={name} className={`${cls} rounded-full object-cover ring-1 ring-black/10 shrink-0`} />;
+  }
+  return (
+    <span className={`${cls} rounded-full bg-[#F15A29] text-white font-semibold flex items-center justify-center shrink-0 ring-1 ring-black/10`}>
+      {name.charAt(0).toUpperCase()}
+    </span>
+  );
 }
 
 export default function MovieDetailContent({
@@ -55,6 +80,9 @@ export default function MovieDetailContent({
   futureOccurrences,
   similarMovies,
   blockedBuyer = false,
+  organizer,
+  organizerAvatarUrl,
+  coOrganizers = [],
 }: MovieDetailContentProps) {
   const posterUrl = movie.poster_url || event.cover_image_url;
 
@@ -185,9 +213,32 @@ export default function MovieDetailContent({
               )}
 
               {/* Title */}
-              <h1 className="text-3xl md:text-5xl lg:text-6xl font-bold text-gray-900 mb-5 tracking-tight leading-tight font-[family-name:var(--font-space-grotesk)]">
+              <h1 className="text-3xl md:text-5xl lg:text-6xl font-bold text-gray-900 mb-3 tracking-tight leading-tight font-[family-name:var(--font-space-grotesk)]">
                 {event.title}
               </h1>
+
+              {/* By — owning organizer(s) with profile photos */}
+              {organizer && (
+                <div className="flex flex-wrap items-center justify-center md:justify-start gap-x-2 gap-y-1.5 mb-5">
+                  <span className="text-sm text-gray-500">By</span>
+                  <OrganizerAvatar name={organizer} avatarUrl={organizerAvatarUrl} size="md" />
+                  <span className="text-sm font-semibold text-gray-900">{organizer}</span>
+                  {coOrganizers.length > 0 && (
+                    <span className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm text-gray-500">
+                      <span>with</span>
+                      {coOrganizers.map((co, i) => (
+                        <span key={`${co.name}-${i}`} className="flex items-center gap-1.5">
+                          <OrganizerAvatar name={co.name} avatarUrl={co.avatarUrl} size="sm" />
+                          <span className="font-medium text-gray-900">
+                            {co.name}
+                            {i < coOrganizers.length - 1 ? ',' : ''}
+                          </span>
+                        </span>
+                      ))}
+                    </span>
+                  )}
+                </div>
+              )}
 
               {/* Meta pills */}
               <div className="flex flex-wrap justify-center md:justify-start gap-3 mb-6">

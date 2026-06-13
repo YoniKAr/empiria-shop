@@ -102,7 +102,10 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
 
     // Gallery images: prefer the stored gallery_images column; otherwise fall
     // back to listing the storage bucket (for older events created before the
-    // column was populated).
+    // column was populated). The fallback MUST only look at EVENT-SPECIFIC
+    // folders — never the organizer-wide folder or the bucket root, which would
+    // surface OTHER events' images on an event that has no gallery of its own
+    // (and wrongly render the gallery section).
     let galleryUrls: string[] = Array.isArray((event as any).gallery_images)
         ? ((event as any).gallery_images as string[]).filter(Boolean)
         : [];
@@ -115,8 +118,6 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
             `${event.slug}`,
             safeOrganizerId ? `${safeOrganizerId}/${String(event.id)}` : '',
             safeOrganizerId ? `${safeOrganizerId}/${event.slug}` : '',
-            safeOrganizerId || '',
-            ''
         ].filter(Boolean);
 
         for (const folder of possiblePaths) {

@@ -51,6 +51,49 @@ export default async function MovieDetailPage({ params }: PageProps) {
   // event object reaches any client widget/picker.
   event.ticket_tiers = (event.ticket_tiers || []).filter((t: any) => !t.is_hidden);
 
+  // ── Owning organizer(s) for the "By …" credit line ──
+  // Look up the event owner's profile (events.organizer_id = auth0_id).
+  const { data: ownerProfile } = event.organizer_id
+    ? await supabase
+        .from('users')
+        .select('full_name, role, avatar_url')
+        .eq('auth0_id', event.organizer_id)
+        .single()
+    : { data: null };
+
+  // Admin-owned events are platform-owned → shown as "Empiria Events" with the
+  // shared platform avatar; an event an admin created on behalf of a real
+  // organizer (owner role !== admin) shows that organizer.
+  const isPlatformEvent = ownerProfile?.role === 'admin';
+  const organizer = isPlatformEvent
+    ? 'Empiria Events'
+    : (ownerProfile?.full_name || 'Empiria Events');
+
+  let organizerAvatarUrl: string | null = ownerProfile?.avatar_url || null;
+  if (isPlatformEvent) {
+    const { data: platformSetting } = await supabase
+      .from('platform_settings')
+      .select('value')
+      .eq('key', 'platform_avatar_url')
+      .maybeSingle();
+    organizerAvatarUrl = (platformSetting?.value as { url?: string | null } | null)?.url || null;
+  }
+
+  // Visible co-organizers (additional hosts shown publicly).
+  const { data: coOrganizerRows } = await supabase
+    .from('event_organizers')
+    .select('sort_order, users:user_id(full_name, avatar_url)')
+    .eq('event_id', event.id)
+    .eq('is_visible', true)
+    .order('sort_order', { ascending: true });
+
+  const coOrganizers = (coOrganizerRows || [])
+    .map((row: any) => ({
+      name: row.users?.full_name || null,
+      avatarUrl: row.users?.avatar_url || null,
+    }))
+    .filter((c: { name: string | null }) => !!c.name) as { name: string; avatarUrl?: string | null }[];
+
   const movie = Array.isArray(event.gifft_movie_details)
     ? event.gifft_movie_details[0] || {}
     : event.gifft_movie_details || {};
@@ -122,6 +165,9 @@ export default async function MovieDetailPage({ params }: PageProps) {
         futureOccurrences={futureOccurrences as any[]}
         similarMovies={similarMovies as any[]}
         blockedBuyer={blockedBuyer}
+        organizer={organizer}
+        organizerAvatarUrl={organizerAvatarUrl}
+        coOrganizers={coOrganizers}
       />
       <Footer />
     </div>
