@@ -1,4 +1,5 @@
 import { formatCurrency } from '@/lib/utils';
+import { SHOP_URL } from '@/lib/urls';
 import type { OrderEmailData, WalletResult } from '@/lib/email';
 
 export function formatEventDate(startDate: string, endDate?: string): string {
@@ -205,6 +206,12 @@ export function ticketsList(data: OrderEmailData, walletResults: WalletResult[],
                 </a>` : ''}
               </td>
             </tr>` : ''}
+            <tr>
+              <td colspan="2" style="padding: 0 16px 14px; text-align: center;">
+                <a href="${SHOP_URL}/t/${ticket.qr_code_secret}" target="_blank" style="font-size: 13px; color: #ea580c; font-weight: 600; text-decoration: none;">&#8599; Share this ticket</a>
+                <span style="display: block; font-size: 11px; color: #9ca3af; margin-top: 3px;">Coming with someone? Send them their ticket to add to their own wallet.</span>
+              </td>
+            </tr>
           </table>
         </td>
       </tr>`;
