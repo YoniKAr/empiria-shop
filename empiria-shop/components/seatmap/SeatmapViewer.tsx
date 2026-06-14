@@ -81,6 +81,13 @@ export default function SeatmapViewer({
   // Fit transform from image-native space -> canvas px (scale + offset).
   const fitRef = useRef({ scale: 1, offX: 0, offY: 0 });
   const [containerWidth, setContainerWidth] = useState(0);
+  // Container height — only consumed in fullscreen, where the canvas must fit the
+  // viewport's height too (normal mode is width-driven, so reading it there would
+  // feed back on the canvas height it just set).
+  const [containerHeight, setContainerHeight] = useState(0);
+  // Fullscreen overlay: blows the canvas up to the whole viewport so seats are
+  // big and easy to tap. Desktop inline view is untouched.
+  const [isFullscreen, setIsFullscreen] = useState(false);
   // Mirrors canvas.getZoom() so the overlay buttons can enable/disable.
   const [zoomLevel, setZoomLevel] = useState(1);
   const isTouch = useIsTouch();
@@ -120,12 +127,28 @@ export default function SeatmapViewer({
     const el = containerRef.current;
     if (!el) return;
     const ro = new ResizeObserver((entries) => {
-      const w = entries[0]?.contentRect.width;
-      if (w && w > 0) setContainerWidth(Math.min(MAX_CANVAS_WIDTH, Math.floor(w)));
+      const rect = entries[0]?.contentRect;
+      if (rect?.width && rect.width > 0) setContainerWidth(Math.floor(rect.width));
+      if (rect?.height && rect.height > 0) setContainerHeight(Math.floor(rect.height));
     });
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+
+  // Fullscreen: lock body scroll + allow Esc to exit.
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setIsFullscreen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [isFullscreen]);
 
   // Sold is keyed by seat LABEL (tickets store labels); holds by config seat ID.
   const getSeatColor = useCallback(
@@ -254,8 +277,16 @@ export default function SeatmapViewer({
   useEffect(() => {
     if (!canvasRef.current || containerWidth <= 0) return;
 
-    const cw = containerWidth;
-    const ch = Math.round((cw * imgH) / imgW); // match image aspect → no letterbox/clipping
+    // Inline view is width-driven and capped (the perfect desktop layout).
+    // Fullscreen uses the full available width AND clamps to the viewport height
+    // so the whole map fits the screen with no clipping.
+    const availW = isFullscreen ? containerWidth : Math.min(MAX_CANVAS_WIDTH, containerWidth);
+    let cw = availW;
+    let ch = Math.round((cw * imgH) / imgW); // match image aspect → no letterbox/clipping
+    if (isFullscreen && containerHeight > 0 && ch > containerHeight) {
+      ch = containerHeight;
+      cw = Math.round((ch * imgW) / imgH);
+    }
     const scale = cw / imgW; // image-native px → canvas px
     fitRef.current = { scale, offX: 0, offY: 0 };
 
@@ -373,7 +404,7 @@ export default function SeatmapViewer({
       fabricRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [config.image_url, containerWidth, imgW, imgH, mode]);
+  }, [config.image_url, containerWidth, containerHeight, isFullscreen, imgW, imgH, mode]);
 
   // Re-render zones/seats (without recreating the canvas) on state changes.
   useEffect(() => {
@@ -543,11 +574,38 @@ export default function SeatmapViewer({
   return (
     <div
       ref={containerRef}
-      className="relative w-full rounded-lg border bg-slate-50 overflow-hidden"
+      className={
+        isFullscreen
+          ? "fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/95 p-3 sm:p-6"
+          : "relative w-full rounded-lg border bg-slate-50 overflow-hidden"
+      }
       style={isTouch ? { touchAction: "none" } : undefined}
     >
       <canvas ref={canvasRef} />
       <div className="absolute right-2 top-2 z-10 flex flex-col gap-1.5">
+        <button
+          type="button"
+          aria-label={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+          title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+          onClick={() => setIsFullscreen((v) => !v)}
+          className={btnClass}
+        >
+          {isFullscreen ? (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 14h6v6" />
+              <path d="M20 10h-6V4" />
+              <path d="M14 10l7-7" />
+              <path d="M3 21l7-7" />
+            </svg>
+          ) : (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M15 3h6v6" />
+              <path d="M9 21H3v-6" />
+              <path d="M21 3l-7 7" />
+              <path d="M3 21l7-7" />
+            </svg>
+          )}
+        </button>
         <button
           type="button"
           aria-label="Zoom in"
