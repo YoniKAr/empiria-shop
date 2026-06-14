@@ -130,10 +130,10 @@ export default function SeatmapViewer({
   // Sold is keyed by seat LABEL (tickets store labels); holds by config seat ID.
   const getSeatColor = useCallback(
     (seatId: string, seatLabel: string) => {
-      if (soldSeats.has(seatLabel)) return { fill: "#9ca3af80", stroke: "#6b7280" }; // gray - sold
-      if (myHeldSeats.has(seatId)) return { fill: "#3b82f680", stroke: "#2563eb" }; // blue - my hold
-      if (otherHeldSeats.has(seatId)) return { fill: "#f59e0b80", stroke: "#d97706" }; // yellow - other hold
-      return { fill: "#22c55e80", stroke: "#16a34a" }; // green - available
+      if (soldSeats.has(seatLabel)) return { fill: "#ef444480", stroke: "#dc2626" }; // red - sold
+      if (myHeldSeats.has(seatId)) return { fill: "#22c55e80", stroke: "#16a34a" }; // green - my selection
+      if (otherHeldSeats.has(seatId)) return { fill: "#9ca3af80", stroke: "#6b7280" }; // grey - unavailable (held by others)
+      return { fill: "#F15A2980", stroke: "#c2410c" }; // orange - available
     },
     [soldSeats, myHeldSeats, otherHeldSeats]
   );

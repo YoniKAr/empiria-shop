@@ -28,10 +28,10 @@ export default function SchematicViewer({
 
   const seatStatusStyles: Record<string, string> = {
     available:
-      "bg-green-100 border-green-500 hover:bg-green-200 cursor-pointer",
-    mine: "bg-blue-200 border-blue-500 hover:bg-blue-300 cursor-pointer",
-    other: "bg-yellow-100 border-yellow-400 cursor-not-allowed",
-    sold: "bg-gray-200 border-gray-400 cursor-not-allowed opacity-50",
+      "bg-[#F15A29] border-[#c2410c] hover:opacity-80 cursor-pointer",
+    mine: "bg-green-500 border-green-600 hover:opacity-80 cursor-pointer",
+    other: "bg-gray-400 border-gray-500 cursor-not-allowed",
+    sold: "bg-red-500 border-red-600 cursor-not-allowed opacity-50",
   };
 
   return (
@@ -92,11 +92,10 @@ export default function SchematicViewer({
                               onSeatClick(seat.id, section.id, seat.label);
                             }
                           }}
-                          className={`w-9 h-9 sm:w-7 sm:h-7 rounded-full border-2 text-[11px] sm:text-[10px] font-medium flex items-center justify-center transition-all ${seatStatusStyles[status]}`}
-                          title={`${seat.label} - ${status === "sold" ? "Sold" : status === "other" ? "Reserved" : status === "mine" ? "Your selection" : "Available"}`}
-                        >
-                          {seat.label.replace(/^[A-Z]+/, "")}
-                        </button>
+                          aria-label={`${seat.label} - ${status === "sold" ? "Sold" : status === "other" ? "Unavailable" : status === "mine" ? "Your selection" : "Available"}`}
+                          className={`w-9 h-9 sm:w-7 sm:h-7 rounded-full border-2 flex items-center justify-center transition-all ${seatStatusStyles[status]}`}
+                          title={`${seat.label} - ${status === "sold" ? "Sold" : status === "other" ? "Unavailable" : status === "mine" ? "Your selection" : "Available"}`}
+                        />
                       );
                     })}
                   </div>
@@ -110,19 +109,19 @@ export default function SchematicViewer({
       {/* Legend */}
       <div className="flex flex-wrap gap-4 text-xs px-1">
         <div className="flex items-center gap-1.5">
-          <span className="w-4 h-4 rounded-full bg-green-100 border-2 border-green-500" />
+          <span className="w-4 h-4 rounded-full bg-[#F15A29] border-2 border-[#c2410c]" />
           Available
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="w-4 h-4 rounded-full bg-blue-200 border-2 border-blue-500" />
+          <span className="w-4 h-4 rounded-full bg-green-500 border-2 border-green-600" />
           Your selection
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="w-4 h-4 rounded-full bg-yellow-100 border-2 border-yellow-400" />
-          Reserved
+          <span className="w-4 h-4 rounded-full bg-gray-400 border-2 border-gray-500" />
+          Unavailable
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="w-4 h-4 rounded-full bg-gray-200 border-2 border-gray-400 opacity-50" />
+          <span className="w-4 h-4 rounded-full bg-red-500 border-2 border-red-600 opacity-50" />
           Sold
         </div>
       </div>

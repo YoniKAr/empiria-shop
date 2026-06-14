@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
-import { Minus, Plus, Loader2, AlertCircle, Check } from "lucide-react";
+import { Minus, Plus, Loader2, AlertCircle } from "lucide-react";
 import StripeBadge from "@/components/StripeBadge";
 import { BlockedBuyerNotice } from "@/components/BlockedBuyerNotice";
 import MobileActionBar from "./MobileActionBar";
@@ -410,29 +410,28 @@ export default function AssignedSeatPicker({
                               type="button"
                               disabled={isSold}
                               onClick={() => toggleSeat(seat)}
-                              className={`w-11 h-11 sm:w-9 sm:h-9 rounded text-xs font-medium transition-colors flex items-center justify-center ${
+                              aria-label={
                                 isSold
-                                  ? "bg-gray-200 text-gray-600 cursor-not-allowed"
+                                  ? `${seat.label} - Sold`
                                   : isSelected
-                                  ? "bg-orange-500 text-white ring-2 ring-orange-300"
-                                  : "bg-green-100 text-green-800 hover:bg-green-200 border border-green-300"
+                                  ? `${seat.label} - Your selection`
+                                  : `${seat.label} - Available`
+                              }
+                              className={`w-11 h-11 sm:w-9 sm:h-9 rounded-full border-2 transition-colors ${
+                                isSold
+                                  ? "bg-red-500 border-red-600 cursor-not-allowed opacity-50"
+                                  : isSelected
+                                  ? "bg-green-500 border-green-600 ring-2 ring-green-300"
+                                  : "bg-[#F15A29] border-[#c2410c] hover:opacity-80"
                               }`}
                               title={
                                 isSold
                                   ? `${seat.label} - Sold`
                                   : isSelected
-                                  ? `${seat.label} - Selected`
+                                  ? `${seat.label} - Your selection`
                                   : `${seat.label} - Available`
                               }
-                            >
-                              {isSold ? (
-                                <span className="text-[10px]">&times;</span>
-                              ) : isSelected ? (
-                                <Check size={14} />
-                              ) : (
-                                seat.label.replace(prefix, "")
-                              )}
-                            </button>
+                            />
                           );
                         })}
                       </div>
@@ -443,15 +442,15 @@ export default function AssignedSeatPicker({
                 {/* Legend */}
                 <div className="flex flex-wrap gap-4 text-xs pt-2 border-t border-gray-100">
                   <div className="flex items-center gap-1.5">
-                    <span className="w-3 h-3 rounded bg-green-100 border border-green-300" />
+                    <span className="w-3 h-3 rounded-full bg-[#F15A29] border border-[#c2410c]" />
                     Available
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <span className="w-3 h-3 rounded bg-orange-500" />
-                    Selected
+                    <span className="w-3 h-3 rounded-full bg-green-500 border border-green-600" />
+                    Your selection
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <span className="w-3 h-3 rounded bg-gray-200" />
+                    <span className="w-3 h-3 rounded-full bg-red-500 border border-red-600" />
                     Sold
                   </div>
                 </div>
