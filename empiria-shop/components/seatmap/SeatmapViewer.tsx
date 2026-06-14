@@ -153,10 +153,11 @@ export default function SeatmapViewer({
   // Sold is keyed by seat LABEL (tickets store labels); holds by config seat ID.
   const getSeatColor = useCallback(
     (seatId: string, seatLabel: string) => {
-      if (soldSeats.has(seatLabel)) return { fill: "#ef444480", stroke: "#dc2626" }; // red - sold
-      if (myHeldSeats.has(seatId)) return { fill: "#22c55e80", stroke: "#16a34a" }; // green - my selection
-      if (otherHeldSeats.has(seatId)) return { fill: "#9ca3af80", stroke: "#6b7280" }; // grey - unavailable (held by others)
-      return { fill: "#3b82f680", stroke: "#2563eb" }; // blue - available
+      // Solid (opaque) fills — no semi-transparent interior (client request).
+      if (soldSeats.has(seatLabel)) return { fill: "#ef4444", stroke: "#dc2626" }; // red - sold
+      if (myHeldSeats.has(seatId)) return { fill: "#22c55e", stroke: "#16a34a" }; // green - my selection
+      if (otherHeldSeats.has(seatId)) return { fill: "#9ca3af", stroke: "#6b7280" }; // grey - unavailable (held by others)
+      return { fill: "#3b82f6", stroke: "#2563eb" }; // blue - available
     },
     [soldSeats, myHeldSeats, otherHeldSeats]
   );
@@ -524,7 +525,7 @@ export default function SeatmapViewer({
       const sectionHidden = section.is_hidden === true;
       for (const seat of section.seats) {
         const colors = sectionHidden
-          ? { fill: "#9ca3af80", stroke: "#6b7280" }
+          ? { fill: "#9ca3af", stroke: "#6b7280" }
           : getSeatColor(seat.id, seat.label);
         const isSold = soldSeats.has(seat.label);
         const isHeldByOther = otherHeldSeats.has(seat.id);
