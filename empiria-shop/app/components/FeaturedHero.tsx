@@ -101,14 +101,14 @@ export default function FeaturedHero({ featuredEvents, query, setQuery }: Featur
 
           {/* Search Bar */}
           <div className="bg-white/95 backdrop-blur-sm p-2 rounded-full shadow-2xl max-w-3xl mx-auto flex flex-col sm:flex-row gap-2">
-            <div className="flex-1 flex items-center px-4 h-12 bg-gray-50 sm:bg-transparent rounded-full sm:rounded-none">
+            <div className="flex-1 min-w-0 flex items-center px-4 h-12 bg-gray-50 sm:bg-transparent rounded-full sm:rounded-none">
               <Search className="text-gray-700 w-5 h-5 mr-3 flex-shrink-0" />
               <input
                 type="text"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Search events, artists, categories, city..."
-                className="bg-transparent w-full outline-none text-sm font-medium placeholder:text-gray-700 text-slate-900"
+                className="bg-transparent w-full min-w-0 outline-none text-sm font-medium placeholder:text-gray-700 text-slate-900 truncate"
               />
             </div>
             <button
