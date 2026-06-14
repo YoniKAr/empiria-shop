@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useEffect, useCallback, useState } from "react";
-import { Canvas, Polygon, Circle, FabricImage, FabricText, Point } from "fabric";
+import { Canvas, Polygon, Circle, FabricImage, Point } from "fabric";
 import type { SeatingConfig, ZoneDefinition, SectionDefinition } from "@/lib/seatmap-types";
 import { migrateSeatingConfig } from "@/lib/migrate-seating-config";
 import { useIsTouch } from "@/hooks/useIsTouch";
@@ -420,23 +420,7 @@ export default function SeatmapViewer({
       }
       zonePolygonMap.set(zone.id, zonePolygons);
 
-      if (zone.polygons.length > 0) {
-        const c = getPolygonCenter(zone.polygons[0].points);
-        const center = proj(c.x, c.y);
-        const label = new FabricText(zone.name, {
-          left: center.x,
-          top: center.y,
-          fontSize: 13,
-          fontFamily: "system-ui, sans-serif",
-          fontWeight: "bold",
-          fill: isSoldOut ? "#9ca3af" : "#1f2937",
-          originX: "center",
-          originY: "center",
-          selectable: false,
-          evented: false,
-        });
-        canvas.add(label);
-      }
+      // Zone-name text overlay removed — the map shows polygons/seats only.
     }
 
     // Click vs pan: down records the pressed zone (or arms a background pan
@@ -488,21 +472,7 @@ export default function SeatmapViewer({
       });
       canvas.add(polygon);
 
-      const c = getPolygonCenter(section.points);
-      const labelPos = proj(c.x, c.y);
-      const sectionLabel = new FabricText(section.name, {
-        left: labelPos.x,
-        top: labelPos.y - 15,
-        fontSize: 11,
-        fontFamily: "system-ui, sans-serif",
-        fontWeight: "bold",
-        fill: section.color,
-        originX: "center",
-        originY: "center",
-        selectable: false,
-        evented: false,
-      });
-      canvas.add(sectionLabel);
+      // Section-name text overlay removed — seats render without labels on top.
 
       // Seat radius: native radius (from spacing) projected to canvas px, then
       // clamped. The clamp is RESPONSIVE: wide (desktop/tablet) canvases keep the
