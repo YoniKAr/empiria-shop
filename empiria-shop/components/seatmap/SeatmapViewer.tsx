@@ -534,19 +534,8 @@ export default function SeatmapViewer({
         });
         setObjData(circle, { seatId: seat.id, sectionId: section.id, label: seat.label });
         canvas.add(circle);
-
-        const seatLabel = new FabricText(seat.label, {
-          left: p.x,
-          top: p.y,
-          fontSize: Math.max(6, Math.min(10, r * 0.9)),
-          fontFamily: "system-ui, sans-serif",
-          fill: "#ffffff",
-          originX: "center",
-          originY: "center",
-          selectable: false,
-          evented: false,
-        });
-        canvas.add(seatLabel);
+        // Customer-facing seats are blank circles — no seat-number/label text on
+        // top. (The selected-seat summary + hover still surface the label.)
       }
     }
 
