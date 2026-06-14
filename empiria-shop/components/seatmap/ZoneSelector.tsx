@@ -137,6 +137,8 @@ export default function ZoneSelector({
   }
 
   function handleZoneClick(zoneId: string) {
+    // Hidden (issue-only) zones aren't selectable by buyers.
+    if (zones.find((z) => z.id === zoneId)?.is_hidden) return;
     setSelectedZoneId(zoneId);
     setError(null);
   }
@@ -319,14 +321,19 @@ export default function ZoneSelector({
         <div className="px-4 pb-3">
           <div className="flex flex-wrap gap-3 text-xs">
             {zones.map((zone) => {
+              const isHidden = zone.is_hidden === true;
               const isSoldOut = zoneAvailability[zone.id] === 0;
+              const unavailable = isHidden || isSoldOut;
               return (
                 <button
                   key={zone.id}
                   type="button"
+                  disabled={unavailable}
                   onClick={() => handleZoneClick(zone.id)}
                   className={`flex items-center gap-1.5 px-2 py-1 rounded transition-colors ${
-                    selectedZoneId === zone.id
+                    unavailable
+                      ? "cursor-not-allowed"
+                      : selectedZoneId === zone.id
                       ? "bg-gray-100 ring-1 ring-gray-300"
                       : "hover:bg-gray-50"
                   }`}
@@ -334,14 +341,14 @@ export default function ZoneSelector({
                   <span
                     className="w-3 h-3 rounded-full shrink-0"
                     style={{
-                      backgroundColor: isSoldOut ? "#9ca3af" : zone.color,
+                      backgroundColor: unavailable ? "#9ca3af" : zone.color,
                     }}
                   />
-                  <span className={isSoldOut ? "text-gray-700 line-through" : "text-gray-900"}>
+                  <span className={unavailable ? "text-gray-700 line-through" : "text-gray-900"}>
                     {zone.name}
                   </span>
                   <span className="text-gray-700">
-                    {isSoldOut ? "Sold out" : getZonePriceLabel(zone)}
+                    {isHidden ? "Unavailable" : isSoldOut ? "Sold out" : getZonePriceLabel(zone)}
                   </span>
                 </button>
               );

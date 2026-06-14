@@ -429,11 +429,15 @@ export default function SeatmapViewer({
 
     for (const zone of zones) {
       const remaining = availability[zone.id] ?? availability[zone.tier_id] ?? -1;
+      // Hidden (issue-only) zones are treated like sold-out for buyers: grey,
+      // not clickable. Organizers/admins issue tickets to them instead.
+      const isHidden = zone.is_hidden === true;
       const isSoldOut = remaining === 0;
+      const unavailable = isSoldOut || isHidden;
       const isSelected = selectedZoneId === zone.id;
 
-      const fillColor = isSoldOut ? "#9ca3af40" : isSelected ? zone.color + "80" : zone.color + "40";
-      const strokeColor = isSoldOut ? "#6b7280" : zone.color;
+      const fillColor = unavailable ? "#9ca3af40" : isSelected ? zone.color + "80" : zone.color + "40";
+      const strokeColor = unavailable ? "#6b7280" : zone.color;
 
       const zonePolygons: Polygon[] = [];
       for (const poly of zone.polygons) {
@@ -442,8 +446,8 @@ export default function SeatmapViewer({
           stroke: strokeColor,
           strokeWidth: isSelected ? 3 : 2,
           selectable: false,
-          evented: !isSoldOut,
-          hoverCursor: isSoldOut ? "not-allowed" : "pointer",
+          evented: !unavailable,
+          hoverCursor: unavailable ? "not-allowed" : "pointer",
         });
         setObjData(polygon, { zoneId: zone.id });
         canvas.add(polygon);
@@ -515,11 +519,16 @@ export default function SeatmapViewer({
       const maxR = isNarrow ? Math.max(6, cw * 0.024) : 16;
       const minR = isNarrow ? Math.max(2, cw * 0.006) : 3;
       const r = Math.max(minR, Math.min(maxR, nativeSeatRadius(section.points, section.seats.length) * scale));
+      // Hidden (issue-only) sections: every seat shows grey "Unavailable" and is
+      // unclickable for buyers — organizers/admins issue tickets to them instead.
+      const sectionHidden = section.is_hidden === true;
       for (const seat of section.seats) {
-        const colors = getSeatColor(seat.id, seat.label);
+        const colors = sectionHidden
+          ? { fill: "#9ca3af80", stroke: "#6b7280" }
+          : getSeatColor(seat.id, seat.label);
         const isSold = soldSeats.has(seat.label);
         const isHeldByOther = otherHeldSeats.has(seat.id);
-        const isClickable = !isSold && !isHeldByOther;
+        const isClickable = !sectionHidden && !isSold && !isHeldByOther;
         const p = proj(seat.x, seat.y);
 
         const circle = new Circle({

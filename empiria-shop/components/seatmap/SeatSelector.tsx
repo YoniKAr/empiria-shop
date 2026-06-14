@@ -343,6 +343,14 @@ export default function SeatSelector({
         return;
       }
 
+      // Hidden (issue-only) sections are not purchasable — the viewers already
+      // render them grey/unclickable; this is the belt-and-braces guard.
+      const clickedSection = sections.find((s) => s.id === sectionId);
+      if (clickedSection?.is_hidden) {
+        setError(`Seat ${label} is not available for purchase.`);
+        return;
+      }
+
       const zoneTiers = sectionZoneTiers.get(sectionId) || [];
       if (zoneTiers.length === 0) {
         // No purchasable tier maps to this section — never hold a seat the

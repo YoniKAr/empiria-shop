@@ -32,6 +32,9 @@ export interface ZoneDefinition {
   max_per_order?: number;
   description?: string;
   currency?: string;
+  /** Hidden / issue-only: not purchasable in the shop (renders as grey
+   *  "Unavailable"); admins/organizers can still issue tickets to its seats. */
+  is_hidden?: boolean;
 }
 
 // Tiers within a zone (e.g. Adult, Child, VIP for the same physical area)
@@ -59,6 +62,8 @@ export interface SectionDefinition {
   color: string;
   points: [number, number][];
   seats: SeatDefinition[];
+  /** Mirrors the owning zone's `is_hidden` (issue-only, not purchasable). */
+  is_hidden?: boolean;
 }
 
 // Seat range for assigned seating (no map)

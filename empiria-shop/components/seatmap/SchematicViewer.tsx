@@ -19,7 +19,9 @@ export default function SchematicViewer({
   otherHeldSeats,
   onSeatClick,
 }: SchematicViewerProps) {
-  function getSeatStatus(seat: { id: string; label: string }) {
+  function getSeatStatus(seat: { id: string; label: string }, sectionHidden = false) {
+    // Hidden (issue-only) sections read as unavailable ("other") for buyers.
+    if (sectionHidden) return "other";
     if (soldSeats.has(seat.label)) return "sold";
     if (myHeldSeats.has(seat.id)) return "mine";
     if (otherHeldSeats.has(seat.id)) return "other";
@@ -78,7 +80,7 @@ export default function SchematicViewer({
                   </span>
                   <div className="flex gap-1.5">
                     {seats.map((seat) => {
-                      const status = getSeatStatus(seat);
+                      const status = getSeatStatus(seat, section.is_hidden === true);
                       const isClickable =
                         status === "available" || status === "mine";
 

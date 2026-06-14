@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { migrateSeatingConfig } from "@/lib/migrate-seating-config";
 
 const HOLD_DURATION_MINUTES = 10;
 
@@ -63,6 +64,37 @@ export async function POST(request: NextRequest) {
           { error: "This seat has already been sold" },
           { status: 409 }
         );
+      }
+    }
+
+    // Reject holds on seats inside a HIDDEN (issue-only) section — buyers can't
+    // reserve them (the UI greys them out; this is the server backstop). The
+    // stored seat_id is occurrence-composed (`${occurrenceId}:${configSeatId}`),
+    // so strip any prefix before matching the config.
+    {
+      const rawSeatId = String(seatId).includes(":")
+        ? String(seatId).split(":").pop()
+        : String(seatId);
+      const { data: ev } = await supabase
+        .from("events")
+        .select("seating_config")
+        .eq("id", eventId)
+        .maybeSingle();
+      if (ev?.seating_config) {
+        const migrated = migrateSeatingConfig(ev.seating_config);
+        const hiddenSection = (migrated.sections || []).find(
+          (s) =>
+            s.is_hidden === true &&
+            (s.seats || []).some(
+              (st) => st.id === rawSeatId || st.label === seatLabel
+            )
+        );
+        if (hiddenSection) {
+          return NextResponse.json(
+            { error: "This seat is not available for purchase" },
+            { status: 400 }
+          );
+        }
       }
     }
 

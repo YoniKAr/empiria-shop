@@ -31,6 +31,7 @@ export function migrateSeatingConfig(config: any): SeatingConfig {
               color: zone.color,
               points: poly.points,
               seats: poly.seats,
+              is_hidden: zone.is_hidden,
             });
           }
         }

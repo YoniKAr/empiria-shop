@@ -301,6 +301,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Tier ids that belong to a HIDDEN (issue-only) zone — not publicly
+    // purchasable, same treatment as a hidden tier (S7). Buyers see these zones
+    // as grey/"Unavailable"; admins/organizers issue tickets to them instead.
+    const hiddenZoneTierIds = new Set<string>();
+    {
+      const cfg = event.seating_config as { zones?: Array<{ is_hidden?: boolean; tier_id?: string; tiers?: Array<{ id?: string }> }> } | null;
+      for (const z of cfg?.zones || []) {
+        if (!z?.is_hidden) continue;
+        if (z.tier_id) hiddenZoneTierIds.add(z.tier_id);
+        for (const t of z.tiers || []) if (t?.id) hiddenZoneTierIds.add(t.id);
+      }
+    }
+
     for (const [selTierId, selQuantity] of aggregatedQuantities) {
       const tier = tierMap.get(selTierId);
       if (!tier) {
@@ -311,8 +324,9 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Tier does not belong to this event' }, { status: 400 });
       }
 
-      // S7: hidden tiers are not publicly purchasable.
-      if (tier.is_hidden === true) {
+      // S7: hidden tiers — and tiers inside a hidden zone — are not publicly
+      // purchasable.
+      if (tier.is_hidden === true || hiddenZoneTierIds.has(selTierId)) {
         return NextResponse.json(
           { error: `"${tier.name}" is not available for purchase` },
           { status: 400 }
@@ -637,6 +651,14 @@ export async function POST(request: NextRequest) {
           await releaseCouponOnFailure();
           return NextResponse.json(
             { error: `Seat ${seat.label} does not exist for this event.` },
+            { status: 400 }
+          );
+        }
+        // Hidden (issue-only) sections are not purchasable by buyers.
+        if (section.is_hidden === true) {
+          await releaseCouponOnFailure();
+          return NextResponse.json(
+            { error: `Seat ${seat.label} is not available for purchase.` },
             { status: 400 }
           );
         }
