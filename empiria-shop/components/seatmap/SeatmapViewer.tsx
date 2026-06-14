@@ -504,8 +504,16 @@ export default function SeatmapViewer({
       });
       canvas.add(sectionLabel);
 
-      // Seat radius: native radius (from spacing) projected to canvas px, clamped.
-      const r = Math.max(3, Math.min(16, nativeSeatRadius(section.points, section.seats.length) * scale));
+      // Seat radius: native radius (from spacing) projected to canvas px, then
+      // clamped. The clamp is RESPONSIVE: wide (desktop/tablet) canvases keep the
+      // tuned [3,16] px exactly (unchanged); narrow phone canvases scale the cap
+      // down with the canvas width so seats stay proportional instead of blobbing
+      // together (an absolute 16px cap is ~2x too big on a ~360px screen).
+      const cw = canvas.getWidth();
+      const isNarrow = cw < 500;
+      const maxR = isNarrow ? Math.max(6, cw * 0.024) : 16;
+      const minR = isNarrow ? Math.max(2, cw * 0.006) : 3;
+      const r = Math.max(minR, Math.min(maxR, nativeSeatRadius(section.points, section.seats.length) * scale));
       for (const seat of section.seats) {
         const colors = getSeatColor(seat.id, seat.label);
         const isSold = soldSeats.has(seat.label);
@@ -519,7 +527,7 @@ export default function SeatmapViewer({
           radius: r,
           fill: colors.fill,
           stroke: colors.stroke,
-          strokeWidth: 1.5,
+          strokeWidth: isNarrow ? 1 : 1.5,
           selectable: false,
           evented: isClickable,
           hoverCursor: isClickable ? "pointer" : "not-allowed",
