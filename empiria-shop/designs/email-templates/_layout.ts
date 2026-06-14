@@ -60,7 +60,7 @@ ${bodyHtml}
                     <img src="cid:empiria-logo" alt="Empiria" width="108" height="36" style="display: inline-block; border: 0; opacity: 0.7;" />
                     <p style="margin: 14px 0 0; font-size: 12px; line-height: 1.6; color: #94A3B8;">
                       ${footerHtml}<br />
-                      &copy; ${new Date().getFullYear()} Empiria &middot; empiria.events
+                      &copy; ${new Date().getFullYear()} Empiria Solutions &middot; empiria.events
                     </p>
                   </td>
                 </tr>

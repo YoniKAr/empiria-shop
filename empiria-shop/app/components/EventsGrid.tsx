@@ -18,7 +18,9 @@ interface Event {
     event_occurrences?: { starts_at: string }[];
     start_at?: string;
     organizer_name?: string;
+    organizer_avatar_url?: string | null;
     co_host_count?: number;
+    entry_type?: string;
 }
 
 interface EventsGridProps {
@@ -137,7 +139,9 @@ export default function EventsGrid({ events, query, setQuery, categories, active
                                     minPrice={minPrice}
                                     currencySymbol={symbol}
                                     organizerName={event.organizer_name}
+                                    organizerAvatarUrl={event.organizer_avatar_url}
                                     coHostCount={event.co_host_count}
+                                    entryType={event.entry_type}
                                 />
                             );
                         })}

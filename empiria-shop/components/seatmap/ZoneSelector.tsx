@@ -5,6 +5,7 @@ import { Minus, Plus, Loader2, AlertCircle } from "lucide-react";
 import SeatmapViewer from "./SeatmapViewer";
 import StripeBadge from "@/components/StripeBadge";
 import { BlockedBuyerNotice } from "@/components/BlockedBuyerNotice";
+import MobileActionBar from "./MobileActionBar";
 import type { SeatingConfig, ZoneDefinition, ZoneTier } from "@/lib/seatmap-types";
 import { migrateSeatingConfig } from "@/lib/migrate-seating-config";
 
@@ -294,7 +295,7 @@ export default function ZoneSelector({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pb-28 lg:pb-0">
       <div className="border border-gray-200 rounded-xl shadow-lg bg-white overflow-hidden">
         <div className="p-4 border-b bg-gray-50">
           <h3 className="font-bold text-lg">Select Your Zone</h3>
@@ -623,6 +624,24 @@ export default function ZoneSelector({
 
         <StripeBadge className="mt-4" />
       </div>
+
+      {/* Mobile-only sticky checkout bar — mirrors the panel button above. */}
+      <MobileActionBar
+        count={totalItems}
+        totalLabel={
+          totalItems === 0
+            ? "Select tickets"
+            : totalPrice === 0
+              ? "Free"
+              : `${currencySymbol}${totalPrice.toLocaleString()}`
+        }
+        buttonLabel={totalItems === 0 ? "Select" : "Checkout"}
+        disabled={totalItems === 0 || loading}
+        loading={loading}
+        shake={shake}
+        buttonClassName="bg-orange-600 hover:bg-orange-700"
+        onAction={handleCheckout}
+      />
     </div>
   );
 }

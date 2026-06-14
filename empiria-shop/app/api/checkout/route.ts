@@ -1082,11 +1082,35 @@ export async function POST(request: NextRequest) {
             endDate = occRes.data.ends_at ?? undefined;
           }
           if (emailEvent) {
+            // Host name + avatar (role-based: platform-owned → Empiria Events +
+            // platform avatar; otherwise the real organizer's name + photo).
+            let freeOrganizerName = 'Empiria Events';
+            let freeOrganizerAvatarUrl: string | null = null;
+            if (event.organizer_id) {
+              const { data: op } = await supabase
+                .from('users')
+                .select('full_name, role, avatar_url')
+                .eq('auth0_id', event.organizer_id)
+                .single();
+              if (op?.role === 'admin') {
+                const { data: ps } = await supabase
+                  .from('platform_settings')
+                  .select('value')
+                  .eq('key', 'platform_avatar_url')
+                  .maybeSingle();
+                freeOrganizerAvatarUrl = (ps?.value as { url?: string | null } | null)?.url || null;
+              } else {
+                freeOrganizerName = op?.full_name || 'Empiria Events';
+                freeOrganizerAvatarUrl = op?.avatar_url || null;
+              }
+            }
             await sendOrderConfirmationEmail({
               to: freeEmail,
               attendeeName: freeName,
               orderId: freeOrder.id,
               eventTitle: emailEvent.title,
+              organizerName: freeOrganizerName,
+              organizerAvatarUrl: freeOrganizerAvatarUrl,
               eventDate: startDate,
               eventEndDate: endDate,
               venueName: emailEvent.venue_name || '',

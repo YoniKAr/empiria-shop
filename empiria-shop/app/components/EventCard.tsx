@@ -16,8 +16,11 @@ export interface EventCardProps {
     attendeesCount?: number;
     attendeeAvatars?: string[];
     organizerName?: string;
+    organizerAvatarUrl?: string | null;
     /** Number of additional VISIBLE co-organizers (hosts) on this event. */
     coHostCount?: number;
+    /** 'external' events are hosted off-platform — no tickets sold here. */
+    entryType?: string;
 }
 
 export function EventCard({
@@ -33,7 +36,9 @@ export function EventCard({
     minPrice,
     currencySymbol,
     organizerName,
+    organizerAvatarUrl,
     coHostCount = 0,
+    entryType,
 }: EventCardProps) {
     const eventDate = startAt ? new Date(startAt) : null;
     // Platform timezone: dates render in America/Toronto everywhere.
@@ -43,6 +48,7 @@ export function EventCard({
     const dayName = eventDate?.toLocaleDateString('en-US', { timeZone: TZ, weekday: 'short' });
     const time = eventDate?.toLocaleTimeString('en-US', { timeZone: TZ, hour: 'numeric', minute: '2-digit', hour12: true });
 
+    const isExternal = entryType === 'external';
     const isFree = minPrice === 0;
 
     return (
@@ -120,10 +126,10 @@ export function EventCard({
                     <div className="flex items-center justify-between text-[13px] mb-4">
                         <div className="flex items-center gap-2 text-gray-700">
                             <Ticket className="w-[15px] h-[15px] text-gray-700 flex-shrink-0" />
-                            <span>{isFree ? 'Free entry' : 'Tickets from'}</span>
+                            <span>{isExternal ? 'External event' : isFree ? 'Free entry' : 'Tickets from'}</span>
                         </div>
                         <span className="font-bold text-slate-900 text-[15px]">
-                            {isFree ? 'Free' : `${currencySymbol}${minPrice.toLocaleString()}`}
+                            {isExternal ? 'Off-platform' : isFree ? 'Free' : `${currencySymbol}${minPrice.toLocaleString()}`}
                         </span>
                     </div>
 
@@ -134,12 +140,20 @@ export function EventCard({
                     <div className="flex items-center justify-between mt-auto">
                         {/* Organizer Info */}
                         <div className="flex items-center gap-2">
-                            {/* Initials Avatar */}
-                            <div className="w-7 h-7 rounded-full bg-[#F15A29] flex items-center justify-center flex-shrink-0">
-                                <span className="text-white text-[10px] font-bold uppercase leading-none">
-                                    {(organizerName || 'E').split(' ').map((w: string) => w[0]).slice(0, 2).join('')}
-                                </span>
-                            </div>
+                            {/* Avatar (platform avatar for platform events, else organizer's) — initials fallback */}
+                            {organizerAvatarUrl ? (
+                                <img
+                                    src={organizerAvatarUrl}
+                                    alt={organizerName || 'Empiria Events'}
+                                    className="w-7 h-7 rounded-full object-cover flex-shrink-0 ring-1 ring-black/5"
+                                />
+                            ) : (
+                                <div className="w-7 h-7 rounded-full bg-[#F15A29] flex items-center justify-center flex-shrink-0">
+                                    <span className="text-white text-[10px] font-bold uppercase leading-none">
+                                        {(organizerName || 'E').split(' ').map((w: string) => w[0]).slice(0, 2).join('')}
+                                    </span>
+                                </div>
+                            )}
                             <span className="text-[12px] text-gray-700 font-medium line-clamp-1">
                                 {organizerName || 'Empiria Events'}
                             </span>
@@ -152,7 +166,7 @@ export function EventCard({
 
                         {/* View Details Link */}
                         <span className="text-[#F15A29] font-bold text-[13px] group-hover:underline">
-                            Get Tickets
+                            {isExternal ? 'Visit site' : 'Get Tickets'}
                         </span>
                     </div>
                 </div>

@@ -32,6 +32,8 @@ interface SpecialPageContentProps {
     ticket_tiers?: { price: number }[];
     event_occurrences?: { starts_at: string }[];
     organizer_name?: string;
+    organizer_avatar_url?: string | null;
+    entry_type?: string;
   }>;
 }
 
@@ -208,6 +210,8 @@ export function SpecialPageContent({ page, events }: SpecialPageContentProps) {
                     minPrice={minPrice}
                     currencySymbol={symbol}
                     organizerName={event.organizer_name}
+                    organizerAvatarUrl={event.organizer_avatar_url}
+                    entryType={event.entry_type}
                   />
                 );
               })}

@@ -45,7 +45,7 @@ export default async function ShopHome({
         .from('events')
         .select(`
       id, title, slug, cover_image_url,
-      venue_name, city, currency, organizer_id, source_app,
+      venue_name, city, currency, organizer_id, source_app, entry_type,
       categories (name),
       ticket_tiers (price),
       event_occurrences (starts_at)
@@ -70,13 +70,22 @@ export default async function ShopHome({
         const { data: profiles } = organizerIds.length > 0
             ? await supabase
                 .from('users')
-                .select('auth0_id, full_name, role')
+                .select('auth0_id, full_name, role, avatar_url')
                 .in('auth0_id', organizerIds)
             : { data: [] };
 
         const profileMap: Record<string, string> = {};
         const roleMap: Record<string, string> = {};
-        (profiles || []).forEach((p: any) => { profileMap[p.auth0_id] = p.full_name; roleMap[p.auth0_id] = p.role; });
+        const avatarMap: Record<string, string | null> = {};
+        (profiles || []).forEach((p: any) => { profileMap[p.auth0_id] = p.full_name; roleMap[p.auth0_id] = p.role; avatarMap[p.auth0_id] = p.avatar_url || null; });
+
+        // Shared platform avatar (admin-managed) for platform-owned events.
+        const { data: platformSetting } = await supabase
+            .from('platform_settings')
+            .select('value')
+            .eq('key', 'platform_avatar_url')
+            .maybeSingle();
+        const platformAvatarUrl = (platformSetting?.value as { url?: string | null } | null)?.url || null;
 
         // Batch-fetch visible co-organizer counts per event.
         const eventIds = realEvents.map((e: any) => e.id);
@@ -101,6 +110,9 @@ export default async function ShopHome({
             organizer_name: roleMap[e.organizer_id] === 'admin'
                 ? 'Empiria Events'
                 : (profileMap[e.organizer_id] || 'Empiria Events'),
+            organizer_avatar_url: roleMap[e.organizer_id] === 'admin'
+                ? platformAvatarUrl
+                : (avatarMap[e.organizer_id] || null),
             co_host_count: coHostCountMap[e.id] || 0,
         }));
     }

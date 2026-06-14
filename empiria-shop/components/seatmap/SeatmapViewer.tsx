@@ -1,9 +1,10 @@
 "use client";
 
 import { useRef, useEffect, useCallback, useState } from "react";
-import { Canvas, Polygon, Circle, FabricImage, FabricText, Point } from "fabric";
+import { Canvas, Polygon, Circle, FabricImage, Point } from "fabric";
 import type { SeatingConfig, ZoneDefinition, SectionDefinition } from "@/lib/seatmap-types";
 import { migrateSeatingConfig } from "@/lib/migrate-seating-config";
+import { useIsTouch } from "@/hooks/useIsTouch";
 
 interface SeatmapViewerProps {
   config: SeatingConfig;
@@ -35,8 +36,12 @@ const ZOOM_STEP = 1.5;
 // A press that moves more than this many screen px is a pan/drag, not a click.
 const CLICK_TOLERANCE_PX = 5;
 
-const ZOOM_BTN_CLASS =
-  "flex h-8 w-8 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-900 shadow-md transition hover:bg-gray-50 disabled:opacity-40 disabled:hover:bg-white";
+// Desktop keeps the original compact 8×8 buttons. Touch devices get larger,
+// thumb-friendly 11×11 targets (gated on `isTouch`, never affects desktop).
+const ZOOM_BTN_BASE =
+  "flex items-center justify-center rounded-md border border-gray-200 bg-white text-gray-900 shadow-md transition hover:bg-gray-50 disabled:opacity-40 disabled:hover:bg-white";
+const ZOOM_BTN_CLASS = `h-8 w-8 ${ZOOM_BTN_BASE}`;
+const ZOOM_BTN_CLASS_TOUCH = `h-11 w-11 ${ZOOM_BTN_BASE}`;
 
 // Helper to get/set custom data on fabric objects (not in TS types but works at runtime)
 function setObjData(obj: any, data: Record<string, any>) {
@@ -76,8 +81,22 @@ export default function SeatmapViewer({
   // Fit transform from image-native space -> canvas px (scale + offset).
   const fitRef = useRef({ scale: 1, offX: 0, offY: 0 });
   const [containerWidth, setContainerWidth] = useState(0);
+  // Container height — only consumed in fullscreen, where the canvas must fit the
+  // viewport's height too (normal mode is width-driven, so reading it there would
+  // feed back on the canvas height it just set).
+  const [containerHeight, setContainerHeight] = useState(0);
+  // Fullscreen overlay: blows the canvas up to the whole viewport so seats are
+  // big and easy to tap. Desktop inline view is untouched.
+  const [isFullscreen, setIsFullscreen] = useState(false);
   // Mirrors canvas.getZoom() so the overlay buttons can enable/disable.
   const [zoomLevel, setZoomLevel] = useState(1);
+  const isTouch = useIsTouch();
+  // Two-finger pinch state. While a pinch is active, single-touch pan/tap is
+  // suppressed (Fabric forwards only the first touch as mouse events, so a
+  // pinch would otherwise also be read as a one-finger pan and fight the zoom).
+  const pinchRef = useRef({ active: false, startDist: 0, startZoom: 1 });
+  // One-time "pinch to zoom" hint on touch devices, dismissed on first gesture.
+  const [showPinchHint, setShowPinchHint] = useState(false);
   // One press/drag gesture at a time (mouse or single touch).
   const gestureRef = useRef({
     active: false,
@@ -95,25 +114,49 @@ export default function SeatmapViewer({
   const imgW = migrated.image_width || 1000;
   const imgH = migrated.image_height || 700;
 
+  // Show the pinch hint once on touch devices (auto-fades after a few seconds).
+  useEffect(() => {
+    if (!isTouch) return;
+    setShowPinchHint(true);
+    const t = setTimeout(() => setShowPinchHint(false), 4000);
+    return () => clearTimeout(t);
+  }, [isTouch]);
+
   // Responsive width via ResizeObserver
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
     const ro = new ResizeObserver((entries) => {
-      const w = entries[0]?.contentRect.width;
-      if (w && w > 0) setContainerWidth(Math.min(MAX_CANVAS_WIDTH, Math.floor(w)));
+      const rect = entries[0]?.contentRect;
+      if (rect?.width && rect.width > 0) setContainerWidth(Math.floor(rect.width));
+      if (rect?.height && rect.height > 0) setContainerHeight(Math.floor(rect.height));
     });
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
 
+  // Fullscreen: lock body scroll + allow Esc to exit.
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setIsFullscreen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [isFullscreen]);
+
   // Sold is keyed by seat LABEL (tickets store labels); holds by config seat ID.
   const getSeatColor = useCallback(
     (seatId: string, seatLabel: string) => {
-      if (soldSeats.has(seatLabel)) return { fill: "#9ca3af80", stroke: "#6b7280" }; // gray - sold
-      if (myHeldSeats.has(seatId)) return { fill: "#3b82f680", stroke: "#2563eb" }; // blue - my hold
-      if (otherHeldSeats.has(seatId)) return { fill: "#f59e0b80", stroke: "#d97706" }; // yellow - other hold
-      return { fill: "#22c55e80", stroke: "#16a34a" }; // green - available
+      if (soldSeats.has(seatLabel)) return { fill: "#ef444480", stroke: "#dc2626" }; // red - sold
+      if (myHeldSeats.has(seatId)) return { fill: "#22c55e80", stroke: "#16a34a" }; // green - my selection
+      if (otherHeldSeats.has(seatId)) return { fill: "#9ca3af80", stroke: "#6b7280" }; // grey - unavailable (held by others)
+      return { fill: "#3b82f680", stroke: "#2563eb" }; // blue - available
     },
     [soldSeats, myHeldSeats, otherHeldSeats]
   );
@@ -175,6 +218,9 @@ export default function SeatmapViewer({
   // Press started: remember the pressed object's data; if the press did NOT
   // start on a seat/zone and we're zoomed in, this gesture may become a pan.
   function beginPointer(canvas: Canvas, ev: any, data?: Record<string, any>) {
+    // A two-finger touch is a pinch (handled natively below) — never start a
+    // single-touch pan/tap gesture for it.
+    if (pinchRef.current.active || (ev?.touches && ev.touches.length > 1)) return;
     const p = eventClientXY(ev);
     if (!p) return;
     const g = gestureRef.current;
@@ -191,6 +237,13 @@ export default function SeatmapViewer({
   // when panning, translate the viewport (clamped).
   function trackPointer(canvas: Canvas, ev: any) {
     const g = gestureRef.current;
+    // Pinch took over after a single-finger press began: abandon the pan so it
+    // can't drift the viewport while the user is zooming.
+    if (pinchRef.current.active) {
+      g.active = false;
+      g.panning = false;
+      return;
+    }
     if (!g.active) return;
     const p = eventClientXY(ev);
     if (!p) return;
@@ -224,8 +277,16 @@ export default function SeatmapViewer({
   useEffect(() => {
     if (!canvasRef.current || containerWidth <= 0) return;
 
-    const cw = containerWidth;
-    const ch = Math.round((cw * imgH) / imgW); // match image aspect → no letterbox/clipping
+    // Inline view is width-driven and capped (the perfect desktop layout).
+    // Fullscreen uses the full available width AND clamps to the viewport height
+    // so the whole map fits the screen with no clipping.
+    const availW = isFullscreen ? containerWidth : Math.min(MAX_CANVAS_WIDTH, containerWidth);
+    let cw = availW;
+    let ch = Math.round((cw * imgH) / imgW); // match image aspect → no letterbox/clipping
+    if (isFullscreen && containerHeight > 0 && ch > containerHeight) {
+      ch = containerHeight;
+      cw = Math.round((ch * imgW) / imgH);
+    }
     const scale = cw / imgW; // image-native px → canvas px
     fitRef.current = { scale, offX: 0, offY: 0 };
 
@@ -234,8 +295,63 @@ export default function SeatmapViewer({
       height: ch,
       backgroundColor: "#f8fafc",
       selection: false,
+      // We own touch gestures (pinch below + Fabric's single-touch pan); stop
+      // the browser from scrolling/zooming the page while interacting with the
+      // map. Paired with `touch-action: none` on the wrapper.
+      allowTouchScrolling: false,
     });
     fabricRef.current = canvas;
+
+    // --- Pinch-to-zoom (native two-finger touch) ----------------------------
+    // Fabric forwards only the first touch as mouse events, so pinch must be
+    // handled at the DOM level on the interaction surface (upperCanvasEl).
+    // Anchored at the pinch midpoint via zoomToPoint, clamped MIN..MAX_ZOOM.
+    const upperEl = canvas.upperCanvasEl as HTMLCanvasElement | undefined;
+    const touchDist = (t: TouchList) =>
+      Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    const pinchMidpoint = (t: TouchList) => {
+      const rect = upperEl?.getBoundingClientRect();
+      const cx = (t[0].clientX + t[1].clientX) / 2 - (rect?.left ?? 0);
+      const cy = (t[0].clientY + t[1].clientY) / 2 - (rect?.top ?? 0);
+      return new Point(cx, cy);
+    };
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        e.preventDefault();
+        pinchRef.current = {
+          active: true,
+          startDist: touchDist(e.touches),
+          startZoom: canvas.getZoom(),
+        };
+        setShowPinchHint(false);
+      }
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      if (pinchRef.current.active && e.touches.length === 2) {
+        e.preventDefault();
+        const dist = touchDist(e.touches);
+        if (pinchRef.current.startDist <= 0) return;
+        const ratio = dist / pinchRef.current.startDist;
+        const next = Math.min(
+          MAX_ZOOM,
+          Math.max(MIN_ZOOM, pinchRef.current.startZoom * ratio)
+        );
+        canvas.zoomToPoint(pinchMidpoint(e.touches), next);
+        clampViewport(canvas);
+        syncZoomUi(canvas, next);
+      }
+    };
+    const endPinch = (e: TouchEvent) => {
+      // Pinch ends once fewer than two fingers remain on screen.
+      if (e.touches.length < 2) pinchRef.current.active = false;
+    };
+    if (upperEl) {
+      // passive:false so preventDefault can stop browser page-zoom/scroll.
+      upperEl.addEventListener("touchstart", onTouchStart, { passive: false });
+      upperEl.addEventListener("touchmove", onTouchMove, { passive: false });
+      upperEl.addEventListener("touchend", endPinch);
+      upperEl.addEventListener("touchcancel", endPinch);
+    }
 
     // A fresh canvas (initial mount or container resize) starts at the fitted
     // view: zoom 1, identity pan. Reset the UI mirror so nothing drifts.
@@ -277,11 +393,18 @@ export default function SeatmapViewer({
     render();
 
     return () => {
+      if (upperEl) {
+        upperEl.removeEventListener("touchstart", onTouchStart);
+        upperEl.removeEventListener("touchmove", onTouchMove);
+        upperEl.removeEventListener("touchend", endPinch);
+        upperEl.removeEventListener("touchcancel", endPinch);
+      }
+      pinchRef.current.active = false;
       canvas.dispose();
       fabricRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [config.image_url, containerWidth, imgW, imgH, mode]);
+  }, [config.image_url, containerWidth, containerHeight, isFullscreen, imgW, imgH, mode]);
 
   // Re-render zones/seats (without recreating the canvas) on state changes.
   useEffect(() => {
@@ -328,23 +451,7 @@ export default function SeatmapViewer({
       }
       zonePolygonMap.set(zone.id, zonePolygons);
 
-      if (zone.polygons.length > 0) {
-        const c = getPolygonCenter(zone.polygons[0].points);
-        const center = proj(c.x, c.y);
-        const label = new FabricText(zone.name, {
-          left: center.x,
-          top: center.y,
-          fontSize: 13,
-          fontFamily: "system-ui, sans-serif",
-          fontWeight: "bold",
-          fill: isSoldOut ? "#9ca3af" : "#1f2937",
-          originX: "center",
-          originY: "center",
-          selectable: false,
-          evented: false,
-        });
-        canvas.add(label);
-      }
+      // Zone-name text overlay removed — the map shows polygons/seats only.
     }
 
     // Click vs pan: down records the pressed zone (or arms a background pan
@@ -396,24 +503,18 @@ export default function SeatmapViewer({
       });
       canvas.add(polygon);
 
-      const c = getPolygonCenter(section.points);
-      const labelPos = proj(c.x, c.y);
-      const sectionLabel = new FabricText(section.name, {
-        left: labelPos.x,
-        top: labelPos.y - 15,
-        fontSize: 11,
-        fontFamily: "system-ui, sans-serif",
-        fontWeight: "bold",
-        fill: section.color,
-        originX: "center",
-        originY: "center",
-        selectable: false,
-        evented: false,
-      });
-      canvas.add(sectionLabel);
+      // Section-name text overlay removed — seats render without labels on top.
 
-      // Seat radius: native radius (from spacing) projected to canvas px, clamped.
-      const r = Math.max(3, Math.min(16, nativeSeatRadius(section.points, section.seats.length) * scale));
+      // Seat radius: native radius (from spacing) projected to canvas px, then
+      // clamped. The clamp is RESPONSIVE: wide (desktop/tablet) canvases keep the
+      // tuned [3,16] px exactly (unchanged); narrow phone canvases scale the cap
+      // down with the canvas width so seats stay proportional instead of blobbing
+      // together (an absolute 16px cap is ~2x too big on a ~360px screen).
+      const cw = canvas.getWidth();
+      const isNarrow = cw < 500;
+      const maxR = isNarrow ? Math.max(6, cw * 0.024) : 16;
+      const minR = isNarrow ? Math.max(2, cw * 0.006) : 3;
+      const r = Math.max(minR, Math.min(maxR, nativeSeatRadius(section.points, section.seats.length) * scale));
       for (const seat of section.seats) {
         const colors = getSeatColor(seat.id, seat.label);
         const isSold = soldSeats.has(seat.label);
@@ -427,26 +528,15 @@ export default function SeatmapViewer({
           radius: r,
           fill: colors.fill,
           stroke: colors.stroke,
-          strokeWidth: 1.5,
+          strokeWidth: isNarrow ? 0.5 : 1,
           selectable: false,
           evented: isClickable,
           hoverCursor: isClickable ? "pointer" : "not-allowed",
         });
         setObjData(circle, { seatId: seat.id, sectionId: section.id, label: seat.label });
         canvas.add(circle);
-
-        const seatLabel = new FabricText(seat.label, {
-          left: p.x,
-          top: p.y,
-          fontSize: Math.max(6, Math.min(10, r * 0.9)),
-          fontFamily: "system-ui, sans-serif",
-          fill: "#ffffff",
-          originX: "center",
-          originY: "center",
-          selectable: false,
-          evented: false,
-        });
-        canvas.add(seatLabel);
+        // Customer-facing seats are blank circles — no seat-number/label text on
+        // top. (The selected-seat summary + hover still surface the label.)
       }
     }
 
@@ -476,17 +566,53 @@ export default function SeatmapViewer({
     });
   }
 
+  // `touch-action: none` only on touch devices: it lets us own pinch/pan via
+  // preventDefault without the browser hijacking them. Desktop keeps the
+  // default (auto) so nothing about mouse behaviour changes.
+  const btnClass = isTouch ? ZOOM_BTN_CLASS_TOUCH : ZOOM_BTN_CLASS;
+
   return (
-    <div ref={containerRef} className="relative w-full rounded-lg border bg-slate-50 overflow-hidden">
+    <div
+      ref={containerRef}
+      className={
+        isFullscreen
+          ? "fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/95 p-3 sm:p-6"
+          : "relative w-full rounded-lg border bg-slate-50 overflow-hidden"
+      }
+      style={isTouch ? { touchAction: "none" } : undefined}
+    >
       <canvas ref={canvasRef} />
       <div className="absolute right-2 top-2 z-10 flex flex-col gap-1.5">
+        <button
+          type="button"
+          aria-label={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+          title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+          onClick={() => setIsFullscreen((v) => !v)}
+          className={btnClass}
+        >
+          {isFullscreen ? (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 14h6v6" />
+              <path d="M20 10h-6V4" />
+              <path d="M14 10l7-7" />
+              <path d="M3 21l7-7" />
+            </svg>
+          ) : (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M15 3h6v6" />
+              <path d="M9 21H3v-6" />
+              <path d="M21 3l-7 7" />
+              <path d="M3 21l7-7" />
+            </svg>
+          )}
+        </button>
         <button
           type="button"
           aria-label="Zoom in"
           title="Zoom in"
           onClick={() => zoomBy(ZOOM_STEP)}
           disabled={zoomLevel >= MAX_ZOOM - 0.001}
-          className={ZOOM_BTN_CLASS}
+          className={btnClass}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
             <path d="M12 5v14M5 12h14" />
@@ -498,7 +624,7 @@ export default function SeatmapViewer({
           title="Zoom out"
           onClick={() => zoomBy(1 / ZOOM_STEP)}
           disabled={zoomLevel <= MIN_ZOOM + 0.001}
-          className={ZOOM_BTN_CLASS}
+          className={btnClass}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
             <path d="M5 12h14" />
@@ -510,7 +636,7 @@ export default function SeatmapViewer({
           title="Fit to view"
           onClick={resetZoom}
           disabled={zoomLevel <= MIN_ZOOM + 0.001}
-          className={ZOOM_BTN_CLASS}
+          className={btnClass}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M8 3H5a2 2 0 0 0-2 2v3" />
@@ -520,6 +646,15 @@ export default function SeatmapViewer({
           </svg>
         </button>
       </div>
+
+      {/* Touch-only hint: appears briefly, dismissed on first pinch. */}
+      {isTouch && showPinchHint && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-2 z-10 flex justify-center">
+          <span className="rounded-full bg-gray-900/80 px-3 py-1.5 text-xs font-medium text-white shadow-lg">
+            Pinch to zoom · drag to move
+          </span>
+        </div>
+      )}
     </div>
   );
 }
