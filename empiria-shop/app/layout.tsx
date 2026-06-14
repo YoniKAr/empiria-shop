@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Empiria Shop",
+  title: "Empiria Events",
   description: "Discover your next experience.",
 };
 
