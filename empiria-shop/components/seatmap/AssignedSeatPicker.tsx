@@ -422,7 +422,7 @@ export default function AssignedSeatPicker({
                                   ? "bg-red-500 border-red-600 cursor-not-allowed opacity-50"
                                   : isSelected
                                   ? "bg-green-500 border-green-600 ring-2 ring-green-300"
-                                  : "bg-[#F15A29] border-[#c2410c] hover:opacity-80"
+                                  : "bg-blue-500 border-blue-600 hover:opacity-80"
                               }`}
                               title={
                                 isSold
@@ -442,7 +442,7 @@ export default function AssignedSeatPicker({
                 {/* Legend */}
                 <div className="flex flex-wrap gap-4 text-xs pt-2 border-t border-gray-100">
                   <div className="flex items-center gap-1.5">
-                    <span className="w-3 h-3 rounded-full bg-[#F15A29] border border-[#c2410c]" />
+                    <span className="w-3 h-3 rounded-full bg-blue-500 border border-blue-600" />
                     Available
                   </div>
                   <div className="flex items-center gap-1.5">

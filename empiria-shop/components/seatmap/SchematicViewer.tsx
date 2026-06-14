@@ -28,7 +28,7 @@ export default function SchematicViewer({
 
   const seatStatusStyles: Record<string, string> = {
     available:
-      "bg-[#F15A29] border-[#c2410c] hover:opacity-80 cursor-pointer",
+      "bg-blue-500 border-blue-600 hover:opacity-80 cursor-pointer",
     mine: "bg-green-500 border-green-600 hover:opacity-80 cursor-pointer",
     other: "bg-gray-400 border-gray-500 cursor-not-allowed",
     sold: "bg-red-500 border-red-600 cursor-not-allowed opacity-50",
@@ -109,7 +109,7 @@ export default function SchematicViewer({
       {/* Legend */}
       <div className="flex flex-wrap gap-4 text-xs px-1">
         <div className="flex items-center gap-1.5">
-          <span className="w-4 h-4 rounded-full bg-[#F15A29] border-2 border-[#c2410c]" />
+          <span className="w-4 h-4 rounded-full bg-blue-500 border-2 border-blue-600" />
           Available
         </div>
         <div className="flex items-center gap-1.5">

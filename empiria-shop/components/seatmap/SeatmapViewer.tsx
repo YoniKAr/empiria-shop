@@ -133,7 +133,7 @@ export default function SeatmapViewer({
       if (soldSeats.has(seatLabel)) return { fill: "#ef444480", stroke: "#dc2626" }; // red - sold
       if (myHeldSeats.has(seatId)) return { fill: "#22c55e80", stroke: "#16a34a" }; // green - my selection
       if (otherHeldSeats.has(seatId)) return { fill: "#9ca3af80", stroke: "#6b7280" }; // grey - unavailable (held by others)
-      return { fill: "#F15A2980", stroke: "#c2410c" }; // orange - available
+      return { fill: "#3b82f680", stroke: "#2563eb" }; // blue - available
     },
     [soldSeats, myHeldSeats, otherHeldSeats]
   );
@@ -527,7 +527,7 @@ export default function SeatmapViewer({
           radius: r,
           fill: colors.fill,
           stroke: colors.stroke,
-          strokeWidth: isNarrow ? 1 : 1.5,
+          strokeWidth: isNarrow ? 0.5 : 1,
           selectable: false,
           evented: isClickable,
           hoverCursor: isClickable ? "pointer" : "not-allowed",

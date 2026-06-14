@@ -652,19 +652,19 @@ export default function SeatSelector({
           <div className="px-4 pb-3">
             <div className="flex flex-wrap gap-4 text-xs font-medium text-gray-800">
               <div className="flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded-full bg-green-400 border border-green-600" />
+                <span className="w-3 h-3 rounded-full bg-blue-500 border border-blue-600" />
                 Available
               </div>
               <div className="flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded-full bg-blue-400 border border-blue-600" />
+                <span className="w-3 h-3 rounded-full bg-green-500 border border-green-600" />
                 Your selection
               </div>
               <div className="flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded-full bg-yellow-300 border border-yellow-500" />
-                Reserved
+                <span className="w-3 h-3 rounded-full bg-gray-400 border border-gray-500" />
+                Unavailable
               </div>
               <div className="flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded-full bg-gray-300 border border-gray-400" />
+                <span className="w-3 h-3 rounded-full bg-red-500 border border-red-600" />
                 Sold
               </div>
             </div>
