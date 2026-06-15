@@ -10,6 +10,7 @@ import { EventCard } from '@/app/components/EventCard';
 import { TicketWidget } from '@/app/components/TicketWidget';
 import SeatQuantityCTA from '@/components/seatmap/SeatQuantityCTA';
 import SeatsCTA from '@/components/seatmap/SeatsCTA';
+import { RefundPolicyNote } from '@/app/components/RefundPolicyNote';
 import { computeSeatQuantityCap } from '@/lib/seat-quantity';
 import { DEFAULT_TZ } from '@/lib/datetime';
 import Footer from '@/components/Footer';
@@ -379,6 +380,12 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                             sharedCapacity={!!(event as any).shared_capacity}
                             blockedBuyer={blockedBuyer}
                         />
+                    )}
+
+                    {/* Refund policy — visible under the price/CTA (off-platform
+                        external events handle their own terms). */}
+                    {event.entry_type !== 'external' && (
+                        <RefundPolicyNote policy={(event as any).refund_policy} className="mt-3" />
                     )}
                 </div>
             </div>
