@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
     // 1. Look up coupon by code (case-insensitive)
     const { data: coupon, error: couponError } = await supabase
       .from('coupons')
-      .select('id, code, discount_type, discount_value, max_discount_cap, currency, is_active, starts_at, expires_at, max_uses, current_uses, max_uses_per_user, scope, event_id, category_id, created_by')
+      .select('id, code, discount_type, discount_value, max_discount_cap, application_mode, currency, is_active, starts_at, expires_at, max_uses, current_uses, max_uses_per_user, scope, event_id, category_id, created_by')
       .ilike('code', code.trim())
       .single();
 
@@ -164,6 +164,7 @@ export async function POST(request: NextRequest) {
       discountType: coupon.discount_type,
       discountValue: coupon.discount_value,
       maxDiscountCap: coupon.max_discount_cap,
+      applicationMode: coupon.application_mode === 'per_ticket' ? 'per_ticket' : 'per_order',
       currency: coupon.currency,
     });
   } catch (error: unknown) {

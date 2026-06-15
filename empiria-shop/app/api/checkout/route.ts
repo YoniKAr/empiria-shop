@@ -8,7 +8,7 @@ import { getSafeSession } from '@/lib/auth0';
 import { stripe } from '@/lib/stripe';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { toStripeAmount } from '@/lib/utils';
-import { computeFees, DEFAULT_FEE_PERCENT, DEFAULT_FIXED_PER_TICKET } from '@/lib/fees';
+import { computeFees, computeCouponDiscount, DEFAULT_FEE_PERCENT, DEFAULT_FIXED_PER_TICKET, type CouponApplication } from '@/lib/fees';
 import { sendOrderConfirmationEmail } from '@/lib/email';
 import { SHOP_URL } from '@/lib/urls';
 import { migrateSeatingConfig } from '@/lib/migrate-seating-config';
@@ -412,7 +412,7 @@ export async function POST(request: NextRequest) {
       // Look up coupon by code (case-insensitive)
       const { data: coupon, error: couponError } = await supabase
         .from('coupons')
-        .select('id, code, discount_type, discount_value, max_discount_cap, currency, is_active, starts_at, expires_at, max_uses, current_uses, max_uses_per_user, scope, event_id, category_id, created_by')
+        .select('id, code, discount_type, discount_value, max_discount_cap, application_mode, currency, is_active, starts_at, expires_at, max_uses, current_uses, max_uses_per_user, scope, event_id, category_id, created_by')
         .ilike('code', trimmedCode)
         .single();
 
@@ -492,21 +492,29 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Calculate discount amount
-      if (coupon.discount_type === 'percentage') {
-        discountAmount = subtotal * (coupon.discount_value / 100);
-        if (coupon.max_discount_cap) {
-          discountAmount = Math.min(discountAmount, coupon.max_discount_cap);
-        }
-      } else {
-        // Flat discount
-        if (subtotal < coupon.discount_value) {
-          return NextResponse.json({ error: 'Order subtotal is less than the coupon discount amount' }, { status: 400 });
-        }
-        discountAmount = coupon.discount_value;
+      // Calculate discount amount — per_order vs per_ticket. Single source of
+      // truth in lib/fees.ts so the client preview matches the server charge.
+      const applicationMode: CouponApplication =
+        coupon.application_mode === 'per_ticket' ? 'per_ticket' : 'per_order';
+      const couponLineItems = Array.from(aggregatedQuantities.entries()).map(
+        ([tid, qty]) => ({ unitPrice: tierMap.get(tid)?.price ?? 0, quantity: qty })
+      );
+      // A per_order FLAT coupon still requires the order to cover it (existing
+      // behavior). per_ticket clamps each unit to its price, so no order gate.
+      if (
+        coupon.discount_type !== 'percentage' &&
+        applicationMode === 'per_order' &&
+        subtotal < coupon.discount_value
+      ) {
+        return NextResponse.json({ error: 'Order subtotal is less than the coupon discount amount' }, { status: 400 });
       }
-
-      discountAmount = Math.round(discountAmount * 100) / 100;
+      discountAmount = computeCouponDiscount({
+        discountType: coupon.discount_type,
+        discountValue: coupon.discount_value,
+        maxDiscountCap: coupon.max_discount_cap,
+        applicationMode,
+        lineItems: couponLineItems,
+      });
       couponId = coupon.id;
       couponCode_validated = coupon.code;
 

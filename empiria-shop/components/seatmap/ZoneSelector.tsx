@@ -8,6 +8,7 @@ import { BlockedBuyerNotice } from "@/components/BlockedBuyerNotice";
 import MobileActionBar from "./MobileActionBar";
 import type { SeatingConfig, ZoneDefinition, ZoneTier } from "@/lib/seatmap-types";
 import { migrateSeatingConfig } from "@/lib/migrate-seating-config";
+import { computeCouponDiscount, type CouponApplication } from "@/lib/fees";
 import { formatEventDateTime, DEFAULT_TZ } from "@/lib/datetime";
 
 interface TicketTier {
@@ -113,6 +114,7 @@ export default function ZoneSelector({
     discountType: string;
     discountValue: number;
     maxDiscountCap: number | null;
+    applicationMode: CouponApplication;
   } | null>(null);
   const [couponLoading, setCouponLoading] = useState(false);
   const [couponError, setCouponError] = useState<string | null>(null);
@@ -210,20 +212,17 @@ export default function ZoneSelector({
     0
   );
 
-  // Coupon discount is per-ORDER: one discount against the whole ticket
-  // subtotal (display only — the server re-computes it authoritatively).
-  let discountAmount = 0;
-  if (couponApplied && totalPrice > 0) {
-    if (couponApplied.discountType === "percentage") {
-      discountAmount = Math.min(
-        totalPrice * (couponApplied.discountValue / 100),
-        couponApplied.maxDiscountCap || Infinity
-      );
-    } else {
-      discountAmount = totalPrice >= couponApplied.discountValue ? couponApplied.discountValue : 0;
-    }
-    discountAmount = Math.round(discountAmount * 100) / 100;
-  }
+  // Coupon discount (per_order vs per_ticket) — shared engine, matches server.
+  // Display only; the server re-computes it authoritatively at checkout.
+  const discountAmount = couponApplied
+    ? computeCouponDiscount({
+        discountType: couponApplied.discountType,
+        discountValue: couponApplied.discountValue,
+        maxDiscountCap: couponApplied.maxDiscountCap,
+        applicationMode: couponApplied.applicationMode,
+        lineItems: selections.map((s) => ({ unitPrice: s.unitPrice, quantity: s.quantity })),
+      })
+    : 0;
   const discountedTotal = Math.max(0, totalPrice - discountAmount);
 
   async function handleApplyCoupon() {
@@ -247,6 +246,7 @@ export default function ZoneSelector({
         discountType: data.discountType,
         discountValue: data.discountValue,
         maxDiscountCap: data.maxDiscountCap,
+        applicationMode: data.applicationMode === 'per_ticket' ? 'per_ticket' : 'per_order',
       });
       setCouponError(null);
     } catch {

@@ -20,7 +20,7 @@ import {
   Info,
 } from "lucide-react";
 import type { CustomField } from "@/lib/eventFields";
-import { computeFees } from "@/lib/fees";
+import { computeFees, computeCouponDiscount, type CouponApplication } from "@/lib/fees";
 import { getCurrencySymbol } from "@/lib/utils";
 import { formatEventDateTime, DEFAULT_TZ } from "@/lib/datetime";
 import StripeBadge from "@/components/StripeBadge";
@@ -142,6 +142,7 @@ export function CheckoutForm({
     discountType: string;
     discountValue: number;
     maxDiscountCap: number | null;
+    applicationMode: CouponApplication;
   } | null>(null);
   const [couponLoading, setCouponLoading] = useState(false);
   const [couponError, setCouponError] = useState<string | null>(null);
@@ -176,19 +177,16 @@ export function CheckoutForm({
     0
   );
 
-  // Coupon discount calculation
-  let discountAmount = 0;
-  if (couponApplied && subtotal > 0) {
-    if (couponApplied.discountType === 'percentage') {
-      discountAmount = Math.min(
-        subtotal * (couponApplied.discountValue / 100),
-        couponApplied.maxDiscountCap || Infinity
-      );
-    } else {
-      discountAmount = subtotal >= couponApplied.discountValue ? couponApplied.discountValue : 0;
-    }
-    discountAmount = Math.round(discountAmount * 100) / 100;
-  }
+  // Coupon discount (per_order vs per_ticket) — shared engine, matches server.
+  const discountAmount = couponApplied
+    ? computeCouponDiscount({
+        discountType: couponApplied.discountType,
+        discountValue: couponApplied.discountValue,
+        maxDiscountCap: couponApplied.maxDiscountCap,
+        applicationMode: couponApplied.applicationMode,
+        lineItems: tiers.map((t) => ({ unitPrice: t.price, quantity: quantities[t.id] ?? 0 })),
+      })
+    : 0;
 
   const fees = computeFees({
     base: subtotal,
@@ -238,6 +236,7 @@ export function CheckoutForm({
         discountType: data.discountType,
         discountValue: data.discountValue,
         maxDiscountCap: data.maxDiscountCap,
+        applicationMode: data.applicationMode === 'per_ticket' ? 'per_ticket' : 'per_order',
       });
     } catch {
       setCouponError('Failed to validate coupon');

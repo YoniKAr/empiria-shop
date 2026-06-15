@@ -7,6 +7,61 @@ export const DEFAULT_FIXED_PER_TICKET = 1.35; // platform fixed fee per PAID tic
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
+// ── Coupon discount ─────────────────────────────────────────────────────────
+// Single source of truth for how a coupon's discount is computed. Used by the
+// checkout route (authoritative) AND every client-side preview, so the number a
+// buyer sees always matches what the server charges.
+export type CouponApplication = 'per_order' | 'per_ticket';
+
+export interface CouponDiscountInput {
+  discountType: 'percentage' | 'flat' | string;
+  discountValue: number;
+  maxDiscountCap: number | null;
+  applicationMode: CouponApplication;
+  /** Paid ticket line items: unit price × quantity. Free units (price 0) are
+   *  harmless (they contribute 0). */
+  lineItems: { unitPrice: number; quantity: number }[];
+}
+
+/**
+ * Compute the coupon discount amount (cent-rounded), clamped so it never
+ * exceeds the order subtotal (and, per-ticket, never exceeds each ticket price).
+ *
+ * - per_order   percentage → subtotal × v%, capped once at maxDiscountCap.
+ * - per_order   flat       → v (once), clamped to subtotal.
+ * - per_ticket  percentage → Σ over units of min(unitPrice × v%, cap, unitPrice).
+ * - per_ticket  flat       → Σ over units of min(v, unitPrice)  (≈ v × #tickets).
+ */
+export function computeCouponDiscount(input: CouponDiscountInput): number {
+  const { discountType, discountValue, maxDiscountCap, applicationMode, lineItems } = input;
+  const subtotal = lineItems.reduce((s, li) => s + li.unitPrice * li.quantity, 0);
+  if (subtotal <= 0 || !discountValue || discountValue <= 0) return 0;
+
+  let discount = 0;
+  if (applicationMode === 'per_ticket') {
+    for (const li of lineItems) {
+      for (let i = 0; i < li.quantity; i++) {
+        let unit =
+          discountType === 'percentage'
+            ? li.unitPrice * (discountValue / 100)
+            : discountValue;
+        if (maxDiscountCap != null) unit = Math.min(unit, maxDiscountCap);
+        unit = Math.min(unit, li.unitPrice); // never more than the ticket costs
+        discount += unit;
+      }
+    }
+  } else {
+    if (discountType === 'percentage') {
+      discount = subtotal * (discountValue / 100);
+      if (maxDiscountCap != null) discount = Math.min(discount, maxDiscountCap);
+    } else {
+      discount = discountValue;
+    }
+    discount = Math.min(discount, subtotal);
+  }
+  return round2(Math.max(0, discount));
+}
+
 export interface FeeInput {
   base: number;              // ticket subtotal BEFORE discount
   discount: number;          // coupon discount applied to the ticket base (0 if none)

@@ -6,6 +6,7 @@ import StripeBadge from "@/components/StripeBadge";
 import { BlockedBuyerNotice } from "@/components/BlockedBuyerNotice";
 import MobileActionBar from "./MobileActionBar";
 import type { SeatRange } from "@/lib/seatmap-types";
+import { computeCouponDiscount, type CouponApplication } from "@/lib/fees";
 import { formatEventDateTime, DEFAULT_TZ } from "@/lib/datetime";
 
 interface TicketTier {
@@ -93,6 +94,7 @@ export default function AssignedSeatPicker({
     discountType: string;
     discountValue: number;
     maxDiscountCap: number | null;
+    applicationMode: CouponApplication;
   } | null>(null);
   const [couponLoading, setCouponLoading] = useState(false);
   const [couponError, setCouponError] = useState<string | null>(null);
@@ -252,20 +254,24 @@ export default function AssignedSeatPicker({
         return sum + (tier?.price || 0) * t.quantity;
       }, 0);
 
-  // Coupon discount is per-ORDER: one discount against the whole ticket
-  // subtotal (display only — the server re-computes it authoritatively).
-  let discountAmount = 0;
-  if (couponApplied && totalPrice > 0) {
-    if (couponApplied.discountType === "percentage") {
-      discountAmount = Math.min(
-        totalPrice * (couponApplied.discountValue / 100),
-        couponApplied.maxDiscountCap || Infinity
-      );
-    } else {
-      discountAmount = totalPrice >= couponApplied.discountValue ? couponApplied.discountValue : 0;
-    }
-    discountAmount = Math.round(discountAmount * 100) / 100;
-  }
+  // Coupon discount (per_order vs per_ticket) — shared engine, matches server.
+  // Display only; the server re-computes it authoritatively at checkout.
+  // Line items mirror the totalPrice price source for each mode: seat-choice
+  // uses each selected seat (one unit), auto-assign uses tier quantities.
+  const discountAmount = couponApplied
+    ? computeCouponDiscount({
+        discountType: couponApplied.discountType,
+        discountValue: couponApplied.discountValue,
+        maxDiscountCap: couponApplied.maxDiscountCap,
+        applicationMode: couponApplied.applicationMode,
+        lineItems: allowSeatChoice
+          ? selectedSeats.map((s) => ({ unitPrice: s.price, quantity: 1 }))
+          : tierQuantities.map((t) => ({
+              unitPrice: tierMap.get(t.tierId)?.price ?? 0,
+              quantity: t.quantity,
+            })),
+      })
+    : 0;
   const discountedTotal = Math.max(0, totalPrice - discountAmount);
 
   async function handleApplyCoupon() {
@@ -289,6 +295,7 @@ export default function AssignedSeatPicker({
         discountType: data.discountType,
         discountValue: data.discountValue,
         maxDiscountCap: data.maxDiscountCap,
+        applicationMode: data.applicationMode === 'per_ticket' ? 'per_ticket' : 'per_order',
       });
       setCouponError(null);
     } catch {

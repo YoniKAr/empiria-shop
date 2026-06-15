@@ -9,6 +9,7 @@ import { BlockedBuyerNotice } from "@/components/BlockedBuyerNotice";
 import MobileActionBar from "./MobileActionBar";
 import { useSeatHolds } from "./useSeatHolds";
 import { computeSeatQuantityCap } from "@/lib/seat-quantity";
+import { computeCouponDiscount, type CouponApplication } from "@/lib/fees";
 import { formatEventDateTime, DEFAULT_TZ } from "@/lib/datetime";
 import type { SeatingConfig, SectionDefinition, ZoneTier } from "@/lib/seatmap-types";
 
@@ -133,6 +134,7 @@ export default function SeatSelector({
     discountType: string;
     discountValue: number;
     maxDiscountCap: number | null;
+    applicationMode: CouponApplication;
   } | null>(null);
   const [couponLoading, setCouponLoading] = useState(false);
   const [couponError, setCouponError] = useState<string | null>(null);
@@ -450,20 +452,17 @@ export default function SeatSelector({
 
   const totalPrice = selectedSeats.reduce((sum, s) => sum + s.price, 0);
 
-  // Coupon discount is per-ORDER: one discount against the whole ticket
-  // subtotal (display only — the server re-computes it authoritatively).
-  let discountAmount = 0;
-  if (couponApplied && totalPrice > 0) {
-    if (couponApplied.discountType === "percentage") {
-      discountAmount = Math.min(
-        totalPrice * (couponApplied.discountValue / 100),
-        couponApplied.maxDiscountCap || Infinity
-      );
-    } else {
-      discountAmount = totalPrice >= couponApplied.discountValue ? couponApplied.discountValue : 0;
-    }
-    discountAmount = Math.round(discountAmount * 100) / 100;
-  }
+  // Coupon discount (per_order vs per_ticket) — shared engine, matches server.
+  // Display only; the server re-computes it authoritatively at checkout.
+  const discountAmount = couponApplied
+    ? computeCouponDiscount({
+        discountType: couponApplied.discountType,
+        discountValue: couponApplied.discountValue,
+        maxDiscountCap: couponApplied.maxDiscountCap,
+        applicationMode: couponApplied.applicationMode,
+        lineItems: selectedSeats.map((s) => ({ unitPrice: s.price, quantity: 1 })),
+      })
+    : 0;
   const discountedTotal = Math.max(0, totalPrice - discountAmount);
 
   async function handleApplyCoupon() {
@@ -487,6 +486,7 @@ export default function SeatSelector({
         discountType: data.discountType,
         discountValue: data.discountValue,
         maxDiscountCap: data.maxDiscountCap,
+        applicationMode: data.applicationMode === 'per_ticket' ? 'per_ticket' : 'per_order',
       });
       setCouponError(null);
     } catch {
