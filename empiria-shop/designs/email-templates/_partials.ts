@@ -79,6 +79,22 @@ export function formatEventDate(startDate: string, endDate?: string, timezone?: 
   return `${dateStr} &middot; ${timeStr}`;
 }
 
+/**
+ * Map the `events.refund_policy` enum to a human label. Unknown/missing values
+ * default to "Non-refundable" (the safest assumption for the buyer-facing copy).
+ */
+export function refundPolicyLabel(policy?: string): string {
+  switch (policy) {
+    case 'fully_refundable':
+      return 'Fully refundable';
+    case 'partial_refundable':
+      return 'Partially refundable';
+    case 'non_refundable':
+    default:
+      return 'Non-refundable';
+  }
+}
+
 export function confirmationMessage(data: OrderEmailData, confirmation: string): string {
   return `
           <!-- Hero / Confirmation -->
@@ -96,7 +112,7 @@ export function confirmationMessage(data: OrderEmailData, confirmation: string):
 `;
 }
 
-export function eventDetailsBlock(data: OrderEmailData): string {
+export function eventDetailsBlock(data: OrderEmailData, showRefundPolicy = false): string {
   const eventDateFormatted = formatEventDate(data.eventDate, data.eventEndDate, data.eventTimezone);
   const venue = [data.venueName, data.city].filter(Boolean).join(', ');
   const isOnline = data.locationType === 'virtual' || data.locationType === 'hybrid';
@@ -125,6 +141,10 @@ export function eventDetailsBlock(data: OrderEmailData): string {
                       ${isOnline && data.meetingLink ? `<tr>
                         <td style="font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: ${MUTED}; vertical-align: top;">Online</td>
                         <td style="font-size: 14px; vertical-align: top;"><a href="${safeUrl(data.meetingLink)}" target="_blank" style="color: ${ACCENT}; font-weight: 600; text-decoration: none;">Join the meeting &rarr;</a></td>
+                      </tr>` : ''}
+                      ${showRefundPolicy ? `<tr>
+                        <td style="padding: 10px 0 0; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: ${MUTED}; vertical-align: top;">Refund policy</td>
+                        <td style="padding: 10px 0 0; font-size: 14px; color: ${INK}; vertical-align: top;">${escapeHtml(refundPolicyLabel(data.refundPolicy))}</td>
                       </tr>` : ''}
                     </table>
                   </td>

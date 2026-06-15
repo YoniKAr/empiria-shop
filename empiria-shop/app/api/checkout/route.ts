@@ -1099,7 +1099,7 @@ export async function POST(request: NextRequest) {
         try {
           const { data: emailEvent } = await supabase
             .from('events')
-            .select('title, venue_name, city, location_type, meeting_link, cta_label, timezone')
+            .select('title, venue_name, city, location_type, meeting_link, cta_label, timezone, refund_policy')
             .eq('id', event.id)
             .single();
           let startDate = '';
@@ -1148,6 +1148,7 @@ export async function POST(request: NextRequest) {
               city: emailEvent.city || '',
               meetingLink: emailEvent.meeting_link || '',
               locationType: emailEvent.location_type || 'physical',
+              refundPolicy: emailEvent.refund_policy,
               ctaLabel: emailEvent.cta_label,
               lineItems: validatedSelections.map((s) => ({ tierName: s.tierName, quantity: s.quantity, unitPrice: s.unitPrice })),
               total: 0,

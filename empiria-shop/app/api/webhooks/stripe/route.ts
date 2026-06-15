@@ -481,7 +481,7 @@ async function handleCheckoutCompleted(session: any) {
     // 2. Fetch event details for confirmation email
     const { data: eventData } = await supabase
       .from('events')
-      .select('title, venue_name, city, location_type, meeting_link, cta_label, organizer_id, source_app, notify_on_sale, timezone')
+      .select('title, venue_name, city, location_type, meeting_link, cta_label, organizer_id, source_app, notify_on_sale, timezone, refund_policy')
       .eq('id', eventId)
       .single();
 
@@ -1000,6 +1000,7 @@ async function handleCheckoutCompleted(session: any) {
           city: eventData.city || '',
           meetingLink: eventData.meeting_link || '',
           locationType: eventData.location_type || 'physical',
+          refundPolicy: eventData.refund_policy,
           ctaLabel: eventData.cta_label,
           lineItems: tierSelections.map((s) => ({
             tierName: s.tierName,

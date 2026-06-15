@@ -15,7 +15,7 @@ export function render(
   const subject = `Your tickets for ${data.eventTitle} — Order #${data.orderId.slice(0, 8)}`;
   const bodyHtml = [
     confirmationMessage(data, 'Here are your tickets and order details.'),
-    eventDetailsBlock(data),
+    eventDetailsBlock(data, true),
     orderSummaryTable(data),
     receiptLinks(data),
     ticketsList(data, walletResults, 'Your Tickets'),

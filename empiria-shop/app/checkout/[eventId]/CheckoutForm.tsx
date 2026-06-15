@@ -24,6 +24,7 @@ import { computeFees, computeCouponDiscount, type CouponApplication } from "@/li
 import { getCurrencySymbol } from "@/lib/utils";
 import { formatEventDateTime, DEFAULT_TZ } from "@/lib/datetime";
 import StripeBadge from "@/components/StripeBadge";
+import { CheckoutTerms } from "@/components/CheckoutTerms";
 
 /**
  * Small info icon that reveals an explanation on hover (mouse) or focus
@@ -670,9 +671,9 @@ export function CheckoutForm({
               </div>
             </div>
 
-            <p className="mt-3 px-2 text-center text-[11px] leading-relaxed text-gray-600">
-              By paying you agree to Empiria&apos;s Terms &amp; Refund Policy. Prices in{" "}
-              {currency.toUpperCase()}.
+            <CheckoutTerms className="mt-3 px-2" />
+            <p className="mt-1 px-2 text-center text-[11px] leading-relaxed text-gray-500">
+              Prices in {currency.toUpperCase()}.
             </p>
           </div>
         </div>

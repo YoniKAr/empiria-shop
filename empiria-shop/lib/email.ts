@@ -42,6 +42,7 @@ export interface OrderEmailData {
   city: string;
   meetingLink?: string;
   locationType?: string;
+  refundPolicy?: string;
   lineItems: LineItem[];
   total: number;
   processingFee?: number;

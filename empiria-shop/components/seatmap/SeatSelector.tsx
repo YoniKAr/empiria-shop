@@ -5,6 +5,7 @@ import { X, Loader2, AlertCircle, Clock, Minus, Plus } from "lucide-react";
 import SeatmapViewer from "./SeatmapViewer";
 import SchematicViewer from "./SchematicViewer";
 import StripeBadge from "@/components/StripeBadge";
+import { CheckoutTerms } from "@/components/CheckoutTerms";
 import { BlockedBuyerNotice } from "@/components/BlockedBuyerNotice";
 import MobileActionBar from "./MobileActionBar";
 import { useSeatHolds } from "./useSeatHolds";
@@ -1026,6 +1027,7 @@ export default function SeatSelector({
 
         {showBuyBlock && <BlockedBuyerNotice className="mt-2" />}
 
+        <CheckoutTerms className="mt-3" />
         <StripeBadge className="mt-4" />
       </div>
 

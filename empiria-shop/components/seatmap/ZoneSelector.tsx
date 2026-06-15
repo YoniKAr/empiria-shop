@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Minus, Plus, Loader2, AlertCircle } from "lucide-react";
 import SeatmapViewer from "./SeatmapViewer";
 import StripeBadge from "@/components/StripeBadge";
+import { CheckoutTerms } from "@/components/CheckoutTerms";
 import { BlockedBuyerNotice } from "@/components/BlockedBuyerNotice";
 import MobileActionBar from "./MobileActionBar";
 import type { SeatingConfig, ZoneDefinition, ZoneTier } from "@/lib/seatmap-types";
@@ -754,6 +755,7 @@ export default function ZoneSelector({
 
         {showBuyBlock && <BlockedBuyerNotice className="mt-2" />}
 
+        <CheckoutTerms className="mt-3" />
         <StripeBadge className="mt-4" />
       </div>
 
