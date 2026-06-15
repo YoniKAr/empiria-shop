@@ -23,6 +23,10 @@ export const runtime = 'nodejs';
 export const maxDuration = 60;
 
 const ADMIN_ALERT_EMAIL = process.env.ADMIN_ALERT_EMAIL || 'info@empiria.events';
+// Sale notifications for PLATFORM-owned events (admin owner) go to the platform
+// inbox — every admin is an agent of the platform, not the seller, so they must
+// not receive sales to their personal email. Real organizers get their own.
+const PLATFORM_SALES_EMAIL = process.env.PLATFORM_SALES_EMAIL || 'info@empiria.events';
 
 export async function POST(request: NextRequest) {
   const body = await request.text();
@@ -1024,13 +1028,17 @@ async function handleCheckoutCompleted(session: any) {
       try {
         const { data: ownerRow } = await supabase
           .from('users')
-          .select('email, full_name')
+          .select('email, full_name, role')
           .eq('auth0_id', eventData.organizer_id)
           .single();
-        if (ownerRow?.email) {
+        // Platform-owned events (admin owner) notify the platform inbox, not the
+        // individual admin. Real organizers are notified at their account email.
+        const isPlatformOwned = ownerRow?.role === 'admin';
+        const recipientEmail = isPlatformOwned ? PLATFORM_SALES_EMAIL : ownerRow?.email;
+        if (recipientEmail) {
           await sendSaleNotificationEmail({
-            to: ownerRow.email,
-            organizerName: ownerRow.full_name || organizerName,
+            to: recipientEmail,
+            organizerName: organizerName,
             eventTitle: eventData.title,
             orderId: order.id,
             total: customerTotal,
@@ -1046,7 +1054,7 @@ async function handleCheckoutCompleted(session: any) {
             organizerPayout: orderOrganizerPayout,
             isPlatformEvent,
           });
-          console.log('[Webhook] Sale notification sent to owner:', ownerRow.email);
+          console.log('[Webhook] Sale notification sent to:', recipientEmail, isPlatformOwned ? '(platform inbox)' : '(organizer)');
         }
       } catch (notifyError) {
         console.error('[Webhook] Failed to send sale notification:', notifyError);
