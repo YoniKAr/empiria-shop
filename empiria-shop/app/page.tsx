@@ -15,7 +15,7 @@ export default async function ShopHome({
     const { data: rawFeatured } = await supabase
         .from('events')
         .select(`
-      id, title, slug, cover_image_url,
+      id, title, slug, cover_image_url, timezone,
       venue_name, city, currency,
       categories (name),
       event_occurrences (starts_at)
@@ -44,7 +44,7 @@ export default async function ShopHome({
     let eventsQuery = supabase
         .from('events')
         .select(`
-      id, title, slug, cover_image_url,
+      id, title, slug, cover_image_url, timezone,
       venue_name, city, currency, organizer_id, source_app, entry_type,
       categories (name),
       ticket_tiers (price),

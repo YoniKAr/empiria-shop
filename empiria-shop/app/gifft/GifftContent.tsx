@@ -57,6 +57,7 @@ interface Movie {
   city?: string;
   cover_image_url?: string;
   currency?: string;
+  timezone?: string;
   event_occurrences?: { starts_at: string; is_cancelled?: boolean }[];
   gifft_movie_details?: MovieDetail[] | MovieDetail;
 }
@@ -359,6 +360,7 @@ function GifftContentInner({ cities, movies, featured }: GifftContentProps) {
                   title: m.title,
                   slug: m.slug,
                   posterUrl: detail.poster_url || m.cover_image_url,
+                  timezone: m.timezone,
                   event_occurrences: m.event_occurrences,
                 };
               })}

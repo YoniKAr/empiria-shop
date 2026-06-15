@@ -15,6 +15,7 @@ import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import AutoRefresh from './AutoRefresh';
 import { PROFILE_URL } from '@/lib/urls';
+import { formatEventDateTime, DEFAULT_TZ } from '@/lib/datetime';
 
 // Only allow http(s) meeting links as clickable anchors — blocks
 // javascript:/data:/vbscript: and other XSS-prone schemes.
@@ -140,7 +141,7 @@ export default async function CheckoutSuccessPage({
   // Fetch event info
   const { data: event } = await supabase
     .from('events')
-    .select('title, slug, venue_name, city, cover_image_url, location_type, meeting_link')
+    .select('title, slug, venue_name, city, cover_image_url, location_type, meeting_link, timezone')
     .eq('id', eventId)
     .single();
 
@@ -188,7 +189,13 @@ export default async function CheckoutSuccessPage({
     successOcc = data;
   }
 
-  const eventDate = successOcc ? new Date(successOcc.starts_at) : null;
+  const eventDate = successOcc
+    ? formatEventDateTime(successOcc.starts_at, (event as any)?.timezone || DEFAULT_TZ, {
+        withWeekday: true,
+        withYear: true,
+        longMonth: true,
+      })
+    : null;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -228,19 +235,7 @@ export default async function CheckoutSuccessPage({
                 {eventDate && (
                   <div className="flex items-center gap-1.5">
                     <Calendar size={14} />
-                    {eventDate.toLocaleDateString('en-US', {
-                      timeZone: 'America/Toronto',
-                      weekday: 'long',
-                      month: 'long',
-                      day: 'numeric',
-                      year: 'numeric',
-                    })}
-                    {' at '}
-                    {eventDate.toLocaleTimeString('en-US', {
-                      timeZone: 'America/Toronto',
-                      hour: 'numeric',
-                      minute: '2-digit',
-                    })}
+                    {eventDate}
                   </div>
                 )}
                 {event.venue_name && (

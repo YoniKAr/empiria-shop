@@ -1091,7 +1091,7 @@ export async function POST(request: NextRequest) {
         try {
           const { data: emailEvent } = await supabase
             .from('events')
-            .select('title, venue_name, city, location_type, meeting_link, cta_label')
+            .select('title, venue_name, city, location_type, meeting_link, cta_label, timezone')
             .eq('id', event.id)
             .single();
           let startDate = '';
@@ -1135,6 +1135,7 @@ export async function POST(request: NextRequest) {
               organizerAvatarUrl: freeOrganizerAvatarUrl,
               eventDate: startDate,
               eventEndDate: endDate,
+              eventTimezone: emailEvent.timezone,
               venueName: emailEvent.venue_name || '',
               city: emailEvent.city || '',
               meetingLink: emailEvent.meeting_link || '',

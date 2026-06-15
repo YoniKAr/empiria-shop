@@ -9,6 +9,7 @@ import SponsorSections from '@/app/components/SponsorSections';
 import type { SponsorSection } from '@/lib/eventFields';
 import { sanitizeRichText } from '@/lib/sanitize-html';
 import { BlockedBuyerNotice } from '@/components/BlockedBuyerNotice';
+import { formatEventDateTime, tzAbbreviation, DEFAULT_TZ } from '@/lib/datetime';
 
 interface MovieDetail {
   director?: string;
@@ -110,23 +111,27 @@ export default function MovieDetailContent({
     return h > 0 ? `${h}h ${m}m` : `${m} min`;
   };
 
-  // Platform timezone: showtimes render in America/Toronto everywhere.
+  // Showtimes render in the EVENT's own timezone, with the zone label.
+  const tz = event.timezone || DEFAULT_TZ;
+
   const formatDate = (dateStr: string) =>
-    new Date(dateStr).toLocaleDateString('en-CA', {
-      timeZone: 'America/Toronto',
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
+    formatEventDateTime(dateStr, tz, {
+      withWeekday: true,
+      withYear: true,
+      withTime: false,
+      longMonth: true,
     });
 
-  const formatTime = (dateStr: string) =>
-    new Date(dateStr).toLocaleTimeString('en-CA', {
-      timeZone: 'America/Toronto',
-      hour: '2-digit',
+  // Time-only line, with the event's tz label (e.g. "7:00 PM EST").
+  const formatTime = (dateStr: string) => {
+    const time = new Date(dateStr).toLocaleTimeString('en-US', {
+      timeZone: tz,
+      hour: 'numeric',
       minute: '2-digit',
       hour12: true,
     });
+    return `${time} ${tzAbbreviation(dateStr, tz)}`;
+  };
 
   // Parse cast members
   const castMembers: string[] = Array.isArray(movie.cast_members)
@@ -368,10 +373,10 @@ export default function MovieDetailContent({
                     {/* Date box */}
                     <div className="flex-shrink-0 border border-gray-200 rounded-lg px-3 py-2 text-center min-w-[60px] shadow-sm">
                       <span className="block text-[#F15A29] text-[10px] font-bold uppercase tracking-widest">
-                        {new Date(occ.starts_at).toLocaleDateString('en-CA', { timeZone: 'America/Toronto', month: 'short' }).toUpperCase()}
+                        {new Date(occ.starts_at).toLocaleDateString('en-US', { timeZone: tz, month: 'short' }).toUpperCase()}
                       </span>
                       <span className="block text-slate-900 text-xl font-extrabold leading-tight mt-0.5">
-                        {new Date(occ.starts_at).toLocaleDateString('en-CA', { timeZone: 'America/Toronto', day: 'numeric' })}
+                        {new Date(occ.starts_at).toLocaleDateString('en-US', { timeZone: tz, day: 'numeric' })}
                       </span>
                     </div>
 

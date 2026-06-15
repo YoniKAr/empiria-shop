@@ -34,10 +34,12 @@ function safeUrl(url: unknown): string {
   return /^(https?:|mailto:)/i.test(s) ? escapeHtml(s) : '#';
 }
 
-export function formatEventDate(startDate: string, endDate?: string): string {
-  // Emails render server-side (UTC on Vercel) — pin the platform timezone or a
-  // stored UTC instant formats in UTC (e.g. shows midnight). Matches the shop.
-  const TZ = 'America/Toronto';
+export function formatEventDate(startDate: string, endDate?: string, timezone?: string): string {
+  // Emails render server-side (UTC on Vercel) — pin the event's own timezone (or
+  // the platform timezone as a fallback) or a stored UTC instant formats in UTC
+  // (e.g. shows midnight). The tz label (e.g. EST) trails the time so the reader
+  // knows which zone the time is in.
+  const TZ = timezone || 'America/Toronto';
   const start = new Date(startDate);
   const dateStr = start.toLocaleDateString('en-US', {
     weekday: 'long',
@@ -46,24 +48,34 @@ export function formatEventDate(startDate: string, endDate?: string): string {
     day: 'numeric',
     timeZone: TZ,
   });
-  const timeStr = start.toLocaleTimeString('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-    timeZone: TZ,
-  });
 
   if (endDate) {
+    // Range: label only the END time so the zone trails the whole expression.
+    const timeStr = start.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+      timeZone: TZ,
+    });
     const end = new Date(endDate);
     const endTimeStr = end.toLocaleTimeString('en-US', {
       hour: 'numeric',
       minute: '2-digit',
       hour12: true,
       timeZone: TZ,
+      timeZoneName: 'short',
     });
     return `${dateStr} &middot; ${timeStr} – ${endTimeStr}`;
   }
 
+  // Single time: label it so the zone trails the time.
+  const timeStr = start.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+    timeZone: TZ,
+    timeZoneName: 'short',
+  });
   return `${dateStr} &middot; ${timeStr}`;
 }
 
@@ -85,7 +97,7 @@ export function confirmationMessage(data: OrderEmailData, confirmation: string):
 }
 
 export function eventDetailsBlock(data: OrderEmailData): string {
-  const eventDateFormatted = formatEventDate(data.eventDate, data.eventEndDate);
+  const eventDateFormatted = formatEventDate(data.eventDate, data.eventEndDate, data.eventTimezone);
   const venue = [data.venueName, data.city].filter(Boolean).join(', ');
   const isOnline = data.locationType === 'virtual' || data.locationType === 'hybrid';
 

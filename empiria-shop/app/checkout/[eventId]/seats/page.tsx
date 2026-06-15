@@ -101,6 +101,7 @@ export default async function SeatSelectionPage({
             seatRanges={seatingConfig.seat_ranges || []}
             tiers={sortedTiers}
             eventId={event.id}
+            timezone={(event as any).timezone || undefined}
             eventCurrency={currency}
             currencySymbol={currencySymbol}
             userEmail={user?.email}
@@ -115,6 +116,7 @@ export default async function SeatSelectionPage({
             config={seatingConfig}
             tiers={sortedTiers}
             eventId={event.id}
+            timezone={(event as any).timezone || undefined}
             eventCurrency={currency}
             currencySymbol={currencySymbol}
             userEmail={user?.email}
@@ -129,6 +131,7 @@ export default async function SeatSelectionPage({
             config={seatingConfig}
             tiers={sortedTiers}
             eventId={event.id}
+            timezone={(event as any).timezone || undefined}
             eventCurrency={currency}
             currencySymbol={currencySymbol}
             userEmail={user?.email}

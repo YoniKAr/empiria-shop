@@ -16,6 +16,7 @@ interface Event {
   ticket_tiers?: { price: number }[];
   event_occurrences?: { starts_at: string }[];
   start_at?: string;
+  timezone?: string;
   organizer_name?: string;
   co_host_count?: number;
 }
@@ -30,6 +31,7 @@ interface FeaturedEvent {
   currency?: string;
   categories?: { name: string } | null;
   event_occurrences?: { starts_at: string }[];
+  timezone?: string;
   organizer_name?: string;
 }
 

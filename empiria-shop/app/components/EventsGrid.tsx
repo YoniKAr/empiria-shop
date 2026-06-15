@@ -17,6 +17,7 @@ interface Event {
     ticket_tiers?: { price: number }[];
     event_occurrences?: { starts_at: string }[];
     start_at?: string;
+    timezone?: string;
     organizer_name?: string;
     organizer_avatar_url?: string | null;
     co_host_count?: number;
@@ -136,6 +137,7 @@ export default function EventsGrid({ events, query, setQuery, categories, active
                                     city={event.city}
                                     category={event.categories?.name}
                                     startAt={startAt}
+                                    timezone={event.timezone}
                                     minPrice={minPrice}
                                     currencySymbol={symbol}
                                     organizerName={event.organizer_name}

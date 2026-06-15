@@ -25,7 +25,7 @@ export default async function CheckoutPage({
   const { data: event, error } = await supabase
     .from('events')
     .select(`
-      id, title, slug, event_type, currency, status, pass_processing_fee, charge_ticket_tax,
+      id, title, slug, event_type, currency, status, timezone, pass_processing_fee, charge_ticket_tax,
       entry_type, custom_fields, seating_type, seating_config,
       shared_capacity, total_capacity, total_tickets_sold,
       platform_fee_percent, platform_fee_fixed,
@@ -160,6 +160,7 @@ export default async function CheckoutPage({
         <CheckoutForm
           eventId={event.id}
           eventTitle={event.title}
+          timezone={(event as any).timezone || undefined}
           tiers={tiers}
           occurrences={occurrences}
           currency={event.currency || 'cad'}

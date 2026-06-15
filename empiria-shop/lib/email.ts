@@ -37,6 +37,7 @@ export interface OrderEmailData {
   organizerAvatarUrl?: string | null;
   eventDate: string;
   eventEndDate?: string;
+  eventTimezone?: string;
   venueName: string;
   city: string;
   meetingLink?: string;
@@ -101,6 +102,7 @@ export async function sendOrderConfirmationEmail(data: OrderEmailData) {
     title: data.eventTitle,
     starts_at: data.eventDate,
     ends_at: data.eventEndDate || null,
+    timezone: data.eventTimezone || null,
     venue_name: data.venueName,
     city: data.city,
     // Organizer's logo (or platform logo for platform-owned events) for the

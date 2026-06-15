@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { MapPin, Ticket, ImageIcon } from 'lucide-react';
+import { tzAbbreviation, DEFAULT_TZ } from '@/lib/datetime';
 
 export interface EventCardProps {
     id: string;
@@ -11,6 +12,8 @@ export interface EventCardProps {
     category?: string;
     eventType?: string;
     startAt?: string;
+    /** Event's IANA timezone — the date box + time line render in this zone with its label. */
+    timezone?: string;
     minPrice: number;
     currencySymbol: string;
     attendeesCount?: number;
@@ -33,6 +36,7 @@ export function EventCard({
     category,
     eventType = 'In-Person',
     startAt,
+    timezone,
     minPrice,
     currencySymbol,
     organizerName,
@@ -41,12 +45,13 @@ export function EventCard({
     entryType,
 }: EventCardProps) {
     const eventDate = startAt ? new Date(startAt) : null;
-    // Platform timezone: dates render in America/Toronto everywhere.
-    const TZ = 'America/Toronto';
+    // Render in the EVENT's own timezone (fallback to platform default).
+    const TZ = timezone || DEFAULT_TZ;
     const month = eventDate?.toLocaleDateString('en-US', { timeZone: TZ, month: 'short' }).toUpperCase();
     const day = eventDate?.toLocaleDateString('en-US', { timeZone: TZ, day: 'numeric' });
     const dayName = eventDate?.toLocaleDateString('en-US', { timeZone: TZ, weekday: 'short' });
     const time = eventDate?.toLocaleTimeString('en-US', { timeZone: TZ, hour: 'numeric', minute: '2-digit', hour12: true });
+    const tzLabel = startAt ? tzAbbreviation(startAt, TZ) : '';
 
     const isExternal = entryType === 'external';
     const isFree = minPrice === 0;
@@ -110,7 +115,7 @@ export function EventCard({
                             </h3>
                             {eventDate && (
                                 <p className="text-[#F15A29] text-[13px] font-semibold mt-1.5 flex items-center">
-                                    {dayName}, {time}
+                                    {dayName}, {time}{tzLabel ? ` ${tzLabel}` : ''}
                                 </p>
                             )}
                         </div>

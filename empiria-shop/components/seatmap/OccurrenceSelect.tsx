@@ -1,26 +1,16 @@
 "use client";
 
+import { formatEventDateTime, DEFAULT_TZ } from "@/lib/datetime";
+
 export interface OccurrenceChoice {
   id: string;
   starts_at: string;
   label?: string | null;
 }
 
-export function formatOccurrence(occ: OccurrenceChoice): string {
-  const d = new Date(occ.starts_at);
-  const date = d.toLocaleDateString("en-US", {
-    timeZone: "America/Toronto",
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-  const time = d.toLocaleTimeString("en-US", {
-    timeZone: "America/Toronto",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-  return `${date} · ${time}${occ.label ? ` — ${occ.label}` : ""}`;
+export function formatOccurrence(occ: OccurrenceChoice, timezone?: string): string {
+  const tz = timezone || DEFAULT_TZ;
+  return `${formatEventDateTime(occ.starts_at, tz)}${occ.label ? ` — ${occ.label}` : ""}`;
 }
 
 /**
@@ -32,11 +22,13 @@ export default function OccurrenceSelect({
   value,
   onChange,
   className = "",
+  timezone,
 }: {
   occurrences: OccurrenceChoice[];
   value: string;
   onChange: (id: string) => void;
   className?: string;
+  timezone?: string;
 }) {
   return (
     <div className={className}>
@@ -50,7 +42,7 @@ export default function OccurrenceSelect({
       >
         {occurrences.map((occ) => (
           <option key={occ.id} value={occ.id}>
-            {formatOccurrence(occ)}
+            {formatOccurrence(occ, timezone)}
           </option>
         ))}
       </select>

@@ -1,4 +1,5 @@
 import { Calendar, MapPin, Users, Monitor } from "lucide-react"
+import { formatEventDateTime, tzAbbreviation, DEFAULT_TZ } from "@/lib/datetime"
 
 interface CoOrganizer {
     name: string
@@ -22,12 +23,9 @@ interface EventHeroProps {
     coOrganizers?: CoOrganizer[]
     category: string
     attendeeCount?: number
+    /** Event's IANA timezone — all date/time displays render in this zone with its label. */
+    timezone: string
 }
-
-// Platform timezone: all dates render in America/Toronto regardless of
-// server (UTC on Vercel) or visitor timezone.
-const TORONTO_TZ = "America/Toronto"
-const TIME_FMT: Intl.DateTimeFormatOptions = { timeZone: TORONTO_TZ, hour: "numeric", minute: "2-digit" }
 
 function AvatarCircle({ name, avatarUrl, size }: { name: string; avatarUrl?: string | null; size: "md" | "sm" }) {
     const cls = size === "md" ? "w-7 h-7 text-xs" : "w-5 h-5 text-[10px]"
@@ -65,28 +63,44 @@ export function EventHero({
     coOrganizers = [],
     category,
     attendeeCount,
+    timezone,
 }: EventHeroProps) {
+    const tz = timezone || DEFAULT_TZ
     const start = new Date(startAt)
     const end = endAt ? new Date(endAt) : null
 
-    const formattedDate = start.toLocaleDateString("en-US", {
-        timeZone: TORONTO_TZ,
-        weekday: "long",
-        year: "numeric",
-        month: "long",
-        day: "numeric",
+    // Long-form date line in the event's timezone (no time): "Sunday, November 29, 2026".
+    const formattedDate = formatEventDateTime(startAt, tz, {
+        withWeekday: true,
+        withYear: true,
+        withTime: false,
+        longMonth: true,
     })
-    const startTime = start.toLocaleTimeString("en-US", TIME_FMT)
 
-    // Same-calendar-day check must use Toronto days, not the server's TZ.
-    const torontoDay = (d: Date) => d.toLocaleDateString("en-CA", { timeZone: TORONTO_TZ })
-    let timeRange = startTime
+    // Bare clock time (no date, no tz) in the event zone, e.g. "7:00 PM".
+    const clock = (d: Date) =>
+        d.toLocaleTimeString("en-US", { timeZone: tz, hour: "numeric", minute: "2-digit", hour12: true })
+    const tzLabel = tzAbbreviation(startAt, tz)
+    const startTime = clock(start)
+
+    // Same-calendar-day check must use the EVENT's tz, not the server's.
+    const eventDay = (d: Date) => d.toLocaleDateString("en-CA", { timeZone: tz })
+    // Default (no end): "7:00 PM EST".
+    let timeRange = `${startTime} ${tzLabel}`
     if (end && end.getTime() > start.getTime()) {
-        const endTime = end.toLocaleTimeString("en-US", TIME_FMT)
-        timeRange =
-            torontoDay(start) === torontoDay(end)
-                ? `${startTime} – ${endTime}`
-                : `${startTime} – ${end.toLocaleDateString("en-US", { timeZone: TORONTO_TZ, weekday: "short", month: "short", day: "numeric" })}, ${endTime}`
+        if (eventDay(start) === eventDay(end)) {
+            // Same day: "7:00 PM – 9:00 PM EST".
+            timeRange = `${startTime} – ${clock(end)} ${tzLabel}`
+        } else {
+            // Cross-day: "7:00 PM – Sun, Nov 30, 11:00 PM EST".
+            const endDateShort = formatEventDateTime(endAt, tz, {
+                withWeekday: true,
+                withYear: false,
+                withTime: false,
+                longMonth: false,
+            })
+            timeRange = `${startTime} – ${endDateShort}, ${clock(end)} ${tzLabel}`
+        }
     }
 
     const mapsQuery = [venueName, addressText, city].filter(Boolean).join(", ")

@@ -25,7 +25,7 @@ export default async function GifftPage() {
   const { data: movies } = await supabase
     .from('events')
     .select(`
-      id, title, slug, city, cover_image_url, currency,
+      id, title, slug, city, cover_image_url, currency, timezone,
       event_occurrences(starts_at, is_cancelled),
       gifft_movie_details(*)
     `)

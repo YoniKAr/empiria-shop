@@ -31,6 +31,7 @@ interface SpecialPageContentProps {
     categories?: { name: string } | null;
     ticket_tiers?: { price: number }[];
     event_occurrences?: { starts_at: string }[];
+    timezone?: string;
     organizer_name?: string;
     organizer_avatar_url?: string | null;
     entry_type?: string;
@@ -207,6 +208,7 @@ export function SpecialPageContent({ page, events }: SpecialPageContentProps) {
                     city={event.city}
                     category={event.categories?.name}
                     startAt={startAt}
+                    timezone={event.timezone}
                     minPrice={minPrice}
                     currencySymbol={symbol}
                     organizerName={event.organizer_name}

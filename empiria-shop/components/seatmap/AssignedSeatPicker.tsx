@@ -6,6 +6,7 @@ import StripeBadge from "@/components/StripeBadge";
 import { BlockedBuyerNotice } from "@/components/BlockedBuyerNotice";
 import MobileActionBar from "./MobileActionBar";
 import type { SeatRange } from "@/lib/seatmap-types";
+import { formatEventDateTime, DEFAULT_TZ } from "@/lib/datetime";
 
 interface TicketTier {
   id: string;
@@ -36,6 +37,8 @@ interface AssignedSeatPickerProps {
   occurrences?: OccurrenceOption[];
   allowSeatChoice: boolean;
   blockedBuyer?: boolean;
+  /** Event's IANA timezone — occurrence dates display in this zone with label. */
+  timezone?: string;
   /** Deep-linked occurrence (?occ=<id>) — pre-selects the date picked on the
    *  event page; the dropdown stays usable so users can still change it. */
   initialOccurrenceId?: string;
@@ -65,8 +68,10 @@ export default function AssignedSeatPicker({
   occurrences = [],
   allowSeatChoice,
   blockedBuyer = false,
+  timezone,
   initialOccurrenceId,
 }: AssignedSeatPickerProps) {
+  const tz = timezone || DEFAULT_TZ;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [shake, setShake] = useState(false);
@@ -599,7 +604,6 @@ export default function AssignedSeatPicker({
             </p>
             <div className="space-y-2">
               {occurrences.map((occ) => {
-                const occDate = new Date(occ.starts_at);
                 const isSelected = selectedOccurrenceId === occ.id;
                 return (
                   <button
@@ -616,18 +620,9 @@ export default function AssignedSeatPicker({
                     }`}
                   >
                     <div className="font-medium text-sm">
-                      {occDate.toLocaleDateString("en-US", {
-                        timeZone: "America/Toronto",
-                        weekday: "short",
-                        month: "short",
-                        day: "numeric",
-                      })}
+                      {formatEventDateTime(occ.starts_at, tz, { withYear: false, withTime: false })}
                       {" at "}
-                      {occDate.toLocaleTimeString("en-US", {
-                        timeZone: "America/Toronto",
-                        hour: "numeric",
-                        minute: "2-digit",
-                      })}
+                      {formatEventDateTime(occ.starts_at, tz, { withWeekday: false, withYear: false })}
                     </div>
                     {occ.label && (
                       <div className="text-xs text-gray-700 mt-0.5">

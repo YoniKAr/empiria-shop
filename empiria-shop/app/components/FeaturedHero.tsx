@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { Search, ChevronLeft, ChevronRight, ChevronDown, MapPin, Calendar } from 'lucide-react';
+import { formatEventDateTime, tzAbbreviation, DEFAULT_TZ } from '@/lib/datetime';
 
 interface FeaturedEvent {
   id: string;
@@ -15,6 +16,8 @@ interface FeaturedEvent {
   categories?: { name: string } | null;
   event_occurrences?: { starts_at: string }[];
   organizer_name?: string;
+  /** Event's IANA timezone — the slide date/time renders in this zone with its label. */
+  timezone?: string;
 }
 
 interface FeaturedHeroProps {
@@ -47,9 +50,26 @@ export default function FeaturedHero({ featuredEvents, query, setQuery }: Featur
   }, [paused, next, total]);
 
   const currentEvent = hasSlides ? featuredEvents[current] : null;
-  const eventDate = currentEvent?.event_occurrences?.[0]?.starts_at
-    ? new Date(currentEvent.event_occurrences[0].starts_at)
-    : null;
+  const eventStartIso = currentEvent?.event_occurrences?.[0]?.starts_at ?? null;
+  const eventTz = currentEvent?.timezone || DEFAULT_TZ;
+  // "Sat, Nov 29" (date only) + " at 7:00 PM EST" (time + tz label).
+  const eventDateLabel = eventStartIso
+    ? formatEventDateTime(eventStartIso, eventTz, {
+        withWeekday: true,
+        withYear: false,
+        withTime: false,
+        longMonth: false,
+      })
+    : '';
+  // Time + tz portion built directly so we don't repeat the date: "7:00 PM EST".
+  const eventTimeLabel = eventStartIso
+    ? `${new Date(eventStartIso).toLocaleTimeString('en-US', {
+        timeZone: eventTz,
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+      })} ${tzAbbreviation(eventStartIso, eventTz)}`
+    : '';
 
   return (
     <div
@@ -139,22 +159,12 @@ export default function FeaturedHero({ featuredEvents, query, setQuery }: Featur
                   {currentEvent?.title}
                 </h2>
                 <div className="flex items-center gap-4 text-white/80 text-sm mb-3">
-                  {eventDate && (
+                  {eventStartIso && (
                     <span className="flex items-center gap-1.5">
                       <Calendar className="w-4 h-4" />
-                      {eventDate.toLocaleDateString('en-US', {
-                        timeZone: 'America/Toronto',
-                        weekday: 'short',
-                        month: 'short',
-                        day: 'numeric',
-                      })}
+                      {eventDateLabel}
                       {' at '}
-                      {eventDate.toLocaleTimeString('en-US', {
-                        timeZone: 'America/Toronto',
-                        hour: 'numeric',
-                        minute: '2-digit',
-                        hour12: true,
-                      })}
+                      {eventTimeLabel}
                     </span>
                   )}
                   {currentEvent?.city && (

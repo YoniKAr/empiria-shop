@@ -8,6 +8,8 @@ interface SeatsCTAProps {
   label: string;
   /** Future occurrences — a date dropdown renders above the CTA when > 1. */
   occurrences?: OccurrenceChoice[];
+  /** Event's IANA timezone — occurrence labels render in it (with tz label). */
+  timezone?: string;
 }
 
 /**
@@ -15,7 +17,7 @@ interface SeatsCTAProps {
  * picker + link to the seat-selection page. The chosen occurrence travels
  * as ?occ=<id> and pre-selects the date on the next step.
  */
-export default function SeatsCTA({ eventId, label, occurrences = [] }: SeatsCTAProps) {
+export default function SeatsCTA({ eventId, label, occurrences = [], timezone }: SeatsCTAProps) {
   const [occId, setOccId] = useState(occurrences[0]?.id ?? "");
   const href = `/checkout/${eventId}/seats${
     occurrences.length > 1 && occId ? `?occ=${encodeURIComponent(occId)}` : ""
@@ -28,6 +30,7 @@ export default function SeatsCTA({ eventId, label, occurrences = [] }: SeatsCTAP
           occurrences={occurrences}
           value={occId}
           onChange={setOccId}
+          timezone={timezone}
           className="mb-3"
         />
       )}

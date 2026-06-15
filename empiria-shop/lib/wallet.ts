@@ -23,6 +23,9 @@ interface EventData {
   title: string;
   starts_at: string;
   ends_at?: string | null;
+  /** IANA timezone of the event (e.g. America/New_York). Occurrence times are
+   *  stored as UTC instants and must be displayed in the event's own zone. */
+  timezone?: string | null;
   venue_name?: string | null;
   city?: string | null;
   /** Logo for the wallet pass: organizer's logo, or the platform logo for
@@ -83,17 +86,21 @@ export async function generateApplePass(
       readFile(path.join(walletDir, 'strip@2x.png')),
     ]);
 
+    const eventTz = event.timezone || 'America/Toronto';
     const eventDate = new Date(event.starts_at);
     const dateStr = eventDate.toLocaleDateString('en-US', {
       weekday: 'short',
       month: 'short',
       day: 'numeric',
       year: 'numeric',
+      timeZone: eventTz,
     });
     const timeStr = eventDate.toLocaleTimeString('en-US', {
       hour: 'numeric',
       minute: '2-digit',
       hour12: true,
+      timeZone: eventTz,
+      timeZoneName: 'short',
     });
 
     const pass = new PKPass(

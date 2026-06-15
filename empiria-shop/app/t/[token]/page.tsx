@@ -11,6 +11,7 @@ import Link from 'next/link';
 import { Calendar, MapPin, Ticket as TicketIcon } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
+import { formatEventDateTime, DEFAULT_TZ } from '@/lib/datetime';
 
 export default async function ShareTicketPage({
   params,
@@ -24,7 +25,7 @@ export default async function ShareTicketPage({
     .from('tickets')
     .select(`
       id, qr_code_secret, seat_label, status,
-      event:events!tickets_event_id_fkey (title, venue_name, city),
+      event:events!tickets_event_id_fkey (title, venue_name, city, timezone),
       occurrence:event_occurrences!tickets_occurrence_id_fkey (starts_at),
       tier:ticket_tiers!tickets_tier_id_fkey (name)
     `)
@@ -53,7 +54,13 @@ export default async function ShareTicketPage({
   const event = ticket.event as any;
   const tier = ticket.tier as any;
   const occurrence = ticket.occurrence as any;
-  const eventDate = occurrence?.starts_at ? new Date(occurrence.starts_at) : null;
+  const eventDate = occurrence?.starts_at
+    ? formatEventDateTime(occurrence.starts_at, event?.timezone || DEFAULT_TZ, {
+        withWeekday: true,
+        withYear: true,
+        longMonth: true,
+      })
+    : null;
   const qrDataUrl = await generateQRCodeDataURL(ticket.qr_code_secret, { width: 220 });
   const venue = [event?.venue_name, event?.city].filter(Boolean).join(', ');
 
@@ -77,12 +84,7 @@ export default async function ShareTicketPage({
               {eventDate && (
                 <div className="flex items-center gap-1.5">
                   <Calendar size={14} />
-                  {eventDate.toLocaleDateString('en-US', {
-                    timeZone: 'America/Toronto',
-                    weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
-                  })}
-                  {' at '}
-                  {eventDate.toLocaleTimeString('en-US', { timeZone: 'America/Toronto', hour: 'numeric', minute: '2-digit' })}
+                  {eventDate}
                 </div>
               )}
               {venue && (

@@ -10,6 +10,8 @@ interface SeatQuantityCTAProps {
   maxQuantity: number;
   /** Future occurrences — a date dropdown renders above the stepper when > 1. */
   occurrences?: OccurrenceChoice[];
+  /** Event's IANA timezone — occurrence labels render in it (with tz label). */
+  timezone?: string;
 }
 
 /**
@@ -18,7 +20,7 @@ interface SeatQuantityCTAProps {
  * multi-date events) so the seat page skips its quantity step and opens the
  * map locked to N seats with the chosen date pre-selected.
  */
-export default function SeatQuantityCTA({ eventId, maxQuantity, occurrences = [] }: SeatQuantityCTAProps) {
+export default function SeatQuantityCTA({ eventId, maxQuantity, occurrences = [], timezone }: SeatQuantityCTAProps) {
   const max = Math.max(1, maxQuantity);
   const [qty, setQty] = useState(1);
   const [occId, setOccId] = useState(occurrences[0]?.id ?? "");
@@ -30,6 +32,7 @@ export default function SeatQuantityCTA({ eventId, maxQuantity, occurrences = []
           occurrences={occurrences}
           value={occId}
           onChange={setOccId}
+          timezone={timezone}
           className="mb-3"
         />
       )}

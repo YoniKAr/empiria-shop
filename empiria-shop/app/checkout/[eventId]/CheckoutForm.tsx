@@ -22,6 +22,7 @@ import {
 import type { CustomField } from "@/lib/eventFields";
 import { computeFees } from "@/lib/fees";
 import { getCurrencySymbol } from "@/lib/utils";
+import { formatEventDateTime, DEFAULT_TZ } from "@/lib/datetime";
 import StripeBadge from "@/components/StripeBadge";
 
 /**
@@ -72,6 +73,8 @@ interface Occurrence {
 interface CheckoutFormProps {
   eventId: string;
   eventTitle: string;
+  /** Event's IANA timezone — occurrence dates display in this zone with label. */
+  timezone?: string;
   tiers: Tier[];
   occurrences: Occurrence[];
   currency: string;
@@ -98,6 +101,7 @@ interface CheckoutFormProps {
 export function CheckoutForm({
   eventId,
   eventTitle,
+  timezone,
   tiers,
   occurrences,
   currency,
@@ -112,6 +116,7 @@ export function CheckoutForm({
   initialOccurrenceId,
   initialQuantities,
 }: CheckoutFormProps) {
+  const tz = timezone || DEFAULT_TZ;
   const [step, setStep] = useState<"select" | "review">("select");
   const [quantities, setQuantities] = useState<Record<string, number>>(() => {
     // Selection carried over from the event page (already validated + clamped
@@ -475,20 +480,11 @@ export function CheckoutForm({
                 {occurrenceDate && (
                   <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs font-medium backdrop-blur-sm">
                     <Calendar className="h-3.5 w-3.5" />
-                    {occurrenceDate.toLocaleDateString("en-US", {
-                      timeZone: "America/Toronto",
-                      weekday: "short",
-                      month: "short",
-                      day: "numeric",
-                      year: "numeric",
-                    })}
-                    {" · "}
-                    {occurrenceDate.toLocaleTimeString("en-US", {
-                      timeZone: "America/Toronto",
-                      hour: "numeric",
-                      minute: "2-digit",
-                      hour12: true,
-                    })}
+                    {selectedOccurrence &&
+                      formatEventDateTime(selectedOccurrence.starts_at, tz, {
+                        withWeekday: true,
+                        withYear: true,
+                      })}
                   </div>
                 )}
               </div>
@@ -704,7 +700,6 @@ export function CheckoutForm({
               </h2>
               <div className="space-y-3">
                 {occurrences.map((occ) => {
-                  const d = new Date(occ.starts_at);
                   const isSelected = selectedOccurrenceId === occ.id;
                   return (
                     <button
@@ -720,20 +715,7 @@ export function CheckoutForm({
                     >
                       <div className="min-w-0">
                         <p className="text-sm font-semibold text-gray-900">
-                          {d.toLocaleDateString("en-US", {
-                            timeZone: "America/Toronto",
-                            weekday: "short",
-                            month: "short",
-                            day: "numeric",
-                            year: "numeric",
-                          })}
-                          {" · "}
-                          {d.toLocaleTimeString("en-US", {
-                            timeZone: "America/Toronto",
-                            hour: "numeric",
-                            minute: "2-digit",
-                            hour12: true,
-                          })}
+                          {formatEventDateTime(occ.starts_at, tz)}
                         </p>
                         {occ.label && (
                           <p className="mt-0.5 truncate text-xs text-gray-700">{occ.label}</p>
@@ -1051,26 +1033,7 @@ export function CheckoutForm({
             </h2>
             {selectedOccurrence && (
               <p className="text-sm text-gray-700">
-                {new Date(selectedOccurrence.starts_at).toLocaleDateString(
-                  "en-US",
-                  {
-                    timeZone: "America/Toronto",
-                    weekday: "short",
-                    month: "short",
-                    day: "numeric",
-                    year: "numeric",
-                  }
-                )}{" "}
-                &middot;{" "}
-                {new Date(selectedOccurrence.starts_at).toLocaleTimeString(
-                  "en-US",
-                  {
-                    timeZone: "America/Toronto",
-                    hour: "numeric",
-                    minute: "2-digit",
-                    hour12: true,
-                  }
-                )}
+                {formatEventDateTime(selectedOccurrence.starts_at, tz)}
               </p>
             )}
 

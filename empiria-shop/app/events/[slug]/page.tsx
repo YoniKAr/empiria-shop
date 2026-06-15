@@ -11,6 +11,7 @@ import { TicketWidget } from '@/app/components/TicketWidget';
 import SeatQuantityCTA from '@/components/seatmap/SeatQuantityCTA';
 import SeatsCTA from '@/components/seatmap/SeatsCTA';
 import { computeSeatQuantityCap } from '@/lib/seat-quantity';
+import { DEFAULT_TZ } from '@/lib/datetime';
 import Footer from '@/components/Footer';
 import type { SeatingConfig } from '@/lib/seatmap-types';
 
@@ -225,7 +226,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
         const { data: catEvents } = await supabase
             .from('events')
             .select(`
-                id, title, slug, cover_image_url,
+                id, title, slug, cover_image_url, timezone,
                 venue_name, city, currency, organizer_id, source_app, entry_type,
                 categories (name),
                 ticket_tiers (price),
@@ -247,7 +248,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
         const { data: tagEvents } = await supabase
             .from('events')
             .select(`
-                id, title, slug, cover_image_url,
+                id, title, slug, cover_image_url, timezone,
                 venue_name, city, currency, organizer_id, source_app, entry_type,
                 categories (name),
                 ticket_tiers (price),
@@ -302,6 +303,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                 organizerAvatarUrl={organizerAvatarUrl}
                 coOrganizers={coOrganizers}
                 category={isPast ? 'Past Event' : categoryName}
+                timezone={event.timezone || DEFAULT_TZ}
             />
 
             {/* Content */}
@@ -353,6 +355,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                                     eventId={String(event.id)}
                                     maxQuantity={computeSeatQuantityCap(sortedTiers)}
                                     occurrences={ctaOccurrences}
+                                    timezone={event.timezone || undefined}
                                 />
                             ) : (
                                 <SeatsCTA
@@ -361,6 +364,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                                         ? 'Select your seats'
                                         : 'Choose tickets'}
                                     occurrences={ctaOccurrences}
+                                    timezone={event.timezone || undefined}
                                 />
                             )}
                         </div>
@@ -408,6 +412,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                                         city={se.city}
                                         category={se.categories?.name}
                                         startAt={startAt}
+                                        timezone={se.timezone}
                                         minPrice={minPrice}
                                         currencySymbol={sym}
                                         organizerName={se.organizer_name}
