@@ -78,10 +78,11 @@ export default async function ShareTicketPage({
                 <div className="flex items-center gap-1.5">
                   <Calendar size={14} />
                   {eventDate.toLocaleDateString('en-US', {
+                    timeZone: 'America/Toronto',
                     weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
                   })}
                   {' at '}
-                  {eventDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                  {eventDate.toLocaleTimeString('en-US', { timeZone: 'America/Toronto', hour: 'numeric', minute: '2-digit' })}
                 </div>
               )}
               {venue && (

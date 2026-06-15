@@ -78,7 +78,19 @@ export default function AssignedSeatPicker({
     return occurrences.length === 1 ? occurrences[0].id : "";
   });
   const [guestEmail, setGuestEmail] = useState("");
-  const [guestName, setGuestName] = useState("");
+  const [guestFirstName, setGuestFirstName] = useState("");
+  const [guestLastName, setGuestLastName] = useState("");
+  // Coupon (mirrors the GA CheckoutForm: validate via /api/coupons/validate,
+  // then pass couponCode to /api/checkout which re-validates server-side).
+  const [couponCode, setCouponCode] = useState("");
+  const [couponApplied, setCouponApplied] = useState<{
+    couponId: string;
+    discountType: string;
+    discountValue: number;
+    maxDiscountCap: number | null;
+  } | null>(null);
+  const [couponLoading, setCouponLoading] = useState(false);
+  const [couponError, setCouponError] = useState<string | null>(null);
 
   // For auto-assign mode (allow_seat_choice = false)
   const [tierQuantities, setTierQuantities] = useState<TierQuantitySelection[]>(
@@ -235,6 +247,52 @@ export default function AssignedSeatPicker({
         return sum + (tier?.price || 0) * t.quantity;
       }, 0);
 
+  // Coupon discount is per-ORDER: one discount against the whole ticket
+  // subtotal (display only — the server re-computes it authoritatively).
+  let discountAmount = 0;
+  if (couponApplied && totalPrice > 0) {
+    if (couponApplied.discountType === "percentage") {
+      discountAmount = Math.min(
+        totalPrice * (couponApplied.discountValue / 100),
+        couponApplied.maxDiscountCap || Infinity
+      );
+    } else {
+      discountAmount = totalPrice >= couponApplied.discountValue ? couponApplied.discountValue : 0;
+    }
+    discountAmount = Math.round(discountAmount * 100) / 100;
+  }
+  const discountedTotal = Math.max(0, totalPrice - discountAmount);
+
+  async function handleApplyCoupon() {
+    if (!couponCode.trim()) return;
+    setCouponLoading(true);
+    setCouponError(null);
+    try {
+      const res = await fetch("/api/coupons/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: couponCode.trim(), eventId }),
+      });
+      const data = await res.json();
+      if (!data.valid) {
+        setCouponError(data.error || "Invalid coupon code");
+        setCouponApplied(null);
+        return;
+      }
+      setCouponApplied({
+        couponId: data.couponId,
+        discountType: data.discountType,
+        discountValue: data.discountValue,
+        maxDiscountCap: data.maxDiscountCap,
+      });
+      setCouponError(null);
+    } catch {
+      setCouponError("Failed to validate coupon");
+    } finally {
+      setCouponLoading(false);
+    }
+  }
+
   async function handleCheckout() {
     if (blockedBuyer) {
       setShowBuyBlock(true);
@@ -336,11 +394,12 @@ export default function AssignedSeatPicker({
           eventId,
           tiers: tierSelections,
           contactEmail: email,
-          contactName: userName || guestName,
+          contactName: userName || `${guestFirstName} ${guestLastName}`.trim(),
           occurrenceId:
             selectedOccurrenceId ||
             (occurrences.length === 1 ? occurrences[0].id : undefined),
           assignedSeats,
+          couponCode: couponApplied ? couponCode.trim() : undefined,
           attemptId,
         }),
       });
@@ -610,13 +669,22 @@ export default function AssignedSeatPicker({
             <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
               Contact Info
             </p>
-            <input
-              type="text"
-              placeholder="Full Name"
-              value={guestName}
-              onChange={(e) => setGuestName(e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-            />
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                type="text"
+                placeholder="First Name"
+                value={guestFirstName}
+                onChange={(e) => setGuestFirstName(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+              />
+              <input
+                type="text"
+                placeholder="Last Name"
+                value={guestLastName}
+                onChange={(e) => setGuestLastName(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+              />
+            </div>
             <input
               type="email"
               placeholder="Email Address"
@@ -633,6 +701,52 @@ export default function AssignedSeatPicker({
           </div>
         )}
 
+        {/* Coupon */}
+        {totalItems > 0 && (
+          <div className="mb-4 pt-4 border-t border-gray-100">
+            {couponApplied ? (
+              <div className="flex items-center justify-between rounded-lg bg-green-50 px-3 py-2.5 text-sm">
+                <span className="font-medium text-green-700">
+                  Coupon &ldquo;{couponCode.trim().toUpperCase()}&rdquo; applied
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCouponApplied(null);
+                    setCouponCode("");
+                    setCouponError(null);
+                  }}
+                  className="text-xs font-semibold text-green-700 hover:underline"
+                >
+                  Remove
+                </button>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Coupon code"
+                  value={couponCode}
+                  onChange={(e) => {
+                    setCouponCode(e.target.value);
+                    setCouponError(null);
+                  }}
+                  className="flex-1 border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                />
+                <button
+                  type="button"
+                  onClick={handleApplyCoupon}
+                  disabled={!couponCode.trim() || couponLoading}
+                  className="rounded-lg bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-gray-800 disabled:bg-gray-300 disabled:text-gray-600"
+                >
+                  {couponLoading ? "..." : "Apply"}
+                </button>
+              </div>
+            )}
+            {couponError && <p className="mt-1.5 text-xs text-red-600">{couponError}</p>}
+          </div>
+        )}
+
         {/* Error */}
         {error && (
           <div className="flex items-start gap-2 text-red-600 text-sm mb-4 p-3 bg-red-50 rounded-lg">
@@ -643,15 +757,31 @@ export default function AssignedSeatPicker({
 
         {/* Order summary */}
         {totalItems > 0 && (
-          <div className="flex items-center justify-between mb-4 text-sm">
-            <span className="text-gray-600">
-              {totalItems} ticket{totalItems !== 1 ? "s" : ""}
-            </span>
-            <span className="font-bold text-lg">
-              {totalPrice === 0
-                ? "Free"
-                : `${currencySymbol}${totalPrice.toLocaleString()}`}
-            </span>
+          <div className="mb-4 space-y-1.5 text-sm">
+            <div className="flex items-center justify-between text-gray-600">
+              <span>
+                {totalItems} ticket{totalItems !== 1 ? "s" : ""}
+              </span>
+              <span>
+                {totalPrice === 0 ? "Free" : `${currencySymbol}${totalPrice.toLocaleString()}`}
+              </span>
+            </div>
+            {discountAmount > 0 && (
+              <div className="flex items-center justify-between text-green-700">
+                <span>Discount</span>
+                <span>
+                  &minus;{currencySymbol}
+                  {discountAmount.toLocaleString()}
+                </span>
+              </div>
+            )}
+            <div className="flex items-center justify-between pt-1 font-bold text-lg text-gray-900">
+              <span>Total</span>
+              <span>
+                {discountedTotal === 0 ? "Free" : `${currencySymbol}${discountedTotal.toLocaleString()}`}
+              </span>
+            </div>
+            <p className="text-[11px] text-gray-500">Taxes &amp; fees calculated at checkout.</p>
           </div>
         )}
 
