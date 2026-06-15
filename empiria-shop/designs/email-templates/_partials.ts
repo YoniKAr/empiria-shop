@@ -35,17 +35,22 @@ function safeUrl(url: unknown): string {
 }
 
 export function formatEventDate(startDate: string, endDate?: string): string {
+  // Emails render server-side (UTC on Vercel) — pin the platform timezone or a
+  // stored UTC instant formats in UTC (e.g. shows midnight). Matches the shop.
+  const TZ = 'America/Toronto';
   const start = new Date(startDate);
   const dateStr = start.toLocaleDateString('en-US', {
     weekday: 'long',
     year: 'numeric',
     month: 'long',
     day: 'numeric',
+    timeZone: TZ,
   });
   const timeStr = start.toLocaleTimeString('en-US', {
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
+    timeZone: TZ,
   });
 
   if (endDate) {
@@ -54,6 +59,7 @@ export function formatEventDate(startDate: string, endDate?: string): string {
       hour: 'numeric',
       minute: '2-digit',
       hour12: true,
+      timeZone: TZ,
     });
     return `${dateStr} &middot; ${timeStr} – ${endTimeStr}`;
   }
