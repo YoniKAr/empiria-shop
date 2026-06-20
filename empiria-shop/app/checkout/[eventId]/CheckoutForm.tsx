@@ -469,7 +469,7 @@ export function CheckoutForm({
               <div className="relative bg-gradient-to-br from-[#F15A29] to-[#d6420f] px-7 pt-7 pb-6 text-white">
                 <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.2em] text-white/80">
                   <Ticket className="h-3.5 w-3.5" />
-                  Empiria · Order preview
+                  Empiria Events · Order preview
                 </div>
                 <h2
                   className="mt-2 text-2xl font-extrabold leading-tight tracking-tight"
@@ -587,7 +587,7 @@ export function CheckoutForm({
                 {[
                   {
                     icon: Lock,
-                    text: "You'll be taken to Stripe's secure page to enter your card — Empiria never sees your card details.",
+                    text: "You'll be taken to Stripe's secure page to enter your card — Empiria Events never sees your card details.",
                   },
                   {
                     icon: QrCode,

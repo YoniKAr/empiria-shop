@@ -131,7 +131,7 @@ export default async function ShareTicketPage({
         </div>
 
         <p className="text-center text-xs text-gray-400 mt-6">
-          Each ticket admits one. Powered by Empiria.
+          Each ticket admits one. Powered by Empiria Events.
         </p>
       </div>
 

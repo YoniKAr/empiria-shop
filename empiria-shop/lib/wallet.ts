@@ -122,7 +122,7 @@ export async function generateApplePass(
         serialNumber: ticket.id,
         passTypeIdentifier: passTypeId,
         teamIdentifier: teamId,
-        organizationName: 'Empiria',
+        organizationName: 'Empiria Events',
         description: `Ticket for ${event.title}`,
         foregroundColor: 'rgb(255, 255, 255)',
         backgroundColor: 'rgb(241, 90, 41)', // Empiria brand orange #F15A29
@@ -179,7 +179,7 @@ export async function generateApplePass(
       {
         key: 'organizer',
         label: 'Powered by',
-        value: `Empiria — ${new URL(APEX_URL).hostname.replace(/^www\./, '')}`,
+        value: `Empiria Events — ${new URL(APEX_URL).hostname.replace(/^www\./, '')}`,
       },
     );
 
@@ -280,7 +280,7 @@ export async function generateGoogleWalletLink(
           uri: WALLET_LOGO_URL,
         },
         contentDescription: {
-          defaultValue: { language: 'en-US', value: 'Empiria' },
+          defaultValue: { language: 'en-US', value: 'Empiria Events' },
         },
       },
       eventName: {

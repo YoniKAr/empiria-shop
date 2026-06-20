@@ -11,7 +11,7 @@ export default function Footer() {
           <div className="flex flex-col gap-4 max-w-xs">
             <Image
               src="/logo.png"
-              alt="Empiria Logo"
+              alt="Empiria Events Logo"
               width={120}
               height={40}
               style={{ height: "auto" }}
@@ -98,7 +98,7 @@ export default function Footer() {
 
         {/* Bottom bar */}
         <div className="flex flex-col md:flex-row items-center justify-between gap-4 pt-8 text-[12px] text-gray-700">
-          <span>&copy; {new Date().getFullYear()} Empiria. All rights reserved.</span>
+          <span>&copy; {new Date().getFullYear()} Empiria Events. All rights reserved.</span>
           <div className="flex gap-6">
             <a href={`${APEX_URL}/privacy`} className="hover:text-black transition-colors">
               Privacy Policy

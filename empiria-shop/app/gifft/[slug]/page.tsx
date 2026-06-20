@@ -23,7 +23,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     .single();
 
   return {
-    title: event ? `${event.title} - GIFFT | Empiria` : 'Movie Not Found',
+    title: event ? `${event.title} - GIFFT | Empiria Events` : 'Movie Not Found',
     description: event?.description
       ? (typeof event.description === 'string' ? event.description.slice(0, 160) : 'Watch this film at GIFFT')
       : undefined,

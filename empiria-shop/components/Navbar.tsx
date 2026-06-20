@@ -45,7 +45,7 @@ export default async function Navbar({ overlay = false }: { overlay?: boolean })
             {/* Logo size must match the home/landing navbar (100px) — keep in sync. */}
             <Image
               src="/logo.png"
-              alt="Empiria Logo"
+              alt="Empiria Events Logo"
               width={100}
               height={33}
               className="object-contain w-[100px] h-auto"
