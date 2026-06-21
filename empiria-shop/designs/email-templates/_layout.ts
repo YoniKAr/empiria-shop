@@ -46,7 +46,7 @@ export function emailLayout({ title, bodyHtml, footerHtml = DEFAULT_FOOTER_HTML 
           <!-- Header / Logo -->
           <tr>
             <td style="padding: 28px 32px 22px; text-align: center; background: #ffffff;">
-              <img src="cid:empiria-logo" alt="Empiria" width="150" height="50" style="display: inline-block; border: 0;" />
+              <img src="cid:empiria-logo" alt="Empiria Events" width="150" height="50" style="display: inline-block; border: 0;" />
             </td>
           </tr>
           <tr><td style="height: 4px; background: #F15A29; line-height: 4px; font-size: 0;">&nbsp;</td></tr>
@@ -57,10 +57,10 @@ ${bodyHtml}
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-top: 1px solid #E8EAED;">
                 <tr>
                   <td style="padding: 22px 0 0; text-align: center;">
-                    <img src="cid:empiria-logo" alt="Empiria" width="108" height="36" style="display: inline-block; border: 0; opacity: 0.7;" />
+                    <img src="cid:empiria-logo" alt="Empiria Events" width="108" height="36" style="display: inline-block; border: 0; opacity: 0.7;" />
                     <p style="margin: 14px 0 0; font-size: 12px; line-height: 1.6; color: #94A3B8;">
                       ${footerHtml}<br />
-                      &copy; ${new Date().getFullYear()} Empiria Solutions &middot; empiria.events
+                      &copy; ${new Date().getFullYear()} Empiria Solutions Inc. &middot; empiria.events
                     </p>
                   </td>
                 </tr>
