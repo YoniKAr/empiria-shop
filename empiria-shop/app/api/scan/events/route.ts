@@ -25,9 +25,14 @@ export async function GET(req: NextRequest) {
     .maybeSingle();
   const isAdmin = userRow?.role === 'admin';
 
+  // Scannable events = published or completed (past OR upcoming) — excludes
+  // drafts (no tickets) and cancelled. Admins see all; organizers see their own.
   let eventsQuery = supabase
     .from('events')
-    .select('id, title, venue_name, city, organizer_id');
+    .select(
+      'id, title, slug, status, cover_image_url, venue_name, city, location_type, timezone, organizer_id',
+    )
+    .in('status', ['published', 'completed']);
   if (!isAdmin) eventsQuery = eventsQuery.eq('organizer_id', auth.sub);
 
   const { data: events, error } = await eventsQuery;
@@ -39,6 +44,25 @@ export async function GET(req: NextRequest) {
   }
 
   const eventIds = events.map((e) => e.id);
+
+  // Resolve each event's OWNING organizer (name + avatar) — useful when an admin
+  // scans on behalf of a real organizer. Batched in one query.
+  const organizerIds = [
+    ...new Set(events.map((e) => e.organizer_id).filter(Boolean)),
+  ] as string[];
+  const organizerById = new Map<string, { name: string | null; avatarUrl: string | null }>();
+  if (organizerIds.length > 0) {
+    const { data: orgUsers } = await supabase
+      .from('users')
+      .select('auth0_id, full_name, avatar_url')
+      .in('auth0_id', organizerIds);
+    for (const u of orgUsers ?? []) {
+      organizerById.set(u.auth0_id as string, {
+        name: (u.full_name as string | null) ?? null,
+        avatarUrl: (u.avatar_url as string | null) ?? null,
+      });
+    }
+  }
 
   const [{ data: occurrences }, { data: tickets }] = await Promise.all([
     supabase
@@ -110,13 +134,32 @@ export async function GET(req: NextRequest) {
         },
       ];
     }
+    const eventCounts = byEvent.get(e.id) ?? { checkedIn: 0, total: 0 };
     return {
       id: e.id,
       title: e.title,
+      slug: e.slug,
+      status: e.status,
+      coverImageUrl: e.cover_image_url ?? null,
       venueName: e.venue_name,
       city: e.city,
+      locationType: e.location_type ?? null,
+      timezone: e.timezone ?? null,
+      organizer: organizerById.get(e.organizer_id as string) ?? { name: null, avatarUrl: null },
+      // Event-wide totals across all occurrences.
+      checkedIn: eventCounts.checkedIn,
+      total: eventCounts.total,
+      startsAt: occ[0]?.startsAt ?? null,
+      endsAt: occ[occ.length - 1]?.endsAt ?? null,
       occurrences: occ,
     };
+  });
+
+  // Most recent / upcoming first; events without dates sink to the bottom.
+  result.sort((a, b) => {
+    const at = a.startsAt ? new Date(a.startsAt).getTime() : -Infinity;
+    const bt = b.startsAt ? new Date(b.startsAt).getTime() : -Infinity;
+    return bt - at;
   });
 
   return NextResponse.json({ events: result });
