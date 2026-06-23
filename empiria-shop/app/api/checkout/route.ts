@@ -12,6 +12,7 @@ import { computeFees, computeCouponDiscount, DEFAULT_FEE_PERCENT, DEFAULT_FIXED_
 import { sendOrderConfirmationEmail } from '@/lib/email';
 import { SHOP_URL } from '@/lib/urls';
 import { migrateSeatingConfig } from '@/lib/migrate-seating-config';
+import { clientIp, rateLimit } from '@/lib/ratelimit';
 
 interface TierSelection {
   tierId: string;
@@ -76,6 +77,15 @@ export async function POST(request: NextRequest) {
   // Bound to getSupabaseAdmin() once available so the catch can issue the release.
   let supabaseForRelease: ReturnType<typeof getSupabaseAdmin> | null = null;
   try {
+    // Throttle checkout creation per IP (30 / minute) — caps Stripe-session
+    // spam and coupon/seat-validation hammering without affecting real buyers.
+    if (!(await rateLimit(`checkout:${clientIp(request)}`, 30, 60))) {
+      return NextResponse.json(
+        { error: 'Too many requests. Please try again in a moment.' },
+        { status: 429 }
+      );
+    }
+
     // 1. Parse request body
     const body = await request.json();
     const { eventId, tiers, contactEmail, contactName, occurrenceId, seatSelections, sessionId, assignedSeats, couponCode, fieldResponses, attemptId } = body as {

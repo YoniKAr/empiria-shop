@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { getSafeSession } from '@/lib/auth0';
+import { clientIp, rateLimit } from '@/lib/ratelimit';
 
 export async function POST(request: NextRequest) {
   try {
@@ -20,6 +21,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { valid: false, error: 'Missing coupon code or event ID' },
         { status: 400 }
+      );
+    }
+
+    // Anti-brute-force: this endpoint is an unauthenticated coupon oracle, so
+    // throttle hard per IP (20 attempts / minute). Generic message — don't hint
+    // whether a code exists.
+    if (!(await rateLimit(`coupon:${clientIp(request)}`, 20, 60))) {
+      return NextResponse.json(
+        { valid: false, error: 'Too many attempts. Please try again in a minute.' },
+        { status: 429 }
       );
     }
 
