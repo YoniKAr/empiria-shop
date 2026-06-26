@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase';
-import { verifyScannerToken } from '@/lib/scanAuth';
+import { resolveScanIdentity } from '@/lib/scanAuth';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -10,25 +10,29 @@ export const runtime = 'nodejs';
 //   checkedIn = tickets with status 'used'
 //   total     = tickets with status in ('valid','used')  (i.e. sold/active)
 export async function GET(req: NextRequest) {
-  const auth = await verifyScannerToken(req);
-  if (!auth) {
+  const identity = await resolveScanIdentity(req);
+  if (!identity) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   const supabase = getSupabaseAdmin();
 
-  // Admins see all events; everyone else sees only events they organize.
-  const { data: userRow } = await supabase
-    .from('users')
-    .select('role')
-    .eq('auth0_id', auth.sub)
-    .maybeSingle();
-  const isAdmin = userRow?.role === 'admin';
-
   let eventsQuery = supabase
     .from('events')
     .select('id, title, venue_name, city, organizer_id');
-  if (!isAdmin) eventsQuery = eventsQuery.eq('organizer_id', auth.sub);
+  if (identity.kind === 'volunteer') {
+    // Volunteers are scoped to the single event their code belongs to.
+    eventsQuery = eventsQuery.eq('id', identity.eventId);
+  } else {
+    // Admins see all events; everyone else sees only events they organize.
+    const { data: userRow } = await supabase
+      .from('users')
+      .select('role')
+      .eq('auth0_id', identity.sub)
+      .maybeSingle();
+    const isAdmin = userRow?.role === 'admin';
+    if (!isAdmin) eventsQuery = eventsQuery.eq('organizer_id', identity.sub);
+  }
 
   const { data: events, error } = await eventsQuery;
   if (error) {
