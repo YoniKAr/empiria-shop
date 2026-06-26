@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase';
-import { verifyScannerToken, isAuthorizedForEvent } from '@/lib/scanAuth';
+import { resolveScanIdentity, canScanEvent } from '@/lib/scanAuth';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -10,10 +10,12 @@ export const runtime = 'nodejs';
 // Domain outcomes are returned as { result: ... }; wrong_event/invalid/
 // already_used are HTTP 200 (they are results, not errors).
 export async function POST(req: NextRequest) {
-  const auth = await verifyScannerToken(req);
-  if (!auth) {
+  const identity = await resolveScanIdentity(req);
+  if (!identity) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+  const checkedInBy =
+    identity.kind === 'staff' ? identity.sub : `volunteer:${identity.codeId}`;
 
   let body: { secret?: unknown; eventId?: unknown; occurrenceId?: unknown };
   try {
@@ -71,7 +73,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ result: 'wrong_occurrence' });
   }
 
-  if (!(await isAuthorizedForEvent(auth.sub, event?.organizer_id))) {
+  if (
+    !(await canScanEvent(identity, {
+      id: event?.id ?? '',
+      organizer_id: event?.organizer_id,
+    }))
+  ) {
     return NextResponse.json({ result: 'forbidden' }, { status: 403 });
   }
 
@@ -111,7 +118,7 @@ export async function POST(req: NextRequest) {
   const now = new Date().toISOString();
   const { data: updated } = await supabase
     .from('tickets')
-    .update({ status: 'used', checked_in_at: now, checked_in_by: auth.sub })
+    .update({ status: 'used', checked_in_at: now, checked_in_by: checkedInBy })
     .eq('id', ticket.id)
     .eq('status', 'valid')
     .select('id');

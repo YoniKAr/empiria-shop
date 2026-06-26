@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase';
-import { verifyScannerToken, isAuthorizedForEvent } from '@/lib/scanAuth';
+import { resolveScanIdentity, canScanEvent } from '@/lib/scanAuth';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -9,8 +9,8 @@ export const runtime = 'nodejs';
 // Lists ticket holders for an event the staff member may scan: name, email,
 // ticket tier, seat, checked-in status, and (best-effort) avatar.
 export async function GET(req: NextRequest) {
-  const auth = await verifyScannerToken(req);
-  if (!auth) {
+  const identity = await resolveScanIdentity(req);
+  if (!identity) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
   if (!event) {
     return NextResponse.json({ error: 'Event not found' }, { status: 404 });
   }
-  if (!(await isAuthorizedForEvent(auth.sub, event.organizer_id))) {
+  if (!(await canScanEvent(identity, { id: event.id, organizer_id: event.organizer_id }))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
