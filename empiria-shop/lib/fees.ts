@@ -93,7 +93,12 @@ export function computeFees(input: FeeInput): FeeBreakdown {
   const { base, discount, paidTickets, chargeTicketTax, passProcessingFee, feePercent, feeFixedPerTicket } = input;
 
   const effBase = round2(Math.max(0, base - discount));
-  const platformFee = round2(effBase * (feePercent / 100) + feeFixedPerTicket * paidTickets);
+  // A fully-discounted order (e.g. a 100%-off coupon) has no ticket revenue, so the
+  // platform takes no cut — the fixed per-ticket fee must NOT survive, otherwise a
+  // buyer who owes $0 still gets charged the per-ticket fee + its HST + Stripe gross-up.
+  // Any remaining ticket revenue keeps the normal percentage + per-ticket fee.
+  const platformFee =
+    effBase <= 0 ? 0 : round2(effBase * (feePercent / 100) + feeFixedPerTicket * paidTickets);
   const hstOnBase = chargeTicketTax ? round2(effBase * HST_RATE) : 0;
   const hstOnFee = round2(platformFee * HST_RATE);
   const hstTotal = round2(hstOnBase + hstOnFee);
