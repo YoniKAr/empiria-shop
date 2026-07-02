@@ -158,6 +158,12 @@ export default function MovieDetailContent({
 
   const trailerEmbedUrl = getEmbedUrl(event.trailer_url);
 
+  // "What to Expect" bullet points (JSON string array on events.what_to_expect).
+  // Rendered under the trailer — was never shown on the GIFFT movie page before.
+  const whatToExpect: string[] = Array.isArray(event.what_to_expect)
+    ? event.what_to_expect.filter((h: any) => typeof h === 'string' && h.trim() !== '')
+    : [];
+
   const getMovieDetail = (m: SimilarMovie): MovieDetail => {
     if (Array.isArray(m.gifft_movie_details)) {
       return m.gifft_movie_details[0] || {};
@@ -338,6 +344,25 @@ export default function MovieDetailContent({
                 title="Movie trailer"
               />
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* What to Expect — directly under the trailer */}
+      {whatToExpect.length > 0 && (
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-12">
+          <h2 className="text-2xl font-bold text-[#F15A29] mb-6 font-[family-name:var(--font-space-grotesk)]">
+            What to Expect
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* Key by index, not text: duplicate point texts would collide on a
+                text key and React would drop the duplicate. */}
+            {whatToExpect.map((highlight, i) => (
+              <div key={`wte-${i}`} className="flex items-center gap-3 text-sm text-gray-700">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#F15A29] flex-shrink-0" />
+                {highlight}
+              </div>
+            ))}
           </div>
         </div>
       )}
