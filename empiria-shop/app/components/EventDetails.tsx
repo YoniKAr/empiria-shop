@@ -286,10 +286,10 @@ export function EventDetails({
                             .map((highlight, i) => (
                             <div
                                 key={`wte-${i}`}
-                                className="flex items-center gap-3 text-sm text-gray-600"
+                                className="flex items-center gap-3 text-sm text-gray-600 [&_a]:text-[#F15A29] [&_a]:underline [&_b]:font-semibold [&_strong]:font-semibold"
                             >
                                 <span className="w-1.5 h-1.5 rounded-full bg-[#F15A29] flex-shrink-0" />
-                                {highlight}
+                                <span dangerouslySetInnerHTML={{ __html: sanitizeRichText(highlight) }} />
                             </div>
                         ))}
                     </div>

@@ -9,7 +9,9 @@ import SponsorSections from '@/app/components/SponsorSections';
 import type { SponsorSection } from '@/lib/eventFields';
 import { sanitizeRichText } from '@/lib/sanitize-html';
 import { BlockedBuyerNotice } from '@/components/BlockedBuyerNotice';
+import { RefundPolicyNote } from '@/app/components/RefundPolicyNote';
 import { formatEventDateTime, tzAbbreviation, DEFAULT_TZ } from '@/lib/datetime';
+import { computeSaleState } from '@/lib/sales';
 
 interface MovieDetail {
   director?: string;
@@ -93,9 +95,17 @@ export default function MovieDetailContent({
   const [showBuyBlock, setShowBuyBlock] = useState(false);
 
   // Get Tickets control: a real link for attendees/guests; for blocked buyers a
-  // button that reveals the BlockedBuyerNotice (no navigation → no loop).
-  const GetTicketsButton = ({ href, className }: { href: string; className: string }) =>
-    blockedBuyer ? (
+  // button that reveals the BlockedBuyerNotice (no navigation → no loop). When
+  // sales haven't started, a disabled control (no navigation).
+  const GetTicketsButton = ({ href, className }: { href: string; className: string }) => {
+    if (!onSale) {
+      return (
+        <button type="button" disabled className={`${className} opacity-50 cursor-not-allowed`}>
+          Get Tickets
+        </button>
+      );
+    }
+    return blockedBuyer ? (
       <button type="button" onClick={() => setShowBuyBlock(true)} className={className}>
         Get Tickets
       </button>
@@ -104,6 +114,7 @@ export default function MovieDetailContent({
         Get Tickets
       </Link>
     );
+  };
 
   const formatDuration = (minutes: number) => {
     const h = Math.floor(minutes / 60);
@@ -113,6 +124,22 @@ export default function MovieDetailContent({
 
   // Showtimes render in the EVENT's own timezone, with the zone label.
   const tz = event.timezone || DEFAULT_TZ;
+
+  // Sales-start gating: if no visible tier is on sale yet, block the buy CTAs and
+  // tell the buyer when tickets go on sale (in the event's own timezone). The
+  // checkout API is the final backstop; this gates the UI up front.
+  const visibleTiers = Array.isArray(event.ticket_tiers)
+    ? event.ticket_tiers.filter((t: any) => !t.is_hidden)
+    : [];
+  const { onSale, salesStartAt } = computeSaleState(visibleTiers);
+  const salesStartMsg = salesStartAt
+    ? `Tickets go on sale ${formatEventDateTime(salesStartAt, tz, {
+        withWeekday: true,
+        withYear: true,
+        withTime: true,
+        longMonth: true,
+      })}`
+    : 'Tickets are not on sale yet';
 
   const formatDate = (dateStr: string) =>
     formatEventDateTime(dateStr, tz, {
@@ -358,9 +385,12 @@ export default function MovieDetailContent({
             {/* Key by index, not text: duplicate point texts would collide on a
                 text key and React would drop the duplicate. */}
             {whatToExpect.map((highlight, i) => (
-              <div key={`wte-${i}`} className="flex items-center gap-3 text-sm text-gray-700">
+              <div
+                key={`wte-${i}`}
+                className="flex items-center gap-3 text-sm text-gray-700 [&_a]:text-[#F15A29] [&_a]:underline [&_b]:font-semibold [&_strong]:font-semibold"
+              >
                 <span className="w-1.5 h-1.5 rounded-full bg-[#F15A29] flex-shrink-0" />
-                {highlight}
+                <span dangerouslySetInnerHTML={{ __html: sanitizeRichText(highlight) }} />
               </div>
             ))}
           </div>
@@ -431,10 +461,15 @@ export default function MovieDetailContent({
                   {/* ?occ= carries THIS screening into checkout; the checkout
                       page redirects seated movies to /checkout/[id]/seats with
                       the occ preserved (S3). */}
-                  <GetTicketsButton
-                    href={`/checkout/${event.id}?occ=${encodeURIComponent(occ.id)}`}
-                    className="flex-shrink-0 bg-[#F15A29] hover:bg-[#d6420f] text-white font-bold text-sm px-6 py-2.5 rounded-full transition-colors text-center shadow-sm"
-                  />
+                  <div className="flex-shrink-0 flex flex-col items-stretch sm:items-end gap-1.5">
+                    <GetTicketsButton
+                      href={`/checkout/${event.id}?occ=${encodeURIComponent(occ.id)}`}
+                      className="bg-[#F15A29] hover:bg-[#d6420f] text-white font-bold text-sm px-6 py-2.5 rounded-full transition-colors text-center shadow-sm"
+                    />
+                    {!onSale && (
+                      <p className="text-xs text-gray-500 text-center sm:text-right">{salesStartMsg}</p>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -452,10 +487,19 @@ export default function MovieDetailContent({
               href={`/checkout/${event.id}`}
               className="inline-block bg-[#F15A29] hover:bg-[#d6420f] text-white font-bold text-sm px-8 py-3 rounded-full transition-colors shadow-sm"
             />
+            {!onSale && <p className="text-xs text-gray-500 mt-3">{salesStartMsg}</p>}
             {blockedBuyer && showBuyBlock && <BlockedBuyerNotice className="mt-4" />}
           </div>
         </div>
       )}
+
+      {/* Refund Policy */}
+      <div className="border-t border-gray-100">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-12">
+          <h2 className="text-2xl font-bold text-[#F15A29] mb-6 font-[family-name:var(--font-space-grotesk)]">Refund Policy</h2>
+          <RefundPolicyNote policy={(event as any).refund_policy} />
+        </div>
+      </div>
 
       {/* Sponsors (tiered sections) */}
       {sponsorSections.length > 0 && (

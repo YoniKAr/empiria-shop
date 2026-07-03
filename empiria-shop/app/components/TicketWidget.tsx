@@ -27,9 +27,13 @@ interface TicketWidgetProps {
     externalUrl?: string | null
     sharedCapacity?: boolean
     blockedBuyer?: boolean
+    /** False when no visible tier is on sale yet — gates the buy CTA. */
+    onSale?: boolean
+    /** "Tickets go on sale <date>" — shown when onSale is false. */
+    salesStartMessage?: string
 }
 
-export function TicketWidget({ tiers, eventId, currency = "cad", ctaLabel, entryType, externalUrl, sharedCapacity, blockedBuyer = false }: TicketWidgetProps) {
+export function TicketWidget({ tiers, eventId, currency = "cad", ctaLabel, entryType, externalUrl, sharedCapacity, blockedBuyer = false, onSale = true, salesStartMessage }: TicketWidgetProps) {
     // External events: link out instead of the ticket UI.
     if (entryType === "external") {
         const hasSafeUrl = !!externalUrl && isSafeUrl(externalUrl)
@@ -65,10 +69,10 @@ export function TicketWidget({ tiers, eventId, currency = "cad", ctaLabel, entry
         )
     }
 
-    return <TicketedWidget tiers={tiers} eventId={eventId} currency={currency} ctaLabel={ctaLabel} sharedCapacity={sharedCapacity} blockedBuyer={blockedBuyer} />
+    return <TicketedWidget tiers={tiers} eventId={eventId} currency={currency} ctaLabel={ctaLabel} sharedCapacity={sharedCapacity} blockedBuyer={blockedBuyer} onSale={onSale} salesStartMessage={salesStartMessage} />
 }
 
-function TicketedWidget({ tiers, eventId, currency = "cad", ctaLabel, sharedCapacity, blockedBuyer = false }: { tiers: TicketTier[]; eventId: string; currency?: string; ctaLabel?: string; sharedCapacity?: boolean; blockedBuyer?: boolean }) {
+function TicketedWidget({ tiers, eventId, currency = "cad", ctaLabel, sharedCapacity, blockedBuyer = false, onSale = true, salesStartMessage }: { tiers: TicketTier[]; eventId: string; currency?: string; ctaLabel?: string; sharedCapacity?: boolean; blockedBuyer?: boolean; onSale?: boolean; salesStartMessage?: string }) {
     // Per-tier quantities (mix tiers freely, e.g. 2× Adult + 3× Kid).
     const [quantities, setQuantities] = useState<Record<string, number>>({})
     const [shake, setShake] = useState(false)
@@ -227,7 +231,13 @@ function TicketedWidget({ tiers, eventId, currency = "cad", ctaLabel, sharedCapa
                         </div>
                     )}
 
-                    {totalQty === 0 ? (
+                    {!onSale ? (
+                        <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-4 text-center">
+                            <p className="text-sm font-semibold text-gray-900">
+                                {salesStartMessage || "Tickets are not on sale yet"}
+                            </p>
+                        </div>
+                    ) : totalQty === 0 ? (
                         <button
                             type="button"
                             disabled

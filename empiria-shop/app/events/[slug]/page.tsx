@@ -12,7 +12,8 @@ import SeatQuantityCTA from '@/components/seatmap/SeatQuantityCTA';
 import SeatsCTA from '@/components/seatmap/SeatsCTA';
 import { RefundPolicyNote } from '@/app/components/RefundPolicyNote';
 import { computeSeatQuantityCap } from '@/lib/seat-quantity';
-import { DEFAULT_TZ } from '@/lib/datetime';
+import { DEFAULT_TZ, formatEventDateTime } from '@/lib/datetime';
+import { computeSaleState } from '@/lib/sales';
 import Footer from '@/components/Footer';
 import type { SeatingConfig } from '@/lib/seatmap-types';
 
@@ -170,6 +171,20 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
             minPerOrder: tier.min_per_order ?? 1,
             maxPerOrder: tier.max_per_order ?? null,
         }));
+
+    // Sales-start gating: block the buy CTAs until at least one visible tier is
+    // on sale, and tell the buyer when tickets go on sale (event's own tz). The
+    // checkout API/page are the final backstops.
+    const eventTz = event.timezone || DEFAULT_TZ;
+    const { onSale, salesStartAt } = computeSaleState(visibleTierRows);
+    const salesStartMsg = salesStartAt
+        ? `Tickets go on sale ${formatEventDateTime(salesStartAt, eventTz, {
+              withWeekday: true,
+              withYear: true,
+              withTime: true,
+              longMonth: true,
+          })}`
+        : 'Tickets are not on sale yet';
 
     // Resolve cover image to a full URL
     const rawCoverUrl = event.cover_image_url ?? '';
@@ -351,7 +366,11 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                                     <span className="ml-1 text-sm font-medium text-gray-600">onwards</span>
                                 </p>
                             )}
-                            {seatingType === 'seat_map' ? (
+                            {!onSale ? (
+                                <div className="mt-5 rounded-xl border border-gray-200 bg-gray-50 px-4 py-4 text-center">
+                                    <p className="text-sm font-semibold text-gray-900">{salesStartMsg}</p>
+                                </div>
+                            ) : seatingType === 'seat_map' ? (
                                 <SeatQuantityCTA
                                     eventId={String(event.id)}
                                     maxQuantity={computeSeatQuantityCap(sortedTiers)}
@@ -379,6 +398,8 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                             externalUrl={event.external_url}
                             sharedCapacity={!!(event as any).shared_capacity}
                             blockedBuyer={blockedBuyer}
+                            onSale={onSale}
+                            salesStartMessage={salesStartMsg}
                         />
                     )}
 

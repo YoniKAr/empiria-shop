@@ -3,6 +3,8 @@ import { getSupabaseAdmin } from '@/lib/supabase';
 import { CheckoutForm } from './CheckoutForm';
 import { redirect } from 'next/navigation';
 import { DEFAULT_FEE_PERCENT, DEFAULT_FIXED_PER_TICKET } from '@/lib/fees';
+import { computeSaleState } from '@/lib/sales';
+import { DEFAULT_TZ, formatEventDateTime } from '@/lib/datetime';
 
 export default async function CheckoutPage({
   params,
@@ -29,7 +31,7 @@ export default async function CheckoutPage({
       entry_type, custom_fields, seating_type, seating_config,
       shared_capacity, total_capacity, total_tickets_sold,
       platform_fee_percent, platform_fee_fixed,
-      ticket_tiers (id, name, description, price, currency, remaining_quantity, min_per_order, max_per_order, is_hidden),
+      ticket_tiers (id, name, description, price, currency, remaining_quantity, min_per_order, max_per_order, is_hidden, sales_start_at),
       event_occurrences (id, starts_at, ends_at, label, is_cancelled)
     `)
     .eq('id', eventId)
@@ -81,8 +83,10 @@ export default async function CheckoutPage({
     redirect(`/checkout/${event.id}/seats${occ ? `?occ=${encodeURIComponent(occ)}` : ''}`);
   }
 
-  const tiers = (event.ticket_tiers ?? [])
-    .filter((t: any) => !t.is_hidden) // S7: hidden tiers are not publicly purchasable
+  // S7: hidden tiers are not publicly purchasable.
+  const visibleTierRows = (event.ticket_tiers ?? []).filter((t: any) => !t.is_hidden);
+
+  const tiers = visibleTierRows
     .map((t: any) => ({
     id: t.id,
     name: t.name,
@@ -151,6 +155,33 @@ export default async function CheckoutPage({
       if (sharedCapacity) sharedLeft -= clamped;
     }
     if (Object.keys(parsed).length > 0) initialQuantities = parsed;
+  }
+
+  // Defense-in-depth: don't render the checkout form until at least one visible
+  // tier is on sale. The checkout API is the final backstop, but this shows a
+  // clear "Tickets go on sale <date>" state (event's own timezone) up front.
+  const tz = (event as any).timezone || DEFAULT_TZ;
+  const { onSale, salesStartAt } = computeSaleState(visibleTierRows);
+  if (!onSale) {
+    const salesStartMsg = salesStartAt
+      ? `Tickets go on sale ${formatEventDateTime(salesStartAt, tz, {
+          withWeekday: true,
+          withYear: true,
+          withTime: true,
+          longMonth: true,
+        })}`
+      : 'Tickets are not on sale yet';
+    return (
+      <div className="min-h-screen bg-gray-50 py-12 px-4">
+        <div className="max-w-5xl mx-auto">
+          <h1 className="text-2xl font-bold mb-6">Checkout</h1>
+          <div className="rounded-2xl border border-gray-200 bg-white px-6 py-10 text-center">
+            <p className="text-lg font-semibold text-gray-900">{salesStartMsg}</p>
+            <p className="mt-1 text-sm text-gray-600">Please check back once ticket sales have opened.</p>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
