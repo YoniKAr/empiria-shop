@@ -36,6 +36,23 @@ export default async function GifftPage() {
     .gte('event_occurrences.starts_at', nowIso)
     .order('created_at', { ascending: false });
 
+  // Fetch published, public GIFFT *events* (standard events discoverable only on
+  // this page in a per-city "Events" section). Same occurrence filters as movies;
+  // NO gifft_movie_details — these are ordinary events rendered with EventCard.
+  const { data: events } = await supabase
+    .from('events')
+    .select(`
+      id, title, slug, city, cover_image_url, currency, timezone, entry_type,
+      ticket_tiers(price),
+      event_occurrences(starts_at, is_cancelled)
+    `)
+    .eq('event_type', 'gifft_event')
+    .eq('status', 'published')
+    .eq('visibility', 'public')
+    .eq('event_occurrences.is_cancelled', false)
+    .gte('event_occurrences.starts_at', nowIso)
+    .order('created_at', { ascending: false });
+
   // Fetch featured movies — inner join so drafts/private movies drop out.
   const { data: featured } = await supabase
     .from('gifft_featured_movies')
@@ -56,6 +73,7 @@ export default async function GifftPage() {
       <GifftContent
         cities={(cities || []) as any[]}
         movies={(movies || []) as any[]}
+        events={(events || []) as any[]}
         featured={(featured || []) as any[]}
         sponsors={(sponsors || []) as any[]}
       />

@@ -4,9 +4,11 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { Suspense, useState, useEffect } from 'react';
 import Image from 'next/image';
 import MovieCard from '@/app/components/MovieCard';
+import { EventCard } from '@/app/components/EventCard';
 import GifftCalendar from './GifftCalendar';
 import SponsorSections from '@/app/components/SponsorSections';
 import { isSafeUrl, type SponsorSection } from '@/lib/eventFields';
+import { getCurrencySymbol } from '@/lib/utils';
 
 const GIFFT_SLIDES = [
   '/gifft/slide-1.jpg',
@@ -62,6 +64,21 @@ interface Movie {
   gifft_movie_details?: MovieDetail[] | MovieDetail;
 }
 
+// Standard events surfaced only on /gifft (no movie details). Rendered with the
+// shop EventCard and linking to the standard /events/[slug] detail page.
+interface GifftEvent {
+  id: string;
+  title: string;
+  slug: string;
+  city?: string;
+  cover_image_url?: string;
+  currency?: string;
+  timezone?: string;
+  entry_type?: string;
+  ticket_tiers?: { price: number }[];
+  event_occurrences?: { starts_at: string; is_cancelled?: boolean }[];
+}
+
 interface FeaturedMovie {
   id: string;
   city_id: string;
@@ -82,11 +99,12 @@ interface Sponsor {
 interface GifftContentProps {
   cities: City[];
   movies: Movie[];
+  events: GifftEvent[];
   featured: FeaturedMovie[];
   sponsors: Sponsor[];
 }
 
-function GifftContentInner({ cities, movies, featured }: GifftContentProps) {
+function GifftContentInner({ cities, movies, events, featured }: GifftContentProps) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const selectedCitySlug = searchParams.get('city') || '';
@@ -120,6 +138,11 @@ function GifftContentInner({ cities, movies, featured }: GifftContentProps) {
   const filteredMovies = selectedCity
     ? movies.filter((m) => m.city?.toLowerCase() === selectedCity.name.toLowerCase())
     : movies;
+
+  // Filter GIFFT events by selected city (same pattern as movies)
+  const filteredEvents = selectedCity
+    ? events.filter((e) => e.city?.toLowerCase() === selectedCity.name.toLowerCase())
+    : events;
 
   // Filter featured by city
   const filteredFeatured = selectedCity
@@ -395,6 +418,48 @@ function GifftContentInner({ cities, movies, featured }: GifftContentProps) {
             </div>
           )}
         </div>
+
+        {/* Events — standard events discoverable only on GIFFT, rendered with the
+            shop EventCard (16:9) and linking to /events/[slug]. Hidden entirely
+            when the selected city has no events. */}
+        {filteredEvents.length > 0 && (
+          <div className="mt-14">
+            <h2 className="text-2xl font-bold text-[#F15A29] mb-6 font-[family-name:var(--font-space-grotesk)]">
+              {selectedCity ? `Events in ${selectedCity.name}` : 'Events'}
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredEvents.map((ev) => {
+                const occs = [...(ev.event_occurrences || [])]
+                  .filter((o) => !o.is_cancelled)
+                  .sort(
+                    (a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime()
+                  );
+                const now = Date.now();
+                const startAt =
+                  occs.find((o) => new Date(o.starts_at).getTime() > now)?.starts_at ||
+                  occs[0]?.starts_at ||
+                  undefined;
+                const prices = (ev.ticket_tiers || []).map((t) => t.price);
+                const minPrice = prices.length > 0 ? Math.min(...prices) : 0;
+                return (
+                  <EventCard
+                    key={ev.id}
+                    id={ev.id}
+                    title={ev.title}
+                    slug={ev.slug}
+                    coverImageUrl={ev.cover_image_url}
+                    city={ev.city}
+                    startAt={startAt}
+                    timezone={ev.timezone}
+                    minPrice={minPrice}
+                    currencySymbol={getCurrencySymbol(ev.currency || 'cad')}
+                    entryType={ev.entry_type}
+                  />
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* City sponsor sections (just above the footer) */}

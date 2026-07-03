@@ -22,13 +22,15 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
     const supabase = getSupabaseAdmin();
 
     // Fetch event + ticket tiers + occurrences.
-    // event_type='event' ONLY — GIFFT movies live at /gifft/[slug] and must NOT
-    // render a second detail page here (that produced the duplicate HEN page).
+    // event_type in ('event','gifft_event') — GIFFT movies (gifft_movie) live at
+    // /gifft/[slug] and must NOT render a second detail page here (that produced
+    // the duplicate HEN page). gifft_events are STANDARD events discoverable only
+    // on /gifft but whose detail page IS this standard page.
     const { data: event } = await supabase
         .from('events')
         .select('*, categories(name), ticket_tiers(*), event_occurrences(*)')
         .eq('slug', slug)
-        .eq('event_type', 'event')
+        .in('event_type', ['event', 'gifft_event'])
         .eq('status', 'published')
         .single();
 
