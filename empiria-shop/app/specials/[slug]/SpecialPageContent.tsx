@@ -6,6 +6,7 @@ import { EventCard } from "@/app/components/EventCard";
 import { getCurrencySymbol } from "@/lib/utils";
 import SponsorSections from "@/app/components/SponsorSections";
 import { isSafeUrl, type SponsorSection } from "@/lib/eventFields";
+import { sanitizeRichText } from "@/lib/sanitize-html";
 
 interface SpecialPageContentProps {
   page: {
@@ -77,7 +78,7 @@ export function SpecialPageContent({ page, events }: SpecialPageContentProps) {
           </div>
         </section>
       ) : page.hero_media_type === "video" && page.hero_media_url ? (
-        <section className="bg-[#1a1a1a] py-16">
+        <section className="bg-white py-16">
           <div className="max-w-5xl mx-auto px-4 sm:px-6">
             {(() => {
               const embedUrl = getEmbedUrl(page.hero_media_url!);
@@ -99,11 +100,11 @@ export function SpecialPageContent({ page, events }: SpecialPageContentProps) {
                   {page.category.name}
                 </span>
               )}
-              <h1 className="text-4xl md:text-6xl font-extrabold text-white leading-tight">
+              <h1 className="text-4xl md:text-6xl font-extrabold text-slate-900 leading-tight">
                 {page.title}
               </h1>
               {page.subtitle && (
-                <p className="text-lg text-white/80 mt-3 max-w-2xl mx-auto">
+                <p className="text-lg text-slate-600 mt-3 max-w-2xl mx-auto">
                   {page.subtitle}
                 </p>
               )}
@@ -133,9 +134,10 @@ export function SpecialPageContent({ page, events }: SpecialPageContentProps) {
       {/* ── DESCRIPTION SECTION ── */}
       {page.description && (
         <section className="max-w-4xl mx-auto px-4 sm:px-6 py-16">
-          <p className="text-lg text-slate-600 leading-relaxed whitespace-pre-line">
-            {page.description}
-          </p>
+          <div
+            className="text-lg text-slate-600 leading-relaxed whitespace-pre-line [&_a]:text-[#F15A29] [&_a]:underline [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-0.5"
+            dangerouslySetInnerHTML={{ __html: sanitizeRichText(page.description) }}
+          />
         </section>
       )}
 
@@ -163,8 +165,11 @@ export function SpecialPageContent({ page, events }: SpecialPageContentProps) {
       )}
 
       {/* ── EVENTS SECTION ── */}
+      {(() => {
+        const hasBg = page.events_bg_url && isSafeUrl(page.events_bg_url);
+        return (
       <section className="relative py-20">
-        {page.events_bg_url && isSafeUrl(page.events_bg_url) ? (
+        {hasBg ? (
           <>
             <div
               className="absolute inset-0 bg-cover bg-center"
@@ -173,11 +178,15 @@ export function SpecialPageContent({ page, events }: SpecialPageContentProps) {
             <div className="absolute inset-0 bg-black/60" />
           </>
         ) : (
-          <div className="absolute inset-0 bg-[#1a1a1a]" />
+          <div className="absolute inset-0 bg-white" />
         )}
 
         <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6">
-          <h2 className="text-3xl font-bold text-white text-center mb-12">
+          <h2
+            className={`text-3xl font-bold text-center mb-12 ${
+              hasBg ? "text-white" : "text-[#F15A29]"
+            }`}
+          >
             {page.events_section_title ||
               `${page.category?.name || ""} Events`}
           </h2>
@@ -219,12 +228,18 @@ export function SpecialPageContent({ page, events }: SpecialPageContentProps) {
               })}
             </div>
           ) : (
-            <p className="text-white/60 text-center text-lg">
+            <p
+              className={`text-center text-lg ${
+                hasBg ? "text-white/60" : "text-slate-500"
+              }`}
+            >
               No events in this category yet.
             </p>
           )}
         </div>
       </section>
+        );
+      })()}
 
       {/* ── SPONSORS SECTION ── */}
       <SponsorSections sections={page.sponsor_sections ?? []} />

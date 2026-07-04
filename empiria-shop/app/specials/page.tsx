@@ -9,7 +9,7 @@ export default async function SpecialsIndex() {
   const supabase = getSupabaseAdmin();
   const { data: pages } = await supabase
     .from("category_pages")
-    .select("slug, title, hero_media_url, hero_media_type, category:categories(name)")
+    .select("slug, title, hero_media_url, hero_media_type, hero_thumbnail_url, category:categories(name)")
     .eq("is_active", true)
     .order("created_at", { ascending: false });
 
@@ -22,16 +22,21 @@ export default async function SpecialsIndex() {
           <p className="text-gray-700">No special pages yet.</p>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {(pages ?? []).map((p: any) => (
+            {(pages ?? []).map((p: any) => {
+              const cardImage =
+                p.hero_media_type === "image"
+                  ? p.hero_media_url
+                  : p.hero_thumbnail_url;
+              return (
               <Link
                 key={p.slug}
                 href={`/specials/${p.slug}`}
                 className="group block rounded-2xl overflow-hidden border border-gray-200 bg-white hover:shadow-lg transition"
               >
                 <div className="aspect-video bg-gray-100 overflow-hidden">
-                  {p.hero_media_type === "image" && p.hero_media_url ? (
+                  {cardImage ? (
                     <img
-                      src={p.hero_media_url}
+                      src={cardImage}
                       alt={p.title}
                       className="w-full h-full object-cover group-hover:scale-105 transition"
                     />
@@ -48,7 +53,8 @@ export default async function SpecialsIndex() {
                   )}
                 </div>
               </Link>
-            ))}
+              );
+            })}
           </div>
         )}
       </main>
