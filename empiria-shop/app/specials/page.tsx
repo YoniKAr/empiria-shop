@@ -1,9 +1,25 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import { absoluteUrl } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Specials",
+  description:
+    "Browse curated Empiria Events specials — themed collections of cultural events and experiences across Canada.",
+  alternates: { canonical: "/specials" },
+  openGraph: {
+    title: "Specials · Empiria Events",
+    description:
+      "Browse curated Empiria Events specials — themed collections of cultural events and experiences.",
+    url: absoluteUrl("/specials"),
+    type: "website",
+  },
+};
 
 export default async function SpecialsIndex() {
   const supabase = getSupabaseAdmin();

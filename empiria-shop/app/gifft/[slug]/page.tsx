@@ -5,6 +5,8 @@ import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import MovieDetailContent from './MovieDetailContent';
 import type { Metadata } from 'next';
+import JsonLd from '@/components/JsonLd';
+import { absoluteUrl, stripToText, truncate, buildEventJsonLd } from '@/lib/seo';
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -15,18 +17,45 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const supabase = getSupabaseAdmin();
   const { data: event } = await supabase
     .from('events')
-    .select('title, description')
+    .select('title, description, cover_image_url, gifft_movie_details(poster_url)')
     .eq('slug', slug)
     .eq('event_type', 'gifft_movie')
     .eq('status', 'published')
     .eq('visibility', 'public')
     .single();
 
+  if (!event) return { title: 'Movie Not Found' };
+
+  const details = Array.isArray((event as any).gifft_movie_details)
+    ? (event as any).gifft_movie_details[0] || {}
+    : (event as any).gifft_movie_details || {};
+  const rawImg = details?.poster_url || (event as any).cover_image_url || '';
+  const image = rawImg
+    ? (rawImg.startsWith('http')
+        ? rawImg
+        : `${process.env.SUPABASE_URL}/storage/v1/object/public/${rawImg}`)
+    : '';
+
+  const title = `${event.title} · GIFFT`;
+  const description = truncate(stripToText(event.description)) || undefined;
+
   return {
-    title: event ? `${event.title} - GIFFT | Empiria Events` : 'Movie Not Found',
-    description: event?.description
-      ? (typeof event.description === 'string' ? event.description.slice(0, 160) : 'Watch this film at GIFFT')
-      : undefined,
+    title,
+    description,
+    alternates: { canonical: `/gifft/${slug}` },
+    openGraph: {
+      title,
+      description,
+      url: absoluteUrl(`/gifft/${slug}`),
+      type: 'website',
+      images: image ? [{ url: image }] : undefined,
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title,
+      description,
+      images: image ? [image] : undefined,
+    },
   };
 }
 
@@ -156,8 +185,41 @@ export default async function MovieDetailPage({ params }: PageProps) {
     similarMovies = [...similarMovies, ...(otherMovies || [])];
   }
 
+  // ── SEO: schema.org Event JSON-LD for the movie screening ──
+  const jsonLdOcc = futureOccurrences[0] || allOccurrences[0];
+  const rawPoster = (movie as any)?.poster_url || (event as any).cover_image_url || '';
+  const jsonLdImage = rawPoster
+    ? (rawPoster.startsWith('http')
+        ? rawPoster
+        : `${process.env.SUPABASE_URL}/storage/v1/object/public/${rawPoster}`)
+    : undefined;
+  const jsonLdPrices = ((event as any).ticket_tiers || [])
+    .map((t: any) => t.price)
+    .filter((p: any) => typeof p === 'number');
+  const jsonLdPrice = jsonLdPrices.length ? Math.min(...jsonLdPrices) : null;
+  const jsonLdOnline = (event as any).location_type === 'virtual';
+
   return (
     <div className="min-h-screen bg-white font-sans text-slate-900">
+      <JsonLd
+        data={buildEventJsonLd({
+          name: event.title,
+          description: stripToText(event.description),
+          image: jsonLdImage,
+          startDate: jsonLdOcc?.starts_at || undefined,
+          endDate: jsonLdOcc?.ends_at || undefined,
+          url: absoluteUrl(`/gifft/${event.slug}`),
+          isOnline: jsonLdOnline,
+          venueName: event.venue_name,
+          addressText: (event as any).address_text,
+          city: event.city,
+          price: jsonLdPrice,
+          priceCurrency: ((event as any).currency || 'cad').toUpperCase(),
+          offerValidFrom: new Date().toISOString(),
+          organizerName: organizer,
+          includePerformer: true,
+        })}
+      />
       <Navbar />
       <MovieDetailContent
         event={event as any}

@@ -1,10 +1,57 @@
+import type { Metadata } from 'next';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { notFound } from 'next/navigation';
+import { absoluteUrl, stripToText, truncate } from '@/lib/seo';
 import { SpecialPageContent } from './SpecialPageContent';
 
 export const dynamic = 'force-dynamic';
+
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  const { slug } = await params;
+  const supabase = getSupabaseAdmin();
+
+  const { data: page } = await supabase
+    .from('category_pages')
+    .select('title, subtitle, description, hero_media_url, hero_media_type, hero_thumbnail_url')
+    .eq('slug', slug)
+    .eq('is_active', true)
+    .maybeSingle();
+
+  if (!page) return { title: 'Not Found' };
+
+  const title = page.title as string;
+  const desc = truncate(stripToText(page.subtitle || page.description || ''));
+  const description = desc || `Discover ${title} on Empiria Events.`;
+
+  const rawImage =
+    page.hero_media_type === 'image'
+      ? page.hero_media_url
+      : (page.hero_thumbnail_url || undefined);
+  const image = rawImage
+    ? (/^https?:\/\//i.test(rawImage) ? rawImage : absoluteUrl(rawImage))
+    : undefined;
+
+  return {
+    title,
+    description,
+    alternates: { canonical: `/specials/${slug}` },
+    openGraph: {
+      title,
+      description,
+      url: absoluteUrl(`/specials/${slug}`),
+      type: 'website',
+      images: image ? [{ url: image }] : undefined,
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title,
+      description,
+      images: image ? [image] : undefined,
+    },
+  };
+}
 
 export default async function SpecialPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;

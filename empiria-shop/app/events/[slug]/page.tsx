@@ -16,6 +16,52 @@ import { DEFAULT_TZ, formatEventDateTime } from '@/lib/datetime';
 import { computeSaleState } from '@/lib/sales';
 import Footer from '@/components/Footer';
 import type { SeatingConfig } from '@/lib/seatmap-types';
+import type { Metadata } from 'next';
+import JsonLd from '@/components/JsonLd';
+import { absoluteUrl, stripToText, truncate, buildEventJsonLd, buildBreadcrumbJsonLd } from '@/lib/seo';
+
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+    const { slug } = await params;
+    const supabase = getSupabaseAdmin();
+    const { data: event } = await supabase
+        .from('events')
+        .select('title, description, cover_image_url, city, venue_name')
+        .eq('slug', slug)
+        .in('event_type', ['event', 'gifft_event'])
+        .eq('status', 'published')
+        .single();
+
+    if (!event) return { title: 'Event Not Found' };
+
+    const raw = event.cover_image_url ?? '';
+    const cover = raw.startsWith('http')
+        ? raw
+        : raw
+            ? `${process.env.SUPABASE_URL}/storage/v1/object/public/${raw}`
+            : '';
+
+    const title = event.city ? `${event.title} · ${event.city}` : event.title;
+    const description = truncate(stripToText(event.description));
+
+    return {
+        title,
+        description,
+        alternates: { canonical: `/events/${slug}` },
+        openGraph: {
+            title,
+            description,
+            url: absoluteUrl(`/events/${slug}`),
+            type: 'website',
+            images: cover ? [{ url: cover }] : undefined,
+        },
+        twitter: {
+            card: 'summary_large_image',
+            title,
+            description,
+            images: cover ? [cover] : undefined,
+        },
+    };
+}
 
 export default async function EventPage({ params }: { params: Promise<{ slug: string }> }) {
     const { slug } = await params;
@@ -302,8 +348,38 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
         }));
     }
 
+    const isExternalEntry = event.entry_type === 'external';
+
     return (
         <div className="min-h-screen bg-white">
+            <JsonLd
+                data={buildEventJsonLd({
+                    name: event.title,
+                    description: stripToText(event.description),
+                    image: coverImageUrl || undefined,
+                    startDate: heroStartAt,
+                    endDate: heroEndAt,
+                    url: absoluteUrl(`/events/${event.slug}`),
+                    isOnline,
+                    onlineUrl: (event as any).meeting_link || undefined,
+                    venueName: event.venue_name,
+                    addressText: event.address_text,
+                    city: event.city,
+                    price: isExternalEntry ? null : (sortedTiers.length ? sortedTiers[0].price : null),
+                    priceCurrency: (currency || 'cad').toUpperCase(),
+                    offerValidFrom: new Date().toISOString(),
+                    organizerName: organizer,
+                    includePerformer: true,
+                    omitOffers: isExternalEntry,
+                })}
+            />
+            <JsonLd
+                data={buildBreadcrumbJsonLd([
+                    { name: 'Home', url: absoluteUrl('/') },
+                    { name: 'Events', url: absoluteUrl('/') },
+                    { name: event.title, url: absoluteUrl('/events/' + event.slug) },
+                ])}
+            />
             <Navbar overlay />
 
             {/* EventHero banner */}
