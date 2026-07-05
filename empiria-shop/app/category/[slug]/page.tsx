@@ -8,6 +8,23 @@ import { getCurrencySymbol } from '@/lib/utils';
 import JsonLd from '@/components/JsonLd';
 import { absoluteUrl, truncate, buildBreadcrumbJsonLd } from '@/lib/seo';
 
+// Build a human city phrase from the cities of this category's events, most
+// common first — e.g. "Toronto", "Toronto & Vancouver", "Toronto, Vancouver & more".
+// Returns '' when there are no cities (callers fall back to "Canada").
+function cityPhraseFrom(cities: (string | null | undefined)[]): string {
+    const counts = new Map<string, number>();
+    for (const c of cities) {
+        const name = (c || '').trim();
+        if (!name) continue;
+        counts.set(name, (counts.get(name) || 0) + 1);
+    }
+    const top = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([c]) => c);
+    if (top.length === 0) return '';
+    if (top.length === 1) return top[0];
+    if (top.length === 2) return `${top[0]} & ${top[1]}`;
+    return `${top[0]}, ${top[1]} & more`;
+}
+
 export async function generateMetadata({
     params,
 }: {
@@ -26,9 +43,20 @@ export async function generateMetadata({
         return { title: 'Category Not Found' };
     }
 
-    const title = `${category.name} Events in Canada`;
+    // Reflect the cities where this category's events actually happen so the page
+    // matches "greek events in toronto"-style queries (built from real event data).
+    const { data: cityRows } = await supabase
+        .from('events')
+        .select('city')
+        .eq('status', 'published')
+        .eq('visibility', 'public')
+        .in('event_type', ['event', 'gifft_event'])
+        .eq('category_id', category.id);
+    const inCities = ` in ${cityPhraseFrom((cityRows || []).map((r: any) => r.city)) || 'Canada'}`;
+
+    const title = `${category.name} Events${inCities}`;
     const description = truncate(
-        `Discover and buy tickets to ${category.name} events across Canada with Empiria Events. Browse upcoming ${category.name} celebrations, festivals, and experiences.`,
+        `Buy tickets to ${category.name} events${inCities} with Empiria Events — upcoming ${category.name} celebrations, festivals, and experiences.`,
         160
     );
     const url = absoluteUrl(`/category/${category.slug}`);
@@ -161,15 +189,34 @@ export default async function CategoryPage({
         }));
     }
 
+    const cityPhrase = cityPhraseFrom(events.map((e: any) => e.city));
+    const inCities = cityPhrase ? ` in ${cityPhrase}` : '';
+
     const itemListJsonLd = {
         '@context': 'https://schema.org',
         '@type': 'ItemList',
-        name: `${category.name} Events`,
+        name: `${category.name} Events${inCities}`,
         itemListElement: events.map((e: any, i: number) => ({
             '@type': 'ListItem',
             position: i + 1,
-            url: absoluteUrl('/events/' + e.slug),
-            name: e.title,
+            item: {
+                '@type': 'Event',
+                name: e.title,
+                url: absoluteUrl('/events/' + e.slug),
+                ...(e.event_occurrences?.[0]?.starts_at
+                    ? { startDate: e.event_occurrences[0].starts_at }
+                    : {}),
+                // Each event's real city → per-event location signal on the page.
+                ...(e.city
+                    ? {
+                          location: {
+                              '@type': 'Place',
+                              name: e.venue_name || e.city,
+                              address: { '@type': 'PostalAddress', addressLocality: e.city },
+                          },
+                      }
+                    : {}),
+            },
         })),
     };
 
@@ -177,9 +224,10 @@ export default async function CategoryPage({
         <div className="min-h-screen bg-white font-sans text-slate-900">
             <Navbar />
             <main className="max-w-7xl mx-auto px-4 sm:px-6 py-10">
-                <h1 className="text-3xl font-bold text-slate-900 mb-2">{category.name} Events</h1>
+                <h1 className="text-3xl font-bold text-slate-900 mb-2">{category.name} Events{inCities}</h1>
                 <p className="text-gray-700 mb-8 max-w-2xl">
-                    Discover and buy tickets to {category.name} events across Canada with Empiria Events.
+                    Discover and buy tickets to {category.name} events
+                    {cityPhrase ? ` in ${cityPhrase} and across Canada` : ' across Canada'} with Empiria Events.
                 </p>
 
                 {events.length === 0 ? (
