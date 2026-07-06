@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase';
+import { clientIp, rateLimit } from '@/lib/ratelimit';
 
 interface SeatRange {
   id: string;
@@ -47,6 +48,14 @@ export async function POST(request: NextRequest) {
     }
     if (occurrenceId && !UUID_RE.test(occurrenceId)) {
       return NextResponse.json({ error: 'Invalid occurrenceId' }, { status: 400 });
+    }
+
+    // Throttle per IP (60 / minute) to limit seat-map enumeration / abuse.
+    if (!(await rateLimit(`assignseats:${clientIp(request)}`, 60, 60))) {
+      return NextResponse.json(
+        { error: 'Too many requests. Please slow down.' },
+        { status: 429 }
+      );
     }
 
     const supabase = getSupabaseAdmin();

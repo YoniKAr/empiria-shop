@@ -272,19 +272,24 @@ export function EventDetails({
             </div>
 
             {/* What to Expect */}
-            {whatToExpect.length > 0 && (
+            {whatToExpect.some((h) => h && h.trim() !== "") && (
                 <div>
                     <h3 className="text-lg font-semibold text-[#F15A29] mb-4 font-[family-name:var(--font-space-grotesk)]">
                         What to Expect
                     </h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {whatToExpect.map((highlight) => (
+                        {/* Key by index, not text: two identical point texts would
+                            collide on a text key and React would drop the duplicate
+                            on re-render (showing "missing" points). */}
+                        {whatToExpect
+                            .filter((h) => h && h.trim() !== "")
+                            .map((highlight, i) => (
                             <div
-                                key={highlight}
-                                className="flex items-center gap-3 text-sm text-gray-600"
+                                key={`wte-${i}`}
+                                className="flex items-center gap-3 text-sm text-gray-600 [&_a]:text-[#F15A29] [&_a]:underline [&_b]:font-semibold [&_strong]:font-semibold"
                             >
                                 <span className="w-1.5 h-1.5 rounded-full bg-[#F15A29] flex-shrink-0" />
-                                {highlight}
+                                <span dangerouslySetInnerHTML={{ __html: sanitizeRichText(highlight) }} />
                             </div>
                         ))}
                     </div>

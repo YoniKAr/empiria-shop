@@ -1,7 +1,23 @@
+import type { Metadata } from 'next';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import HomeContent from '@/app/components/HomeContent';
+import { absoluteUrl } from '@/lib/seo';
+
+export const metadata: Metadata = {
+    title: 'Empiria Events — Discover Cultural Events & Buy Tickets',
+    description:
+        'Discover and buy tickets to multicultural events across Canada — Greek, Italian, Indian, Chinese, Middle Eastern, Latin American, and more, plus the GIFFT film festival.',
+    alternates: { canonical: '/' },
+    openGraph: {
+        title: 'Empiria Events — Discover Cultural Events & Buy Tickets',
+        description:
+            'Discover and buy tickets to multicultural events across Canada, plus the GIFFT film festival.',
+        url: absoluteUrl('/'),
+        type: 'website',
+    },
+};
 
 export default async function ShopHome({
     searchParams,

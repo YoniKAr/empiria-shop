@@ -10,6 +10,8 @@ import ZoneSelector from '@/components/seatmap/ZoneSelector';
 import SeatSelector from '@/components/seatmap/SeatSelector';
 import AssignedSeatPicker from '@/components/seatmap/AssignedSeatPicker';
 import type { SeatingConfig } from '@/lib/seatmap-types';
+import { computeSaleState } from '@/lib/sales';
+import { DEFAULT_TZ, formatEventDateTime } from '@/lib/datetime';
 
 const SEATED = ['seat_map', 'assigned_seating', 'zone_map', 'zone_admission'];
 
@@ -81,6 +83,19 @@ export default async function SeatSelectionPage({
 
   const isSeatPick = seatingType === 'seat_map' || seatingType === 'assigned_seating';
 
+  // Defense-in-depth: block the seat-selection/purchase flow until at least one
+  // visible tier is on sale (checkout API is the final backstop).
+  const tz = (event as any).timezone || DEFAULT_TZ;
+  const { onSale, salesStartAt } = computeSaleState(sortedTiers);
+  const salesStartMsg = salesStartAt
+    ? `Tickets go on sale ${formatEventDateTime(salesStartAt, tz, {
+        withWeekday: true,
+        withYear: true,
+        withTime: true,
+        longMonth: true,
+      })}`
+    : 'Tickets are not on sale yet';
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
@@ -96,7 +111,12 @@ export default async function SeatSelectionPage({
           {isSeatPick ? 'Pick your seats, then continue to checkout.' : 'Choose your tickets, then continue to checkout.'}
         </p>
 
-        {seatingType === 'assigned_seating' ? (
+        {!onSale ? (
+          <div className="rounded-2xl border border-gray-200 bg-white px-6 py-10 text-center">
+            <p className="text-lg font-semibold text-gray-900">{salesStartMsg}</p>
+            <p className="mt-1 text-sm text-gray-600">Please check back once ticket sales have opened.</p>
+          </div>
+        ) : seatingType === 'assigned_seating' ? (
           <AssignedSeatPicker
             seatRanges={seatingConfig.seat_ranges || []}
             tiers={sortedTiers}

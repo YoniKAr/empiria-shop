@@ -12,22 +12,71 @@ import SeatQuantityCTA from '@/components/seatmap/SeatQuantityCTA';
 import SeatsCTA from '@/components/seatmap/SeatsCTA';
 import { RefundPolicyNote } from '@/app/components/RefundPolicyNote';
 import { computeSeatQuantityCap } from '@/lib/seat-quantity';
-import { DEFAULT_TZ } from '@/lib/datetime';
+import { DEFAULT_TZ, formatEventDateTime } from '@/lib/datetime';
+import { computeSaleState } from '@/lib/sales';
 import Footer from '@/components/Footer';
 import type { SeatingConfig } from '@/lib/seatmap-types';
+import type { Metadata } from 'next';
+import JsonLd from '@/components/JsonLd';
+import { absoluteUrl, stripToText, truncate, buildEventJsonLd, buildBreadcrumbJsonLd } from '@/lib/seo';
+
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+    const { slug } = await params;
+    const supabase = getSupabaseAdmin();
+    const { data: event } = await supabase
+        .from('events')
+        .select('title, description, cover_image_url, city, venue_name')
+        .eq('slug', slug)
+        .in('event_type', ['event', 'gifft_event'])
+        .eq('status', 'published')
+        .single();
+
+    if (!event) return { title: 'Event Not Found' };
+
+    const raw = event.cover_image_url ?? '';
+    const cover = raw.startsWith('http')
+        ? raw
+        : raw
+            ? `${process.env.SUPABASE_URL}/storage/v1/object/public/${raw}`
+            : '';
+
+    const title = event.city ? `${event.title} · ${event.city}` : event.title;
+    const description = truncate(stripToText(event.description));
+
+    return {
+        title,
+        description,
+        alternates: { canonical: `/events/${slug}` },
+        openGraph: {
+            title,
+            description,
+            url: absoluteUrl(`/events/${slug}`),
+            type: 'website',
+            images: cover ? [{ url: cover }] : undefined,
+        },
+        twitter: {
+            card: 'summary_large_image',
+            title,
+            description,
+            images: cover ? [cover] : undefined,
+        },
+    };
+}
 
 export default async function EventPage({ params }: { params: Promise<{ slug: string }> }) {
     const { slug } = await params;
     const supabase = getSupabaseAdmin();
 
     // Fetch event + ticket tiers + occurrences.
-    // event_type='event' ONLY — GIFFT movies live at /gifft/[slug] and must NOT
-    // render a second detail page here (that produced the duplicate HEN page).
+    // event_type in ('event','gifft_event') — GIFFT movies (gifft_movie) live at
+    // /gifft/[slug] and must NOT render a second detail page here (that produced
+    // the duplicate HEN page). gifft_events are STANDARD events discoverable only
+    // on /gifft but whose detail page IS this standard page.
     const { data: event } = await supabase
         .from('events')
         .select('*, categories(name), ticket_tiers(*), event_occurrences(*)')
         .eq('slug', slug)
-        .eq('event_type', 'event')
+        .in('event_type', ['event', 'gifft_event'])
         .eq('status', 'published')
         .single();
 
@@ -171,6 +220,20 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
             maxPerOrder: tier.max_per_order ?? null,
         }));
 
+    // Sales-start gating: block the buy CTAs until at least one visible tier is
+    // on sale, and tell the buyer when tickets go on sale (event's own tz). The
+    // checkout API/page are the final backstops.
+    const eventTz = event.timezone || DEFAULT_TZ;
+    const { onSale, salesStartAt } = computeSaleState(visibleTierRows);
+    const salesStartMsg = salesStartAt
+        ? `Tickets go on sale ${formatEventDateTime(salesStartAt, eventTz, {
+              withWeekday: true,
+              withYear: true,
+              withTime: true,
+              longMonth: true,
+          })}`
+        : 'Tickets are not on sale yet';
+
     // Resolve cover image to a full URL
     const rawCoverUrl = event.cover_image_url ?? '';
     const coverImageUrl = rawCoverUrl.startsWith('http')
@@ -285,8 +348,38 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
         }));
     }
 
+    const isExternalEntry = event.entry_type === 'external';
+
     return (
         <div className="min-h-screen bg-white">
+            <JsonLd
+                data={buildEventJsonLd({
+                    name: event.title,
+                    description: stripToText(event.description),
+                    image: coverImageUrl || undefined,
+                    startDate: heroStartAt,
+                    endDate: heroEndAt,
+                    url: absoluteUrl(`/events/${event.slug}`),
+                    isOnline,
+                    onlineUrl: (event as any).meeting_link || undefined,
+                    venueName: event.venue_name,
+                    addressText: event.address_text,
+                    city: event.city,
+                    price: isExternalEntry ? null : (sortedTiers.length ? sortedTiers[0].price : null),
+                    priceCurrency: (currency || 'cad').toUpperCase(),
+                    offerValidFrom: new Date().toISOString(),
+                    organizerName: organizer,
+                    includePerformer: true,
+                    omitOffers: isExternalEntry,
+                })}
+            />
+            <JsonLd
+                data={buildBreadcrumbJsonLd([
+                    { name: 'Home', url: absoluteUrl('/') },
+                    { name: 'Events', url: absoluteUrl('/') },
+                    { name: event.title, url: absoluteUrl('/events/' + event.slug) },
+                ])}
+            />
             <Navbar overlay />
 
             {/* EventHero banner */}
@@ -351,7 +444,11 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                                     <span className="ml-1 text-sm font-medium text-gray-600">onwards</span>
                                 </p>
                             )}
-                            {seatingType === 'seat_map' ? (
+                            {!onSale ? (
+                                <div className="mt-5 rounded-xl border border-gray-200 bg-gray-50 px-4 py-4 text-center">
+                                    <p className="text-sm font-semibold text-gray-900">{salesStartMsg}</p>
+                                </div>
+                            ) : seatingType === 'seat_map' ? (
                                 <SeatQuantityCTA
                                     eventId={String(event.id)}
                                     maxQuantity={computeSeatQuantityCap(sortedTiers)}
@@ -379,6 +476,8 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                             externalUrl={event.external_url}
                             sharedCapacity={!!(event as any).shared_capacity}
                             blockedBuyer={blockedBuyer}
+                            onSale={onSale}
+                            salesStartMessage={salesStartMsg}
                         />
                     )}
 

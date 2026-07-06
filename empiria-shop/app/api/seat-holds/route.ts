@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { migrateSeatingConfig } from "@/lib/migrate-seating-config";
+import { clientIp, rateLimit } from "@/lib/ratelimit";
 
 const HOLD_DURATION_MINUTES = 10;
+// Backstop against one session holding an entire seat map. No legitimate single
+// buyer reserves anywhere near this many seats.
+const MAX_ACTIVE_HOLDS_PER_SESSION = 100;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -29,7 +33,40 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Throttle holds per IP — an unauthenticated write that could otherwise be
+    // spammed to lock up an event's inventory. 60 / minute is far above any
+    // real buyer's selection/refresh rate.
+    if (!(await rateLimit(`seathold:${clientIp(request)}`, 60, 60))) {
+      return NextResponse.json(
+        { error: "Too many requests. Please slow down." },
+        { status: 429 }
+      );
+    }
+
     const supabase = getSupabaseAdmin();
+
+    // Backstop: cap concurrent active holds per session (allow refresh of a seat
+    // this session already holds, so a legit buyer at the cap isn't blocked).
+    const { count: activeHolds } = await supabase
+      .from("seat_holds")
+      .select("id", { count: "exact", head: true })
+      .eq("session_id", sessionId)
+      .gt("expires_at", new Date().toISOString());
+    if ((activeHolds ?? 0) >= MAX_ACTIVE_HOLDS_PER_SESSION) {
+      const { data: ownThisSeat } = await supabase
+        .from("seat_holds")
+        .select("id")
+        .eq("event_id", eventId)
+        .eq("seat_id", seatId)
+        .eq("session_id", sessionId)
+        .maybeSingle();
+      if (!ownThisSeat) {
+        return NextResponse.json(
+          { error: "Too many seats held. Release some before adding more." },
+          { status: 429 }
+        );
+      }
+    }
 
     // Clean up expired holds first
     const { error: rpcError } = await supabase.rpc("cleanup_expired_holds");

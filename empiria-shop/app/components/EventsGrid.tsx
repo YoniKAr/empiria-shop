@@ -1,7 +1,7 @@
 'use client';
 
 import { Search } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { getCurrencySymbol } from '@/lib/utils';
 import { EventCard } from './EventCard';
 
@@ -32,17 +32,7 @@ interface EventsGridProps {
     activeCategory: string | null;
 }
 
-export default function EventsGrid({ events, query, setQuery, categories, activeCategory }: EventsGridProps) {
-    const router = useRouter();
-
-    // Category selection drives a server-side query via the ?category=<slug> param.
-    // "All" clears the param. Selecting a category also clears any active search.
-    const selectCategory = (slug: string | null) => {
-        setQuery('');
-        const href = slug ? `/?category=${encodeURIComponent(slug)}#events-section` : '/#events-section';
-        router.push(href);
-    };
-
+export default function EventsGrid({ events, query, categories, activeCategory }: EventsGridProps) {
     const activeCategoryName = activeCategory
         ? categories.find((c) => c.slug === activeCategory)?.name ?? null
         : null;
@@ -76,10 +66,11 @@ export default function EventsGrid({ events, query, setQuery, categories, active
                             const isActive = cat.slug === null
                                 ? !activeCategory
                                 : cat.slug === activeCategory;
+                            const href = cat.slug === null ? '/' : `/category/${cat.slug}`;
                             return (
-                                <button
+                                <Link
                                     key={cat.name}
-                                    onClick={() => selectCategory(cat.slug)}
+                                    href={href}
                                     className={`px-4 py-1.5 rounded-full border text-sm font-medium transition-colors ${
                                         isActive
                                             ? 'border-[#F15A29] bg-[#F15A29] text-white'
@@ -87,7 +78,7 @@ export default function EventsGrid({ events, query, setQuery, categories, active
                                     }`}
                                 >
                                     {cat.name}
-                                </button>
+                                </Link>
                             );
                         })}
                     </div>

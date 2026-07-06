@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
   const supabase = getSupabaseAdmin();
   const { data } = await supabase
     .from('users')
-    .select('role, full_name')
+    .select('role, full_name, first_name, last_name, email, avatar_url')
     .eq('auth0_id', auth.sub)
     .maybeSingle();
 
@@ -28,6 +28,10 @@ export async function GET(req: NextRequest) {
     sub: auth.sub,
     role,
     name: data?.full_name ?? null,
+    firstName: data?.first_name ?? null,
+    lastName: data?.last_name ?? null,
+    email: data?.email ?? null,
+    avatarUrl: data?.avatar_url ?? null,
     authorized,
   });
 }
