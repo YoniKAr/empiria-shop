@@ -6,17 +6,20 @@ import { resolveZone } from '@/lib/scan';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-// POST /api/scan/check-in   body: { secret, eventId?, occurrenceId? }
-// Validates a ticket by its qr_code_secret and marks it used.
-// Domain outcomes are returned as { result: ... }; wrong_event/invalid/
-// already_used are HTTP 200 (they are results, not errors).
+// POST /api/scan/verify   body: { secret, eventId?, occurrenceId? }
+// Read-only twin of /api/scan/check-in: reports whether a ticket is valid for
+// the event WITHOUT marking it used. Returns the same `result` union as
+// check-in, plus a convenience `valid` boolean (true only when result === 'ok').
+// Domain outcomes (wrong_event / invalid / already_used …) are HTTP 200 — they
+// are results, not errors.
 export async function POST(req: NextRequest) {
   const identity = await resolveScanIdentity(req);
   if (!identity) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return NextResponse.json(
+      { valid: false, error: 'Unauthorized' },
+      { status: 401 },
+    );
   }
-  const checkedInBy =
-    identity.kind === 'staff' ? identity.sub : `volunteer:${identity.codeId}`;
 
   let body: { secret?: unknown; eventId?: unknown; occurrenceId?: unknown };
   try {
@@ -30,7 +33,10 @@ export async function POST(req: NextRequest) {
     typeof body.occurrenceId === 'string' ? body.occurrenceId : null;
 
   if (!secret) {
-    return NextResponse.json({ result: 'not_found' }, { status: 404 });
+    return NextResponse.json(
+      { valid: false, result: 'not_found' },
+      { status: 404 },
+    );
   }
 
   const supabase = getSupabaseAdmin();
@@ -49,7 +55,10 @@ export async function POST(req: NextRequest) {
     .maybeSingle();
 
   if (!ticket) {
-    return NextResponse.json({ result: 'not_found' }, { status: 404 });
+    return NextResponse.json(
+      { valid: false, result: 'not_found' },
+      { status: 404 },
+    );
   }
 
   // Embedded to-one relations come back as objects under these aliases.
@@ -68,10 +77,14 @@ export async function POST(req: NextRequest) {
   const tier = ticket.tier as unknown as { name: string } | null;
 
   if (eventId && event?.id && eventId !== event.id) {
-    return NextResponse.json({ result: 'wrong_event' });
+    return NextResponse.json({ valid: false, result: 'wrong_event' });
   }
-  if (occurrenceId && ticket.occurrence_id && occurrenceId !== ticket.occurrence_id) {
-    return NextResponse.json({ result: 'wrong_occurrence' });
+  if (
+    occurrenceId &&
+    ticket.occurrence_id &&
+    occurrenceId !== ticket.occurrence_id
+  ) {
+    return NextResponse.json({ valid: false, result: 'wrong_occurrence' });
   }
 
   if (
@@ -80,7 +93,10 @@ export async function POST(req: NextRequest) {
       organizer_id: event?.organizer_id,
     }))
   ) {
-    return NextResponse.json({ result: 'forbidden' }, { status: 403 });
+    return NextResponse.json(
+      { valid: false, result: 'forbidden' },
+      { status: 403 },
+    );
   }
 
   const ticketPayload = {
@@ -96,6 +112,7 @@ export async function POST(req: NextRequest) {
     status: ticket.status,
   };
 
+  // READ ONLY — never writes. Just classify the ticket's current status.
   if (ticket.status === 'used') {
     const { data: row } = await supabase
       .from('tickets')
@@ -103,6 +120,7 @@ export async function POST(req: NextRequest) {
       .eq('id', ticket.id)
       .maybeSingle();
     return NextResponse.json({
+      valid: false,
       result: 'already_used',
       checkedInAt: row?.checked_in_at ?? null,
       ticket: ticketPayload,
@@ -111,36 +129,17 @@ export async function POST(req: NextRequest) {
 
   if (ticket.status !== 'valid') {
     // refunded / void / etc.
-    return NextResponse.json({ result: 'invalid', status: ticket.status });
-  }
-
-  // Conditional update: only the scan that flips 'valid' -> 'used' wins, so two
-  // simultaneous scans can't both succeed.
-  const now = new Date().toISOString();
-  const { data: updated } = await supabase
-    .from('tickets')
-    .update({ status: 'used', checked_in_at: now, checked_in_by: checkedInBy })
-    .eq('id', ticket.id)
-    .eq('status', 'valid')
-    .select('id');
-
-  if (!updated || updated.length === 0) {
-    // Lost the race — it was just checked in elsewhere.
-    const { data: row } = await supabase
-      .from('tickets')
-      .select('checked_in_at')
-      .eq('id', ticket.id)
-      .maybeSingle();
     return NextResponse.json({
-      result: 'already_used',
-      checkedInAt: row?.checked_in_at ?? null,
-      ticket: { ...ticketPayload, status: 'used' },
+      valid: false,
+      result: 'invalid',
+      status: ticket.status,
     });
   }
 
+  // Genuine ticket for this event, not yet used.
   return NextResponse.json({
+    valid: true,
     result: 'ok',
-    verifiedAt: now,
-    ticket: { ...ticketPayload, status: 'used' },
+    ticket: ticketPayload,
   });
 }

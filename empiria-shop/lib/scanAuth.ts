@@ -88,13 +88,15 @@ export async function findActiveVolunteerCode(code: string): Promise<{
   event_id: string;
   use_count: number;
 } | null> {
-  const trimmed = code.trim();
-  if (!trimmed) return null;
+  // Codes are generated and stored upper-case; normalize the input so a
+  // lower/mixed-case value (typed or pasted) still matches.
+  const normalized = code.trim().toUpperCase();
+  if (!normalized) return null;
   const supabase = getSupabaseAdmin();
   const { data } = await supabase
     .from('event_volunteer_codes')
     .select('id, event_id, is_active, expires_at, use_count')
-    .eq('code', trimmed)
+    .eq('code', normalized)
     .maybeSingle();
   if (!data || !data.is_active || isExpired(data.expires_at)) return null;
   return { id: data.id, event_id: data.event_id, use_count: data.use_count ?? 0 };
