@@ -207,7 +207,9 @@ export default async function MovieDetailPage({ params }: PageProps) {
           description: stripToText(event.description),
           image: jsonLdImage,
           startDate: jsonLdOcc?.starts_at || undefined,
-          endDate: jsonLdOcc?.ends_at || undefined,
+          // Fall back to startDate when no end time is set (mirrors the events
+          // page) so the recommended endDate field is always present.
+          endDate: jsonLdOcc?.ends_at || jsonLdOcc?.starts_at || undefined,
           url: absoluteUrl(`/gifft/${event.slug}`),
           isOnline: jsonLdOnline,
           venueName: event.venue_name,

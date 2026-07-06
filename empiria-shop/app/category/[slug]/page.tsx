@@ -192,6 +192,11 @@ export default async function CategoryPage({
     const cityPhrase = cityPhraseFrom(events.map((e: any) => e.city));
     const inCities = cityPhrase ? ` in ${cityPhrase}` : '';
 
+    // Summary-page ItemList: each entry is just the canonical detail-page URL.
+    // Google follows each URL and reads the complete Event markup rendered on
+    // /events/[slug], so we avoid emitting partial Event objects here — which
+    // Search Console flags for missing recommended fields (image, organizer,
+    // description, endDate, performer).
     const itemListJsonLd = {
         '@context': 'https://schema.org',
         '@type': 'ItemList',
@@ -199,24 +204,7 @@ export default async function CategoryPage({
         itemListElement: events.map((e: any, i: number) => ({
             '@type': 'ListItem',
             position: i + 1,
-            item: {
-                '@type': 'Event',
-                name: e.title,
-                url: absoluteUrl('/events/' + e.slug),
-                ...(e.event_occurrences?.[0]?.starts_at
-                    ? { startDate: e.event_occurrences[0].starts_at }
-                    : {}),
-                // Each event's real city → per-event location signal on the page.
-                ...(e.city
-                    ? {
-                          location: {
-                              '@type': 'Place',
-                              name: e.venue_name || e.city,
-                              address: { '@type': 'PostalAddress', addressLocality: e.city },
-                          },
-                      }
-                    : {}),
-            },
+            url: absoluteUrl('/events/' + e.slug),
         })),
     };
 
