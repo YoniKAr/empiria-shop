@@ -71,11 +71,13 @@ export default async function ShopHome({
         .eq('event_type', 'event')
         .order('created_at', { ascending: false });
 
+    // Fetch ALL published events (safety cap only) — the grid paginates them
+    // client-side with a "Load More" button, and client search must see every
+    // event, not just the first page. The old 12 cap hid most of the platform.
     if (activeCategoryId) {
-        eventsQuery = eventsQuery.eq('category_id', activeCategoryId).limit(60);
-    } else {
-        eventsQuery = eventsQuery.limit(12);
+        eventsQuery = eventsQuery.eq('category_id', activeCategoryId);
     }
+    eventsQuery = eventsQuery.limit(500);
 
     const { data: realEvents } = await eventsQuery;
 

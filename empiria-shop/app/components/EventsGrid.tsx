@@ -2,8 +2,11 @@
 
 import { Search } from 'lucide-react';
 import Link from 'next/link';
+import { useState, useEffect } from 'react';
 import { getCurrencySymbol } from '@/lib/utils';
 import { EventCard } from './EventCard';
+
+const PAGE_SIZE = 12;
 
 interface Event {
     id: string;
@@ -48,6 +51,13 @@ export default function EventsGrid({ events, query, categories, activeCategory }
               );
           })
         : events;
+
+    // Paginate client-side: show PAGE_SIZE at a time, reveal more on demand.
+    // Reset back to the first page whenever the search query changes.
+    const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+    useEffect(() => { setVisibleCount(PAGE_SIZE); }, [query]);
+    const visible = filtered.slice(0, visibleCount);
+    const hasMore = filtered.length > visibleCount;
 
     return (
         <div className="w-full bg-white">
@@ -105,8 +115,9 @@ export default function EventsGrid({ events, query, categories, activeCategory }
                         )}
                     </div>
                 ) : (
+                    <>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                        {filtered.map((event) => {
+                        {visible.map((event) => {
                             const prices = event.ticket_tiers?.map((t) => t.price) || [];
                             const minPrice = prices.length > 0 ? Math.min(...prices) : 0;
                             const currency = event.currency || 'cad';
@@ -139,6 +150,18 @@ export default function EventsGrid({ events, query, categories, activeCategory }
                             );
                         })}
                     </div>
+                    {hasMore && (
+                        <div className="flex justify-center mt-10">
+                            <button
+                                type="button"
+                                onClick={() => setVisibleCount((n) => n + PAGE_SIZE)}
+                                className="px-6 py-2.5 rounded-full border border-[#F15A29] text-[#F15A29] font-semibold text-sm hover:bg-[#F15A29] hover:text-white transition-colors"
+                            >
+                                Load more events
+                            </button>
+                        </div>
+                    )}
+                    </>
                 )}
 
             </div>
