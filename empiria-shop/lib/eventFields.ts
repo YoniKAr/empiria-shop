@@ -17,12 +17,13 @@ export interface FieldResponse {
 
 export type EventVisibility = "public" | "private";
 export type EntryType = "ticketed" | "external";
-export type CtaLabel = "buy_tickets" | "register" | "rsvp";
+export type CtaLabel = "buy_tickets" | "register" | "rsvp" | "learn_more";
 
 export const CTA_LABELS: Record<CtaLabel, string> = {
   buy_tickets: "Buy Tickets",
   register: "Register",
   rsvp: "RSVP",
+  learn_more: "Learn More",
 };
 
 // Email/UX noun for the chosen CTA.
@@ -30,6 +31,7 @@ export const CTA_NOUN: Record<CtaLabel, { plural: string; confirmation: string; 
   buy_tickets: { plural: "tickets", confirmation: "Here are your tickets and order details.", section: "Your Tickets" },
   register:    { plural: "registration", confirmation: "Here's your registration confirmation.", section: "Your Registration" },
   rsvp:        { plural: "RSVP", confirmation: "Here's your RSVP confirmation.", section: "Your RSVP" },
+  learn_more:  { plural: "tickets", confirmation: "Here are your tickets and order details.", section: "Your Tickets" },
 };
 
 export function ctaButtonText(label: string | null | undefined): string {

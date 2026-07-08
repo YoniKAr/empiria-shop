@@ -140,7 +140,7 @@ export async function sendOrderConfirmationEmail(data: OrderEmailData) {
     ),
   ]);
 
-  const pick = ({ buy_tickets: ticketsTpl, register: registrationTpl, rsvp: rsvpTpl } as const)[(data.ctaLabel as CtaLabel) ?? 'buy_tickets'] ?? ticketsTpl;
+  const pick = ({ buy_tickets: ticketsTpl, register: registrationTpl, rsvp: rsvpTpl, learn_more: ticketsTpl } as const)[(data.ctaLabel as CtaLabel) ?? 'buy_tickets'] ?? ticketsTpl;
   const { subject, html } = pick(data, walletResults);
 
   // Inline images the templates reference via cid: — the Empiria logo and the
