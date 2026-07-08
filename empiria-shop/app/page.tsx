@@ -43,21 +43,13 @@ export default async function ShopHome({
         .order('created_at', { ascending: false })
         .limit(5);
 
-    // Resolve the active category slug → id (so we can filter server-side).
-    let activeCategoryId: string | null = null;
-    if (activeCategory) {
-        const { data: cat } = await supabase
-            .from('categories')
-            .select('id')
-            .eq('slug', activeCategory)
-            .maybeSingle();
-        activeCategoryId = cat?.id ?? null;
-    }
-
-    // Fetch events for the grid.
-    // When a category is selected, filter server-side (no 12 cap) so categories
-    // with events outside the default page still show their events.
-    let eventsQuery = supabase
+    // Fetch ALL published events for the grid (safety cap only). The category
+    // pills filter these CLIENT-SIDE for a smooth, instant experience (no page
+    // navigation), and client search must see every event — so we never filter
+    // by category server-side here. The dedicated /category/[slug] pages exist
+    // separately for SEO. `activeCategory` (from ?category=) only sets the pill
+    // that's pre-selected on load.
+    const eventsQuery = supabase
         .from('events')
         .select(`
       id, title, slug, cover_image_url, timezone,
@@ -69,15 +61,8 @@ export default async function ShopHome({
         .eq('status', 'published')
         .eq('visibility', 'public')
         .eq('event_type', 'event')
-        .order('created_at', { ascending: false });
-
-    // Fetch ALL published events (safety cap only) — the grid paginates them
-    // client-side with a "Load More" button, and client search must see every
-    // event, not just the first page. The old 12 cap hid most of the platform.
-    if (activeCategoryId) {
-        eventsQuery = eventsQuery.eq('category_id', activeCategoryId);
-    }
-    eventsQuery = eventsQuery.limit(500);
+        .order('created_at', { ascending: false })
+        .limit(500);
 
     const { data: realEvents } = await eventsQuery;
 

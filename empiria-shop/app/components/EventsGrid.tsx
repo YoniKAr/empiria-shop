@@ -36,26 +36,35 @@ interface EventsGridProps {
 }
 
 export default function EventsGrid({ events, query, categories, activeCategory }: EventsGridProps) {
-    const activeCategoryName = activeCategory
-        ? categories.find((c) => c.slug === activeCategory)?.name ?? null
+    // Category filtering happens CLIENT-SIDE for an instant, smooth experience —
+    // clicking a pill filters the events already on the page (no navigation).
+    // Initialized from ?category= so shared/old links still open pre-filtered.
+    // The dedicated /category/[slug] pages exist separately for SEO.
+    const [selectedSlug, setSelectedSlug] = useState<string | null>(activeCategory);
+    const selectedCategoryName = selectedSlug
+        ? categories.find((c) => c.slug === selectedSlug)?.name ?? null
         : null;
 
-    const filtered = query.trim()
-        ? events.filter((event) => {
-              const q = query.toLowerCase();
-              return (
-                  event.title?.toLowerCase().includes(q) ||
-                  event.venue_name?.toLowerCase().includes(q) ||
-                  event.city?.toLowerCase().includes(q) ||
-                  (event as any).categories?.name?.toLowerCase().includes(q)
-              );
-          })
-        : events;
+    const filtered = events.filter((event) => {
+        // Category filter (match on the event's category name).
+        if (selectedCategoryName && event.categories?.name !== selectedCategoryName) return false;
+        // Search filter.
+        if (query.trim()) {
+            const q = query.toLowerCase();
+            return (
+                event.title?.toLowerCase().includes(q) ||
+                event.venue_name?.toLowerCase().includes(q) ||
+                event.city?.toLowerCase().includes(q) ||
+                event.categories?.name?.toLowerCase().includes(q)
+            );
+        }
+        return true;
+    });
 
     // Paginate client-side: show PAGE_SIZE at a time, reveal more on demand.
-    // Reset back to the first page whenever the search query changes.
+    // Reset to the first page whenever the search query or category changes.
     const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
-    useEffect(() => { setVisibleCount(PAGE_SIZE); }, [query]);
+    useEffect(() => { setVisibleCount(PAGE_SIZE); }, [query, selectedSlug]);
     const visible = filtered.slice(0, visibleCount);
     const hasMore = filtered.length > visibleCount;
 
@@ -67,20 +76,18 @@ export default function EventsGrid({ events, query, categories, activeCategory }
                     <h2 className="text-2xl font-bold text-[#F15A29]">
                         {query.trim()
                             ? `Results for "${query}" (${filtered.length})`
-                            : activeCategoryName
-                                ? activeCategoryName
+                            : selectedCategoryName
+                                ? `${selectedCategoryName} Events`
                                 : 'Upcoming Events'}
                     </h2>
                     <div className="flex flex-wrap gap-2">
                         {[{ name: 'All', slug: null as string | null }, ...categories].map((cat) => {
-                            const isActive = cat.slug === null
-                                ? !activeCategory
-                                : cat.slug === activeCategory;
-                            const href = cat.slug === null ? '/' : `/category/${cat.slug}`;
+                            const isActive = cat.slug === null ? !selectedSlug : cat.slug === selectedSlug;
                             return (
-                                <Link
+                                <button
                                     key={cat.name}
-                                    href={href}
+                                    type="button"
+                                    onClick={() => setSelectedSlug(cat.slug)}
                                     className={`px-4 py-1.5 rounded-full border text-sm font-medium transition-colors ${
                                         isActive
                                             ? 'border-[#F15A29] bg-[#F15A29] text-white'
@@ -88,11 +95,23 @@ export default function EventsGrid({ events, query, categories, activeCategory }
                                     }`}
                                 >
                                     {cat.name}
-                                </Link>
+                                </button>
                             );
                         })}
                     </div>
                 </div>
+
+                {/* Internal link to the dedicated (crawlable, SEO) category page. */}
+                {selectedSlug && selectedCategoryName && (
+                    <div className="-mt-4 mb-8">
+                        <Link
+                            href={`/category/${selectedSlug}`}
+                            className="text-sm font-medium text-[#F15A29] hover:underline"
+                        >
+                            View the full {selectedCategoryName} events page →
+                        </Link>
+                    </div>
+                )}
 
                 {filtered.length === 0 ? (
                     <div className="text-center py-20 text-gray-600">
@@ -102,9 +121,9 @@ export default function EventsGrid({ events, query, categories, activeCategory }
                                 <p className="text-lg font-medium">No events found for &quot;{query}&quot;</p>
                                 <p className="text-sm mt-1">Try a different search term.</p>
                             </>
-                        ) : activeCategoryName ? (
+                        ) : selectedCategoryName ? (
                             <>
-                                <p className="text-lg font-medium">No events in {activeCategoryName}</p>
+                                <p className="text-lg font-medium">No events in {selectedCategoryName}</p>
                                 <p className="text-sm mt-1">Try a different category.</p>
                             </>
                         ) : (
