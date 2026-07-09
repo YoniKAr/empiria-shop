@@ -105,19 +105,37 @@ export default async function ShopHome({
             coHostCountMap[r.event_id] = (coHostCountMap[r.event_id] || 0) + 1;
         });
 
-        events = realEvents.map((e: any) => ({
-            ...e,
-            event_occurrences: [...(e.event_occurrences || [])].sort(
+        const now = Date.now();
+        events = realEvents.map((e: any) => {
+            const occs = [...(e.event_occurrences || [])].sort(
                 (a: any, b: any) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime()
-            ),
-            organizer_name: roleMap[e.organizer_id] === 'admin'
-                ? 'Empiria Events'
-                : (profileMap[e.organizer_id] || 'Empiria Events'),
-            organizer_avatar_url: roleMap[e.organizer_id] === 'admin'
-                ? platformAvatarUrl
-                : (avatarMap[e.organizer_id] || null),
-            co_host_count: coHostCountMap[e.id] || 0,
-        }));
+            );
+            const nextFuture = occs.find((o: any) => new Date(o.starts_at).getTime() >= now);
+            return {
+                ...e,
+                event_occurrences: occs,
+                _nextFutureTs: nextFuture ? new Date(nextFuture.starts_at).getTime() : null,
+                organizer_name: roleMap[e.organizer_id] === 'admin'
+                    ? 'Empiria Events'
+                    : (profileMap[e.organizer_id] || 'Empiria Events'),
+                organizer_avatar_url: roleMap[e.organizer_id] === 'admin'
+                    ? platformAvatarUrl
+                    : (avatarMap[e.organizer_id] || null),
+                co_host_count: coHostCountMap[e.id] || 0,
+            };
+        });
+
+        // Order by event DATE, not created_at: soonest UPCOMING event first,
+        // past events last (matches the category pages).
+        events.sort((a: any, b: any) => {
+            if (a._nextFutureTs != null && b._nextFutureTs != null) return a._nextFutureTs - b._nextFutureTs;
+            if (a._nextFutureTs != null) return -1;
+            if (b._nextFutureTs != null) return 1;
+            // Both past → most recent past date first.
+            const aLast = a.event_occurrences?.[a.event_occurrences.length - 1]?.starts_at;
+            const bLast = b.event_occurrences?.[b.event_occurrences.length - 1]?.starts_at;
+            return new Date(bLast || 0).getTime() - new Date(aLast || 0).getTime();
+        });
     }
 
     // Fetch active categories that are enabled for the landing page filter buttons
