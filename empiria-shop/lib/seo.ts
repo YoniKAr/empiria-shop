@@ -6,6 +6,7 @@
  * it can run in Server Components + generateMetadata everywhere.
  */
 import { SHOP_URL } from '@/lib/urls';
+import { zonedIsoWithOffset, DEFAULT_TZ } from '@/lib/datetime';
 
 /** Resolve a path against the shop base URL (e.g. "/events/foo"). */
 export function absoluteUrl(path: string): string {
@@ -75,6 +76,9 @@ export interface EventJsonLdInput {
   startDate?: string;
   /** ISO 8601 end. */
   endDate?: string;
+  /** IANA timezone of the event (e.g. "America/Toronto"). start/endDate are
+   *  emitted in this local zone WITH offset, per Google's Event guidelines. */
+  timeZone?: string;
   /** Canonical event URL (absolute). */
   url: string;
   /** true when the event is online/virtual. */
@@ -109,6 +113,7 @@ export function buildEventJsonLd(input: EventJsonLdInput): Record<string, unknow
     image,
     startDate,
     endDate,
+    timeZone = DEFAULT_TZ,
     url,
     isOnline = false,
     onlineUrl,
@@ -161,8 +166,12 @@ export function buildEventJsonLd(input: EventJsonLdInput): Record<string, unknow
 
   if (description) jsonLd.description = description;
   if (images && images.length > 0) jsonLd.image = images;
-  if (startDate) jsonLd.startDate = startDate;
-  if (endDate) jsonLd.endDate = endDate;
+  // Emit dates in the event's LOCAL time with offset (Google's recommended
+  // format) instead of raw UTC, so results show the correct local date/time.
+  const startLocal = startDate ? zonedIsoWithOffset(startDate, timeZone) : null;
+  const endLocal = endDate ? zonedIsoWithOffset(endDate, timeZone) : null;
+  if (startLocal) jsonLd.startDate = startLocal;
+  if (endLocal) jsonLd.endDate = endLocal;
 
   if (organizerName) {
     const org = {

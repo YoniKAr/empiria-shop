@@ -359,6 +359,7 @@ export default async function EventPage({ params }: { params: Promise<{ slug: st
                     image: coverImageUrl || undefined,
                     startDate: heroStartAt,
                     endDate: heroEndAt,
+                    timeZone: event.timezone || undefined,
                     url: absoluteUrl(`/events/${event.slug}`),
                     isOnline,
                     onlineUrl: (event as any).meeting_link || undefined,

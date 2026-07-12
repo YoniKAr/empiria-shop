@@ -115,6 +115,41 @@ export function formatEventDateTime(
   }).format(date);
 }
 
+/**
+ * Convert a stored UTC instant to a full ISO-8601 string in `timeZone` WITH the
+ * numeric offset — e.g. "2026-11-28T19:00:00-05:00". This is the format Google
+ * recommends for schema.org Event startDate/endDate (local time + offset), so
+ * search results show the correct local date/time (not UTC midnight). Returns
+ * null for empty/invalid input.
+ */
+export function zonedIsoWithOffset(
+  iso: string | null | undefined,
+  timeZone: string = DEFAULT_TZ
+): string | null {
+  if (!iso) return null;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return null;
+  const tz = timeZone || DEFAULT_TZ;
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz,
+    hourCycle: 'h23',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).formatToParts(date);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '00';
+  const local = `${get('year')}-${get('month')}-${get('day')}T${get('hour')}:${get('minute')}:${get('second')}`;
+  const offset = tzOffsetMinutes(date, tz); // minutes, positive = ahead of UTC
+  const sign = offset >= 0 ? '+' : '-';
+  const abs = Math.abs(offset);
+  const oh = String(Math.floor(abs / 60)).padStart(2, '0');
+  const om = String(abs % 60).padStart(2, '0');
+  return `${local}${sign}${oh}:${om}`;
+}
+
 /** Just the timezone abbreviation for an instant (e.g. "EST", "PDT", "GMT+5:30"). */
 export function tzAbbreviation(iso: string | null | undefined, timeZone: string = DEFAULT_TZ): string {
   const date = iso ? new Date(iso) : new Date();
