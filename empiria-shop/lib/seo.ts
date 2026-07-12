@@ -136,7 +136,15 @@ export function buildEventJsonLd(input: EventJsonLdInput): Record<string, unknow
     : {
         '@type': 'Place',
         name: venueName || city || 'Venue TBA',
-        address: [addressText, city].filter(Boolean).join(', ') || city || 'Canada',
+        // Structured PostalAddress (Google's preferred form). streetAddress holds
+        // the full formatted address; addressLocality is the city. Avoids the old
+        // "…Canada, Toronto" duplication from concatenating the two.
+        address: {
+          '@type': 'PostalAddress',
+          ...(addressText ? { streetAddress: addressText } : {}),
+          addressLocality: city || 'Toronto',
+          addressCountry: 'CA',
+        },
       };
 
   const jsonLd: Record<string, unknown> = {
