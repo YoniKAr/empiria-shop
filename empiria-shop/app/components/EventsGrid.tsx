@@ -8,6 +8,18 @@ import { EventCard } from './EventCard';
 
 const PAGE_SIZE = 12;
 
+// City slug rule (kept in sync with the /city/[citySlug] pages): lowercase,
+// trim, strip diacritics, collapse non-alphanumerics to single hyphens.
+function toCitySlug(value: string): string {
+    return value
+        .toLowerCase()
+        .trim()
+        .normalize('NFKD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+}
+
 interface Event {
     id: string;
     title: string;
@@ -61,6 +73,37 @@ export default function EventsGrid({ events, query, categories, activeCategory }
         return true;
     });
 
+    // Smart search suggestions: when the search text matches a known city
+    // and/or category name (case-insensitive substring, min 3 chars), offer
+    // direct links to the dedicated crawlable browse pages.
+    const suggestionQuery = query.trim().toLowerCase();
+    let cityMatch: { name: string; slug: string } | null = null;
+    let categoryMatch: { name: string; slug: string } | null = null;
+    if (suggestionQuery.length >= 3) {
+        // Dedupe cities case-insensitively by slug (first casing wins).
+        const citiesBySlug = new Map<string, string>();
+        for (const e of events) {
+            const city = e.city?.trim();
+            if (!city) continue;
+            const slug = toCitySlug(city);
+            if (slug && !citiesBySlug.has(slug)) citiesBySlug.set(slug, city);
+        }
+        for (const [slug, name] of citiesBySlug) {
+            const lower = name.toLowerCase();
+            if (lower.includes(suggestionQuery) || suggestionQuery.includes(lower)) {
+                cityMatch = { name, slug };
+                break;
+            }
+        }
+        for (const cat of categories) {
+            const lower = cat.name.toLowerCase();
+            if (lower.includes(suggestionQuery) || suggestionQuery.includes(lower)) {
+                categoryMatch = { name: cat.name, slug: cat.slug };
+                break;
+            }
+        }
+    }
+
     // Paginate client-side: show PAGE_SIZE at a time, reveal more on demand.
     // Reset to the first page whenever the search query or category changes.
     const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
@@ -110,6 +153,36 @@ export default function EventsGrid({ events, query, categories, activeCategory }
                         >
                             View the full {selectedCategoryName} events page →
                         </Link>
+                    </div>
+                )}
+
+                {/* Smart suggestion links to the dedicated city/category browse pages. */}
+                {(cityMatch || categoryMatch) && (
+                    <div className="mb-8 flex flex-wrap items-center gap-2 rounded-2xl border border-[#F15A29]/25 bg-[#F15A29]/5 px-4 py-3">
+                        {cityMatch && (
+                            <Link
+                                href={`/city/${cityMatch.slug}`}
+                                className="px-4 py-1.5 rounded-full border border-[#F15A29] bg-white text-sm font-medium text-[#F15A29] hover:bg-[#F15A29] hover:text-white transition-colors"
+                            >
+                                See all events in {cityMatch.name} →
+                            </Link>
+                        )}
+                        {categoryMatch && (
+                            <Link
+                                href={`/category/${categoryMatch.slug}`}
+                                className="px-4 py-1.5 rounded-full border border-[#F15A29] bg-white text-sm font-medium text-[#F15A29] hover:bg-[#F15A29] hover:text-white transition-colors"
+                            >
+                                See all {categoryMatch.name} events →
+                            </Link>
+                        )}
+                        {cityMatch && categoryMatch && (
+                            <Link
+                                href={`/city/${cityMatch.slug}/${categoryMatch.slug}`}
+                                className="px-4 py-1.5 rounded-full border border-[#F15A29] bg-[#F15A29] text-sm font-medium text-white hover:bg-[#d94d20] transition-colors"
+                            >
+                                {categoryMatch.name} events in {cityMatch.name} →
+                            </Link>
+                        )}
                     </div>
                 )}
 

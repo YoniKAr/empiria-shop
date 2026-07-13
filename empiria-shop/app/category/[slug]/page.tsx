@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import Navbar from '@/components/Navbar';
@@ -7,6 +8,7 @@ import { EventCard } from '@/app/components/EventCard';
 import { getCurrencySymbol } from '@/lib/utils';
 import JsonLd from '@/components/JsonLd';
 import { absoluteUrl, truncate, buildBreadcrumbJsonLd, buildEventJsonLd, stripToText } from '@/lib/seo';
+import { slugifyCity } from '@/lib/browse';
 
 export async function generateMetadata({
     params,
@@ -164,6 +166,21 @@ export default async function CategoryPage({
         }));
     }
 
+    // Cities represented in this category → crawlable "By city" chip links to
+    // the programmatic /city/{city}/{category} SEO pages.
+    const cityChipMap = new Map<string, { name: string; slug: string; count: number }>();
+    for (const e of withSort) {
+        const raw = (e.city || '').trim();
+        const citySlug = slugifyCity(raw);
+        if (!citySlug) continue;
+        const cur = cityChipMap.get(citySlug);
+        if (cur) cur.count += 1;
+        else cityChipMap.set(citySlug, { name: raw, slug: citySlug, count: 1 });
+    }
+    const cityChips = [...cityChipMap.values()].sort(
+        (a, b) => b.count - a.count || a.name.localeCompare(b.name)
+    );
+
     // Summary-page ItemList of the event URLs (list order/semantics).
     const itemListJsonLd = {
         '@context': 'https://schema.org',
@@ -224,6 +241,22 @@ export default async function CategoryPage({
                 <p className="text-gray-700 mb-8 max-w-2xl">
                     Discover and buy tickets to all {category.name} events across Canada with Empiria Events.
                 </p>
+
+                {/* Crawlable "By city" chips → /city/{city}/{category} combo pages. */}
+                {cityChips.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mb-8">
+                        {cityChips.map((c) => (
+                            <Link
+                                key={c.slug}
+                                href={`/city/${c.slug}/${category.slug}`}
+                                className="inline-flex items-center gap-1.5 border border-gray-200 rounded-full px-4 py-1.5 text-sm font-medium text-slate-900 hover:border-[#F15A29] hover:text-[#F15A29] transition-colors"
+                            >
+                                {category.name} in {c.name}
+                                <span className="text-xs text-gray-500">({c.count})</span>
+                            </Link>
+                        ))}
+                    </div>
+                )}
 
                 {events.length === 0 ? (
                     <p className="text-gray-700">

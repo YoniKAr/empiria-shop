@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
@@ -18,6 +19,18 @@ export const metadata: Metadata = {
         type: 'website',
     },
 };
+
+// City slug rule (kept in sync with the /city/[citySlug] pages): lowercase,
+// trim, strip diacritics, collapse non-alphanumerics to single hyphens.
+function toCitySlug(value: string): string {
+    return value
+        .toLowerCase()
+        .trim()
+        .normalize('NFKD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+}
 
 export default async function ShopHome({
     searchParams,
@@ -148,6 +161,29 @@ export default async function ShopHome({
 
     const featuredEvents = (rawFeatured || []) as any[];
 
+    // Distinct cities for the crawlable "Browse events by city" section —
+    // derived from the events already fetched above (no extra query). Deduped
+    // case-insensitively by slug (most common casing wins), sorted by count.
+    const cityStats = new Map<string, { count: number; casings: Map<string, number> }>();
+    for (const e of events) {
+        const city = typeof e.city === 'string' ? e.city.trim() : '';
+        if (!city) continue;
+        const slug = toCitySlug(city);
+        if (!slug) continue;
+        const entry = cityStats.get(slug) || { count: 0, casings: new Map<string, number>() };
+        entry.count += 1;
+        entry.casings.set(city, (entry.casings.get(city) || 0) + 1);
+        cityStats.set(slug, entry);
+    }
+    const browseCities = [...cityStats.entries()]
+        .map(([slug, { count, casings }]) => ({
+            slug,
+            count,
+            name: [...casings.entries()].sort((a, b) => b[1] - a[1])[0][0],
+        }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 16);
+
     return (
         <div className="min-h-screen bg-white font-sans text-slate-900">
             <Navbar overlay />
@@ -157,6 +193,28 @@ export default async function ShopHome({
                 categories={(categories || []) as { id: string; name: string; slug: string }[]}
                 activeCategory={activeCategory ?? null}
             />
+            {/* Server-rendered (crawlable) internal links to the city browse pages. */}
+            {browseCities.length > 0 && (
+                <section className="w-full bg-white">
+                    <div className="max-w-7xl mx-auto px-4 sm:px-6 pb-16 text-left">
+                        <h2 className="text-2xl font-bold text-[#F15A29] mb-6">Browse events by city</h2>
+                        <div className="flex flex-wrap gap-2">
+                            {browseCities.map((c) => (
+                                <Link
+                                    key={c.slug}
+                                    href={`/city/${c.slug}`}
+                                    className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-gray-200 bg-white text-sm font-medium text-slate-700 hover:border-[#F15A29] hover:text-[#F15A29] transition-colors"
+                                >
+                                    {c.name}
+                                    <span className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full bg-[#F15A29]/10 text-xs font-semibold text-[#F15A29]">
+                                        {c.count}
+                                    </span>
+                                </Link>
+                            ))}
+                        </div>
+                    </div>
+                </section>
+            )}
             <Footer />
         </div>
     );
