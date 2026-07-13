@@ -6,7 +6,7 @@ import Footer from '@/components/Footer';
 import { EventCard } from '@/app/components/EventCard';
 import { getCurrencySymbol } from '@/lib/utils';
 import JsonLd from '@/components/JsonLd';
-import { absoluteUrl, truncate, buildBreadcrumbJsonLd } from '@/lib/seo';
+import { absoluteUrl, truncate, buildBreadcrumbJsonLd, buildEventJsonLd, stripToText } from '@/lib/seo';
 
 export async function generateMetadata({
     params,
@@ -69,15 +69,18 @@ export default async function CategoryPage({
         notFound();
     }
 
-    // Fetch published + public standard events in this category (same columns as home).
+    // Fetch published + public standard events in this category. Extra fields
+    // (description, address_text, location_type, meeting_link, occurrence
+    // ends_at) let us emit COMPLETE per-event Event JSON-LD on this listing page.
     const { data: rawEvents } = await supabase
         .from('events')
         .select(`
       id, title, slug, cover_image_url, timezone,
-      venue_name, city, currency, organizer_id, source_app, entry_type,
+      venue_name, city, address_text, location_type, meeting_link,
+      currency, organizer_id, source_app, entry_type, description,
       categories (name),
       ticket_tiers (price),
-      event_occurrences (starts_at)
+      event_occurrences (starts_at, ends_at)
     `)
         .eq('status', 'published')
         .eq('visibility', 'public')
@@ -161,11 +164,7 @@ export default async function CategoryPage({
         }));
     }
 
-    // Summary-page ItemList: each entry is just the canonical detail-page URL.
-    // Google follows each URL and reads the complete Event markup rendered on
-    // /events/[slug], so we avoid emitting partial Event objects here — which
-    // Search Console flags for missing recommended fields (image, organizer,
-    // description, endDate, performer).
+    // Summary-page ItemList of the event URLs (list order/semantics).
     const itemListJsonLd = {
         '@context': 'https://schema.org',
         '@type': 'ItemList',
@@ -176,6 +175,46 @@ export default async function CategoryPage({
             url: absoluteUrl('/events/' + e.slug),
         })),
     };
+
+    // COMPLETE Event JSON-LD per event, rendered directly on this listing page so
+    // Google detects every event here (not only on the individual detail pages).
+    // Uses the same warning-free builder as /events/[slug] — all recommended
+    // fields present (image, description, dates+tz, location, offers, organizer,
+    // performer) so Search Console reports them as valid, not "missing fields".
+    const supabaseBase = process.env.SUPABASE_URL || '';
+    const eventJsonLd = events.map((e: any) => {
+        const occs = e.event_occurrences || [];
+        const nextOcc = occs.find((o: any) => new Date(o.starts_at).getTime() >= now) || occs[0];
+        const prices = (e.ticket_tiers || []).map((t: any) => t.price).filter((p: any) => p != null);
+        const minPrice = prices.length ? Math.min(...prices) : null;
+        const isExternal = e.entry_type === 'external';
+        const isOnline = e.location_type === 'online';
+        const cover = e.cover_image_url
+            ? (/^https?:\/\//i.test(e.cover_image_url)
+                ? e.cover_image_url
+                : `${supabaseBase}/storage/v1/object/public/${e.cover_image_url}`)
+            : undefined;
+        return buildEventJsonLd({
+            name: e.title,
+            description: stripToText(e.description),
+            image: cover,
+            startDate: nextOcc?.starts_at,
+            endDate: nextOcc?.ends_at || nextOcc?.starts_at,
+            timeZone: e.timezone || undefined,
+            url: absoluteUrl('/events/' + e.slug),
+            isOnline,
+            onlineUrl: e.meeting_link || undefined,
+            venueName: e.venue_name,
+            addressText: e.address_text,
+            city: e.city,
+            price: isExternal ? null : minPrice,
+            priceCurrency: (e.currency || 'cad').toUpperCase(),
+            offerValidFrom: new Date().toISOString(),
+            organizerName: e.organizer_name,
+            includePerformer: true,
+            omitOffers: isExternal,
+        });
+    });
 
     return (
         <div className="min-h-screen bg-white font-sans text-slate-900">
@@ -231,6 +270,11 @@ export default async function CategoryPage({
                     { name: category.name, url: absoluteUrl('/category/' + category.slug) },
                 ])}
             />
+            {/* One complete Event block per event → Google detects every event
+                on this listing page ("Events: N valid items detected"). */}
+            {eventJsonLd.map((data: Record<string, unknown>, i: number) => (
+                <JsonLd key={events[i].id} data={data} />
+            ))}
         </div>
     );
 }
