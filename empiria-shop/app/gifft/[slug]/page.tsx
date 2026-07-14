@@ -185,8 +185,13 @@ export default async function MovieDetailPage({ params }: PageProps) {
     similarMovies = [...similarMovies, ...(otherMovies || [])];
   }
 
-  // ── SEO: schema.org Event JSON-LD for the movie screening ──
-  const jsonLdOcc = futureOccurrences[0] || allOccurrences[0];
+  // ── SEO: schema.org ScreeningEvent JSON-LD — one per upcoming showtime
+  // (Google's guideline for movies: mark up each screening individually).
+  // Falls back to the most recent occurrence when nothing is upcoming so the
+  // page still carries Event markup.
+  const jsonLdOccs = futureOccurrences.length
+    ? futureOccurrences.slice(0, 25)
+    : allOccurrences.slice(-1);
   const rawPoster = (movie as any)?.poster_url || (event as any).cover_image_url || '';
   const jsonLdImage = rawPoster
     ? (rawPoster.startsWith('http')
@@ -201,28 +206,40 @@ export default async function MovieDetailPage({ params }: PageProps) {
 
   return (
     <div className="min-h-screen bg-white font-sans text-slate-900">
-      <JsonLd
-        data={buildEventJsonLd({
-          name: event.title,
-          description: stripToText(event.description),
-          image: jsonLdImage,
-          startDate: jsonLdOcc?.starts_at || undefined,
-          // Fall back to startDate when no end time is set (mirrors the events
-          // page) so the recommended endDate field is always present.
-          endDate: jsonLdOcc?.ends_at || jsonLdOcc?.starts_at || undefined,
-          timeZone: (event as any).timezone || undefined,
-          url: absoluteUrl(`/gifft/${event.slug}`),
-          isOnline: jsonLdOnline,
-          venueName: event.venue_name,
-          addressText: (event as any).address_text,
-          city: event.city,
-          price: jsonLdPrice,
-          priceCurrency: ((event as any).currency || 'cad').toUpperCase(),
-          offerValidFrom: new Date().toISOString(),
-          organizerName: organizer,
-          includePerformer: true,
-        })}
-      />
+      {jsonLdOccs.map((occ: any) => (
+        <JsonLd
+          key={occ.id || occ.starts_at}
+          data={buildEventJsonLd({
+            eventType: 'ScreeningEvent',
+            name: event.title,
+            description: stripToText(event.description),
+            image: jsonLdImage,
+            startDate: occ?.starts_at || undefined,
+            // Fall back to startDate when no end time is set (mirrors the events
+            // page) so the recommended endDate field is always present.
+            endDate: occ?.ends_at || occ?.starts_at || undefined,
+            timeZone: (event as any).timezone || undefined,
+            url: absoluteUrl(`/gifft/${event.slug}`),
+            isOnline: jsonLdOnline,
+            venueName: event.venue_name,
+            addressText: (event as any).address_text,
+            city: event.city,
+            price: jsonLdPrice,
+            priceCurrency: ((event as any).currency || 'cad').toUpperCase(),
+            offerValidFrom: new Date().toISOString(),
+            organizerName: organizer,
+            includePerformer: true,
+            workPresented: {
+              name: event.title,
+              director: (movie as any)?.director || null,
+              durationMinutes: (movie as any)?.duration_minutes || null,
+              inLanguage: (movie as any)?.language || null,
+              genre: (movie as any)?.genre || null,
+              image: jsonLdImage,
+            },
+          })}
+        />
+      ))}
       <Navbar />
       <MovieDetailContent
         event={event as any}

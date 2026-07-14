@@ -100,6 +100,18 @@ export interface EventJsonLdInput {
   omitOffers?: boolean;
   /** Include the organizer as a performer. */
   includePerformer?: boolean;
+  /** schema.org Event subtype — 'ScreeningEvent' for movie screenings. */
+  eventType?: 'Event' | 'ScreeningEvent';
+  /** Movie shown at a ScreeningEvent (schema.org workPresented). */
+  workPresented?: {
+    name: string;
+    director?: string | null;
+    /** Runtime in minutes → emitted as ISO 8601 duration (PT{n}M). */
+    durationMinutes?: number | null;
+    inLanguage?: string | null;
+    genre?: string | null;
+    image?: string;
+  };
 }
 
 /**
@@ -127,6 +139,8 @@ export function buildEventJsonLd(input: EventJsonLdInput): Record<string, unknow
     organizerUrl = SHOP_URL,
     omitOffers = false,
     includePerformer = false,
+    eventType = 'Event',
+    workPresented,
   } = input;
 
   const images = image
@@ -154,7 +168,7 @@ export function buildEventJsonLd(input: EventJsonLdInput): Record<string, unknow
 
   const jsonLd: Record<string, unknown> = {
     '@context': 'https://schema.org',
-    '@type': 'Event',
+    '@type': eventType,
     name,
     url,
     eventStatus: 'https://schema.org/EventScheduled',
@@ -172,6 +186,22 @@ export function buildEventJsonLd(input: EventJsonLdInput): Record<string, unknow
   const endLocal = endDate ? zonedIsoWithOffset(endDate, timeZone) : null;
   if (startLocal) jsonLd.startDate = startLocal;
   if (endLocal) jsonLd.endDate = endLocal;
+
+  if (workPresented?.name) {
+    jsonLd.workPresented = {
+      '@type': 'Movie',
+      name: workPresented.name,
+      ...(workPresented.director
+        ? { director: { '@type': 'Person', name: workPresented.director } }
+        : {}),
+      ...(workPresented.durationMinutes
+        ? { duration: `PT${Math.round(workPresented.durationMinutes)}M` }
+        : {}),
+      ...(workPresented.inLanguage ? { inLanguage: workPresented.inLanguage } : {}),
+      ...(workPresented.genre ? { genre: workPresented.genre } : {}),
+      ...(workPresented.image ? { image: workPresented.image } : {}),
+    };
+  }
 
   if (organizerName) {
     const org = {
