@@ -83,6 +83,10 @@ interface CheckoutFormProps {
   chargeTicketTax: boolean;
   feePercent: number;
   feeFixedPerTicket: number;
+  /** Fraction (0..1) of the organizer payout going to non-Canadian accounts.
+   *  Drives the Stripe cross-border payout fee — computed server-side (page.tsx)
+   *  so this preview's total matches the checkout API exactly. 0 = all-Canadian. */
+  crossBorderShare?: number;
   customFields: CustomField[];
   user: {
     email?: string;
@@ -110,6 +114,7 @@ export function CheckoutForm({
   chargeTicketTax,
   feePercent,
   feeFixedPerTicket,
+  crossBorderShare = 0,
   customFields,
   user,
   sharedCapacity = false,
@@ -197,6 +202,7 @@ export function CheckoutForm({
     passProcessingFee,
     feePercent,
     feeFixedPerTicket,
+    crossBorderShare,
   });
   const customerTotal = fees.customerTotal;
 
@@ -372,19 +378,28 @@ export function CheckoutForm({
         </div>
       )}
       {/* Single combined fee line = platform (service) fee + its HST + the
-          card-processing fee. Only shown in pass-fee mode. */}
-      {passProcessingFee && fees.platformFee + fees.stripeOffset > 0 && (
+          card-processing fee + (in pass mode) the cross-border payout fee. Only
+          shown in pass-fee mode. */}
+      {passProcessingFee && fees.platformFee + fees.stripeOffset + fees.crossBorderFee > 0 && (
         <div
           className="flex justify-between text-sm text-gray-600 tabular-nums"
           data-testid="checkout-fees"
         >
           <span className="inline-flex items-center gap-1">
             Fees
-            <FeeInfo text="Includes the platform fee and payment processing fee." />
+            <FeeInfo
+              text={
+                fees.crossBorderFee > 0
+                  ? "Includes the platform fee, payment processing, and international payout costs."
+                  : "Includes the platform fee and payment processing fee."
+              }
+            />
           </span>
           <span>
             {formatPrice(
-              Math.round((fees.platformFee + fees.hstOnFee + fees.stripeOffset) * 100) / 100
+              Math.round(
+                (fees.platformFee + fees.hstOnFee + fees.stripeOffset + fees.crossBorderFee) * 100
+              ) / 100
             )}
           </span>
         </div>

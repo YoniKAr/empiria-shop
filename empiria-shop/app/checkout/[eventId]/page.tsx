@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from '@/lib/supabase';
 import { CheckoutForm } from './CheckoutForm';
 import { redirect } from 'next/navigation';
 import { DEFAULT_FEE_PERCENT, DEFAULT_FIXED_PER_TICKET } from '@/lib/fees';
+import { computeCrossBorderShare, type PayoutRecipient } from '@/lib/crossBorder';
 import { computeSaleState } from '@/lib/sales';
 import { DEFAULT_TZ, formatEventDateTime } from '@/lib/datetime';
 
@@ -27,7 +28,7 @@ export default async function CheckoutPage({
   const { data: event, error } = await supabase
     .from('events')
     .select(`
-      id, title, slug, event_type, currency, status, timezone, pass_processing_fee, charge_ticket_tax,
+      id, title, slug, event_type, currency, status, timezone, organizer_id, pass_processing_fee, charge_ticket_tax,
       entry_type, custom_fields, seating_type, seating_config,
       shared_capacity, total_capacity, total_tickets_sold,
       platform_fee_percent, platform_fee_fixed,
@@ -184,6 +185,50 @@ export default async function CheckoutPage({
     );
   }
 
+  // Cross-border payout share for the buyer-facing fee preview. Resolve the same
+  // payout recipients + countries the checkout API does so the "Fees" line and
+  // total shown here match what the server charges exactly. All-Canadian (or
+  // unknown) → 0, i.e. no cross-border fee and byte-identical numbers.
+  let crossBorderShare = 0;
+  {
+    const { data: ownerRow } = await supabase
+      .from('users')
+      .select('role, stripe_account_id, stripe_account_country')
+      .eq('auth0_id', (event as any).organizer_id)
+      .single();
+    const isPlatformEvent = ownerRow?.role === 'admin';
+
+    const { data: coOrganizerRows } = await supabase
+      .from('event_organizers')
+      .select('revenue_percentage, users:user_id(stripe_account_id, stripe_account_country)')
+      .eq('event_id', event.id)
+      .gt('revenue_percentage', 0);
+
+    const payableCoOrgs = (coOrganizerRows || []).filter(
+      (r: any) => !!r.users?.stripe_account_id
+    );
+    const coOrgPctTotal = payableCoOrgs.reduce(
+      (sum: number, r: any) => sum + Number(r.revenue_percentage || 0),
+      0
+    );
+    const recipients: PayoutRecipient[] = payableCoOrgs.map((r: any) => ({
+      stripeAccountId: r.users?.stripe_account_id,
+      country: r.users?.stripe_account_country,
+      percentage: Number(r.revenue_percentage || 0),
+    }));
+    if (!isPlatformEvent && ownerRow?.stripe_account_id) {
+      const primaryPct = Math.max(0, 100 - coOrgPctTotal);
+      if (primaryPct > 0) {
+        recipients.push({
+          stripeAccountId: ownerRow.stripe_account_id,
+          country: ownerRow.stripe_account_country,
+          percentage: primaryPct,
+        });
+      }
+    }
+    crossBorderShare = await computeCrossBorderShare(supabase, recipients);
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4">
       <div className="max-w-5xl mx-auto">
@@ -199,6 +244,7 @@ export default async function CheckoutPage({
           chargeTicketTax={Boolean(event.charge_ticket_tax)}
           feePercent={event.platform_fee_percent != null ? Number(event.platform_fee_percent) : DEFAULT_FEE_PERCENT}
           feeFixedPerTicket={event.platform_fee_fixed != null ? Number(event.platform_fee_fixed) : DEFAULT_FIXED_PER_TICKET}
+          crossBorderShare={crossBorderShare}
           customFields={event.custom_fields ?? []}
           user={user}
           sharedCapacity={sharedCapacity}

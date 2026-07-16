@@ -9,6 +9,7 @@ import { stripe } from '@/lib/stripe';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { toStripeAmount } from '@/lib/utils';
 import { computeFees, computeCouponDiscount, DEFAULT_FEE_PERCENT, DEFAULT_FIXED_PER_TICKET, type CouponApplication } from '@/lib/fees';
+import { computeCrossBorderShare, type PayoutRecipient } from '@/lib/crossBorder';
 import { sendOrderConfirmationEmail } from '@/lib/email';
 import { SHOP_URL } from '@/lib/urls';
 import { migrateSeatingConfig } from '@/lib/migrate-seating-config';
@@ -242,12 +243,12 @@ export async function POST(request: NextRequest) {
     // Admins can create events on behalf of real organizers, who must still be paid.
     const { data: ownerData } = await supabase
       .from('users')
-      .select('role, stripe_account_id, stripe_onboarding_completed, full_name')
+      .select('role, stripe_account_id, stripe_onboarding_completed, full_name, stripe_account_country')
       .eq('auth0_id', event.organizer_id)
       .single();
 
     const isPlatformEvent = ownerData?.role === 'admin';
-    let organizer: { stripe_account_id: string | null; stripe_onboarding_completed: boolean | null; full_name: string | null } | null = null;
+    let organizer: { stripe_account_id: string | null; stripe_onboarding_completed: boolean | null; full_name: string | null; stripe_account_country: string | null } | null = null;
 
     if (!isPlatformEvent) {
       if (!ownerData?.stripe_account_id || !ownerData.stripe_onboarding_completed) {
@@ -260,6 +261,7 @@ export async function POST(request: NextRequest) {
         stripe_account_id: ownerData.stripe_account_id,
         stripe_onboarding_completed: ownerData.stripe_onboarding_completed,
         full_name: ownerData.full_name,
+        stripe_account_country: ownerData.stripe_account_country ?? null,
       };
     }
 
@@ -920,6 +922,54 @@ export async function POST(request: NextRequest) {
     const totalTickets = validatedSelections.reduce((sum, s) => sum + s.quantity, 0);
     const paidTickets = validatedSelections.reduce((sum, s) => sum + (s.unitPrice > 0 ? s.quantity : 0), 0);
 
+    // ── Cross-border payout fee (Stripe bills the platform 0.25% on transfers to
+    // connected accounts outside Canada). Resolve every payout recipient and its
+    // country here — BEFORE computeFees — so the fee is folded into the buyer
+    // gross-up (PASS) or deducted from the foreign recipient (ABSORB). NULL /
+    // unknown country is treated as 'CA' (no fee — fail-safe).
+    //
+    // Fetch the co-organizer splits ONCE here and reuse the rows where the splits
+    // array is built later (section 7b) — do not query event_organizers twice.
+    const { data: coOrganizerRows } = await supabase
+      .from('event_organizers')
+      .select('user_id, revenue_percentage, description, users:user_id(stripe_account_id, stripe_account_country)')
+      .eq('event_id', eventId)
+      .gt('revenue_percentage', 0);
+
+    // Build the effective payout percentage allocation (mirrors the payout
+    // pipeline): co-organizers get their revenue_percentage; the primary
+    // organizer gets the remainder (single-organizer event = 100% primary).
+    // Only recipients with a connected Stripe account can be paid — mirror the
+    // splits filter so the percentages line up with real transfers. Elevsoft is
+    // Canadian and is NOT a payout recipient here, so it never enters this math.
+    const payableCoOrgs = (coOrganizerRows || []).filter(
+      (r: any) => !!r.users?.stripe_account_id
+    );
+    const coOrgPctTotal = payableCoOrgs.reduce(
+      (sum: number, r: any) => sum + Number(r.revenue_percentage || 0),
+      0
+    );
+    const crossBorderRecipients: PayoutRecipient[] = payableCoOrgs.map((r: any) => ({
+      stripeAccountId: r.users?.stripe_account_id,
+      country: r.users?.stripe_account_country,
+      percentage: Number(r.revenue_percentage || 0),
+    }));
+    // The primary organizer receives the remainder of the pool. On a platform
+    // event there is no primary payout (Empiria keeps it), so only the
+    // co-organizer splits count. On a normal event the primary gets
+    // max(0, 100 - coOrgPctTotal) — including 100% for a single-organizer event.
+    if (!isPlatformEvent && organizer?.stripe_account_id) {
+      const primaryPct = Math.max(0, 100 - coOrgPctTotal);
+      if (primaryPct > 0) {
+        crossBorderRecipients.push({
+          stripeAccountId: organizer.stripe_account_id,
+          country: organizer.stripe_account_country,
+          percentage: primaryPct,
+        });
+      }
+    }
+    const crossBorderShare = await computeCrossBorderShare(supabase, crossBorderRecipients);
+
     const fees = computeFees({
       base: subtotal,
       discount: discountAmount,
@@ -928,6 +978,7 @@ export async function POST(request: NextRequest) {
       passProcessingFee,
       feePercent,
       feeFixedPerTicket,
+      crossBorderShare,
     });
 
     // Stripe's minimum card charge is $0.50 (CAD/USD). A discounted-but-not-free
@@ -1277,19 +1328,19 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 7b. Check for multi-organizer revenue splits (co-organizers with a revenue share)
-    const { data: coOrganizerRows } = await supabase
-      .from('event_organizers')
-      .select('user_id, revenue_percentage, description, users:user_id(stripe_account_id)')
-      .eq('event_id', eventId)
-      .gt('revenue_percentage', 0);
-
+    // 7b. Multi-organizer revenue splits (co-organizers with a revenue share).
+    // NOTE: coOrganizerRows was already fetched above (for the cross-border share)
+    // — reuse it here rather than querying event_organizers a second time.
+    //
     // Map co-organizers to the shape the payout pipeline expects (only those with a
-    // connected Stripe account can actually receive a transfer).
+    // connected Stripe account can actually receive a transfer). recipient_country
+    // rides along so the webhook can deduct each foreign recipient's proportional
+    // cross-border fee from THEIR transfer (ABSORB mode).
     const splits = (coOrganizerRows || [])
       .map((row: any) => ({
         recipient_user_id: row.user_id,
         recipient_stripe_id: row.users?.stripe_account_id ?? null,
+        recipient_country: (row.users?.stripe_account_country ?? null) as string | null,
         percentage: Number(row.revenue_percentage),
         description: row.description,
       }))
@@ -1306,6 +1357,7 @@ export async function POST(request: NextRequest) {
       splits.push({
         recipient_user_id: event.organizer_id,
         recipient_stripe_id: organizer.stripe_account_id,
+        recipient_country: organizer.stripe_account_country ?? null,
         percentage: Math.max(0, 100 - coOrgPctTotal),
         description: 'Primary organizer',
       });
@@ -1354,6 +1406,8 @@ export async function POST(request: NextRequest) {
       customer_total: fees.customerTotal.toFixed(2),
       organizer_payout: fees.organizerPayout.toFixed(2),
       empiria_keep: fees.empiriaKeep.toFixed(2),
+      cross_border_fee: fees.crossBorderFee.toFixed(2),
+      cross_border_share: String(crossBorderShare),
       pass_processing_fee: passProcessingFee.toString(),
       charge_ticket_tax: chargeTicketTax.toString(),
       discount_amount: discountAmount.toFixed(2),
@@ -1367,6 +1421,9 @@ export async function POST(request: NextRequest) {
     metadata.transfer_group = transferGroup;
     metadata.is_platform_event = isPlatformEvent ? 'true' : 'false';
     metadata.organizer_stripe_id = organizer?.stripe_account_id || '';
+    // Organizer's connected-account country — lets the webhook deduct the whole
+    // cross-border fee off the single-organizer transfer (ABSORB) when foreign.
+    metadata.organizer_stripe_country = organizer?.stripe_account_country || '';
     if (seatSel && seatSel.length > 0) {
       metadata.seat_session_id = sessionId || '';
     }

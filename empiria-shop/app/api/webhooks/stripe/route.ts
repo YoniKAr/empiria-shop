@@ -11,6 +11,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { stripe } from '@/lib/stripe';
+import { XBORDER_RATE } from '@/lib/fees';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { sendOrderConfirmationEmail, sendSaleNotificationEmail } from '@/lib/email';
 import { sendEmail } from '@/lib/mailer';
@@ -230,6 +231,7 @@ async function handleCheckoutCompleted(session: any) {
     splits?: Array<{
       recipient_user_id: string;
       recipient_stripe_id: string;
+      recipient_country?: string | null;
       percentage: number;
       description: string;
     }> | null;
@@ -268,6 +270,10 @@ async function handleCheckoutCompleted(session: any) {
   const hstOnFee = parseFloat(metadata.hst_on_fee || '0');
   const customerTotal = parseFloat(metadata.customer_total || '0');
   const stripeOffset = parseFloat(metadata.stripe_offset || '0');
+  // Stripe cross-border payout fee (0.25% on foreign transfers). Old sessions
+  // (pre-cross-border deploy) have no field → 0, so the math below is a no-op.
+  const crossBorderFee = parseFloat(metadata.cross_border_fee || '0');
+  const organizerStripeCountry = metadata.organizer_stripe_country || '';
   const feePercent = parseFloat(metadata.platform_fee_percent || '0');
   const feeFixed = parseFloat(metadata.platform_fee_fixed || '0');
   const passProcessingFee = metadata.pass_processing_fee === 'true';
@@ -306,6 +312,7 @@ async function handleCheckoutCompleted(session: any) {
     let parsedSplits: Array<{
       recipient_user_id: string;
       recipient_stripe_id: string;
+      recipient_country?: string | null;
       percentage: number;
       description: string;
     }> | null = null;
@@ -366,10 +373,16 @@ async function handleCheckoutCompleted(session: any) {
     let actualOrganizerPayout: number;
     if (passProcessingFee) {
       // Guaranteed: ticket revenue + ticket tax (discount already baked into effBase).
+      // The buyer covered the cross-border fee via the gross-up, so the payout is
+      // NOT docked here (it stays the guaranteed amount).
       actualOrganizerPayout = effBase + hstOnBase;
     } else {
-      // Absorb: organizer bears platform fee, its HST, and the real Stripe fee.
-      actualOrganizerPayout = customerTotal - stripeFee - platformFee - hstOnFee;
+      // Absorb: organizer bears platform fee, its HST, the real Stripe fee, AND
+      // the cross-border payout fee (0 unless a foreign account is a recipient).
+      // Mirrors fees.ts: crossBorderFee was computed on the pre-fee payout at
+      // checkout; deduct that same amount here so the payout matches the sum of
+      // the per-transfer deductions applied below.
+      actualOrganizerPayout = customerTotal - stripeFee - platformFee - hstOnFee - crossBorderFee;
     }
     actualOrganizerPayout = Math.max(0, Math.round(actualOrganizerPayout * 100) / 100);
 
@@ -385,8 +398,12 @@ async function handleCheckoutCompleted(session: any) {
       // charge net. When the payout did NOT floor, the residual equals
       // platformFee exactly and this is a no-op. (Pass mode is unchanged —
       // its stripeGap logic already conserves.)
+      // Exclude crossBorderFee from the residual: the amount deducted from the
+      // organizer's transfer is a pass-through that pays Stripe's cross-border
+      // bill, NOT platform take-home (mirrors the PASS treatment where the
+      // grossed-up fee never enters take-home).
       const absorbResidual =
-        Math.round((customerTotal - stripeFee - actualOrganizerPayout - hstOnFee) * 100) / 100;
+        Math.round((customerTotal - stripeFee - actualOrganizerPayout - hstOnFee - crossBorderFee) * 100) / 100;
       platformTakeHome = Math.max(0, Math.min(platformTakeHome, absorbResidual));
     }
     const actualTicketTax = Math.round(hstOnBase * 100) / 100; // tax remitted with the ticket sale
@@ -417,6 +434,7 @@ async function handleCheckoutCompleted(session: any) {
       stripe_offset: stripeOffset,
       stripe_fee: stripeFee,
       stripe_gap: stripeGap,
+      cross_border_fee: crossBorderFee,
       platform_take_home: platformTakeHome,
       ...(stripeFeeEstimated ? { stripe_fee_estimated: true } : {}),
       discount_amount: discountAmount,
@@ -755,13 +773,24 @@ async function handleCheckoutCompleted(session: any) {
     const splitPlans: Array<{
       split: NonNullable<typeof parsedSplits>[number];
       amountCents: number;
+      crossBorderCents: number; // cross-border fee deducted from THIS recipient
     }> = [];
     if (hasMultiSplit && parsedSplits) {
-      const splitBaseCents = Math.round(actualOrganizerPayout * 100);
-      let totalAllocated = 0;
+      // Allocate percentages against the PRE-deduction pool (payout + the
+      // cross-border fee added back), then subtract each FOREIGN recipient's own
+      // 0.25% off THEIR share only — a Canadian co-organizer must not lose money
+      // to a foreign recipient's fee. netPoolCents is the post-deduction pool
+      // (== actualOrganizerPayout), so the non-platform last-split remainder
+      // makes every recipient's NET transfer sum to it exactly.
+      const netPoolCents = Math.round(actualOrganizerPayout * 100);
+      const grossPoolCents = Math.round((actualOrganizerPayout + crossBorderFee) * 100);
+      const isForeign = (c: string | null | undefined) => !!c && c !== 'CA';
+      let totalAllocatedNet = 0;
       for (let i = 0; i < parsedSplits.length; i++) {
         const split = parsedSplits[i];
+        const country = (split as { recipient_country?: string | null }).recipient_country ?? null;
         let amountCents: number;
+        let crossBorderCents: number;
 
         // For the last split, use remainder to avoid rounding drift — ONLY for
         // non-platform events, where checkout appends the PRIMARY organizer as
@@ -771,17 +800,26 @@ async function handleCheckoutCompleted(session: any) {
         // transfer). Without this gate the last co-org received the ENTIRE
         // payout base.
         if (i === parsedSplits.length - 1 && !isPlatformEvent) {
-          amountCents = splitBaseCents - totalAllocated;
+          // The last (primary) split's NET amount is the remainder of the net
+          // pool, so all NET transfers sum to netPoolCents exactly. Its
+          // cross-border deduction is back-derived from its remaining gross
+          // share for the ledger.
+          const grossShare =
+            grossPoolCents - splitPlans.reduce((s, p) => s + p.amountCents + p.crossBorderCents, 0);
+          crossBorderCents = isForeign(country) ? Math.round(XBORDER_RATE * grossShare) : 0;
+          amountCents = netPoolCents - totalAllocatedNet;
         } else {
-          amountCents = Math.round((splitBaseCents * split.percentage) / 100);
+          const grossCents = Math.round((grossPoolCents * split.percentage) / 100);
+          crossBorderCents = isForeign(country) ? Math.round(XBORDER_RATE * grossCents) : 0;
+          amountCents = grossCents - crossBorderCents;
         }
 
-        // Accumulate the INTENDED allocation regardless of transfer success.
-        // This keeps the last split's remainder based on intended allocations,
-        // so a failed intermediate transfer leaves that recipient unpaid
-        // (money stays on the platform) without overpaying the last split.
-        totalAllocated += amountCents;
-        splitPlans.push({ split, amountCents });
+        // Accumulate the INTENDED (net) allocation regardless of transfer
+        // success — keeps the last split's remainder based on intended
+        // allocations so a failed intermediate transfer leaves that recipient
+        // unpaid without overpaying the last split.
+        totalAllocatedNet += amountCents;
+        splitPlans.push({ split, amountCents, crossBorderCents });
 
         if (amountCents > 0) {
           intendedTransfers.push({
@@ -874,12 +912,13 @@ async function handleCheckoutCompleted(session: any) {
       amount: number;
       description: string;
       stripe_transfer_id: string | null;
+      cross_border_fee?: number; // 0.25% deducted from THIS recipient (foreign only)
     }> = [];
 
     if (splitPlans.length > 0) {
       let totalTransferred = 0;
 
-      for (const { split, amountCents } of splitPlans) {
+      for (const { split, amountCents, crossBorderCents } of splitPlans) {
         totalTransferred += amountCents;
 
         let transferId: string | null = null;
@@ -925,6 +964,7 @@ async function handleCheckoutCompleted(session: any) {
           amount: Math.round(amountCents) / 100,
           description: split.description,
           stripe_transfer_id: transferId,
+          ...(crossBorderCents > 0 ? { cross_border_fee: crossBorderCents / 100 } : {}),
         });
       }
 
@@ -964,6 +1004,22 @@ async function handleCheckoutCompleted(session: any) {
       await persistIntendedTransfers();
     }
 
+    // Cross-border fee audit summary. In ABSORB the fee was deducted from the
+    // foreign recipient(s)' transfer(s); in the single-organizer case it is the
+    // whole crossBorderFee off that one transfer (already reflected in
+    // actualOrganizerPayout). In PASS the buyer covered it via the gross-up, so
+    // it is a platform pass-through (no per-transfer deduction).
+    const crossBorderSummary =
+      crossBorderFee > 0
+        ? {
+            total: crossBorderFee,
+            mode: passProcessingFee ? ('buyer_gross_up' as const) : ('recipient_deduction' as const),
+            ...(!passProcessingFee && isSingleOrganizerTransfer && organizerStripeCountry && organizerStripeCountry !== 'CA'
+              ? { organizer_deduction: crossBorderFee }
+              : {}),
+          }
+        : null;
+
     // ── 5. Update order with full payout_breakdown including transfer IDs ──
     await supabase
       .from('orders')
@@ -979,6 +1035,7 @@ async function handleCheckoutCompleted(session: any) {
             amount: elevsoftTransferData.amount,
             percent: elevsoftPercent,
           } : null,
+          ...(crossBorderSummary ? { cross_border: crossBorderSummary } : {}),
         },
       })
       .eq('id', order.id);
@@ -1724,6 +1781,10 @@ async function handleChargeUpdated(charge: any) {
   const stripeOffset = Number(pb.stripe_offset || 0);
   const hstOnFee = Number(pb.hst_on_fee || 0);
   const customerTotal = Number(pb.customer_total || 0);
+  // Cross-border fee is a pass-through (paid to Stripe), never take-home — carry
+  // it through the residual the same way fulfillment did. 0 for pre-cross-border
+  // orders / all-Canadian events.
+  const crossBorderFee = Number(pb.cross_border_fee || 0);
   // Residual math uses the NOTIONAL payout on platform events (mirrors fulfillment).
   const payoutForResidual = Number(
     pb.platform_event_notional_payout ?? pb.organizer_payout ?? 0
@@ -1735,7 +1796,7 @@ async function handleChargeUpdated(charge: any) {
   let platformTakeHome = Math.max(0, Math.round((platformFee - stripeGap) * 100) / 100);
   if (!passProcessingFee) {
     const absorbResidual =
-      Math.round((customerTotal - actualFee - payoutForResidual - hstOnFee) * 100) / 100;
+      Math.round((customerTotal - actualFee - payoutForResidual - hstOnFee - crossBorderFee) * 100) / 100;
     platformTakeHome = Math.max(0, Math.min(platformTakeHome, absorbResidual));
   }
 
