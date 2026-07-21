@@ -187,7 +187,7 @@ export function orderSummaryTable(data: OrderEmailData): string {
                 <tr><td style="padding: 6px 20px;">
                   <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
                     ${lineItemRows}
-                    ${data.convenienceFee && data.convenienceFee > 0 ? summaryRow('Service & processing fees', formatCurrency(data.convenienceFee, data.currency), MUTED) : ''}
+                    ${data.convenienceFee && data.convenienceFee > 0 ? summaryRow('Service fees', formatCurrency(data.convenienceFee, data.currency), MUTED) : ''}
                     ${data.convenienceFeeHST && data.convenienceFeeHST > 0 ? summaryRow('HST on service fee', formatCurrency(data.convenienceFeeHST, data.currency), MUTED) : ''}
                     ${data.ticketTax && data.ticketTax > 0 ? summaryRow('Sales tax (HST 13%)', formatCurrency(data.ticketTax, data.currency), MUTED) : ''}
                     ${data.discountAmount && data.discountAmount > 0 ? summaryRow(`Discount${data.couponCode ? ` (${escapeHtml(data.couponCode)})` : ''}`, `-${formatCurrency(data.discountAmount, data.currency)}`, '#16A34A') : ''}

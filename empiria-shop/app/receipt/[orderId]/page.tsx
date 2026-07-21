@@ -210,7 +210,7 @@ export default async function ReceiptPage({
                 />
               )}
               {service_fee > 0 && (
-                <Row label="Service & processing fees" value={formatCurrency(service_fee, currency)} muted />
+                <Row label="Service fees" value={formatCurrency(service_fee, currency)} muted />
               )}
               {service_fee_tax > 0 && (
                 <Row label="HST on service fee" value={formatCurrency(service_fee_tax, currency)} muted />
