@@ -53,9 +53,8 @@ export interface OrderEmailData {
   couponCode?: string;
   currency: string;
   tickets: TicketInfo[];
+  /** Stripe's own charge receipt URL — offered as a secondary link in the email. */
   receiptUrl?: string;
-  invoiceUrl?: string;
-  invoicePdf?: string;
   ctaLabel?: CtaLabel;
 }
 

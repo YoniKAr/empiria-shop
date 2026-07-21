@@ -13,6 +13,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { stripe } from '@/lib/stripe';
 import { XBORDER_RATE } from '@/lib/fees';
 import { getSupabaseAdmin } from '@/lib/supabase';
+import { buildReceiptDataFromOrder } from '@/lib/receiptData';
 import { sendOrderConfirmationEmail, sendSaleNotificationEmail } from '@/lib/email';
 import { sendEmail } from '@/lib/mailer';
 
@@ -1021,10 +1022,17 @@ async function handleCheckoutCompleted(session: any) {
         : null;
 
     // ── 5. Update order with full payout_breakdown including transfer IDs ──
+    // Also persist the marketplace receipt: the Stripe charge receipt URL and the
+    // immutable receipt_data snapshot (built from the now-committed order + items
+    // — mirrors the confirmation email's numbers). Snapshot failure is non-fatal
+    // (the backfill / receipt-page fallback recover it).
+    const receiptData = await buildReceiptDataFromOrder(supabase, order.id);
     await supabase
       .from('orders')
       .update({
         elevsoft_amount: elevsoftTransferData?.amount || 0,
+        stripe_receipt_url: receiptUrl ?? null,
+        ...(receiptData ? { receipt_data: receiptData } : {}),
         payout_breakdown: {
           ...basePayoutBreakdown,
           intended_transfers: intendedTransfers.length > 0 ? intendedTransfers : null,
@@ -1065,8 +1073,11 @@ async function handleCheckoutCompleted(session: any) {
             unitPrice: s.unitPrice,
           })),
           total: customerTotal,
-          convenienceFee: passProcessingFee ? platformFee : 0,
-          convenienceFeeHST: passProcessingFee ? hstOnFee : 0,
+          // Use the receipt snapshot's reconciled fee (the exact residual incl.
+          // the Stripe processing gross-up) so the email's lines sum to the
+          // total and always match the /receipt page.
+          convenienceFee: receiptData?.fees.service_fee ?? (passProcessingFee ? platformFee : 0),
+          convenienceFeeHST: receiptData?.fees.service_fee_tax ?? (passProcessingFee ? hstOnFee : 0),
           ticketTax: actualTicketTax,
           discountAmount,
           couponCode,

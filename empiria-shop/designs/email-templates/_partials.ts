@@ -1,5 +1,6 @@
 import { formatCurrency } from '@/lib/utils';
 import { SHOP_URL } from '@/lib/urls';
+import { createReceiptToken } from '@/lib/receiptToken';
 import type { OrderEmailData, WalletResult } from '@/lib/email';
 
 // ---- Palette ----
@@ -135,7 +136,7 @@ export function eventDetailsBlock(data: OrderEmailData, showRefundPolicy = false
                         <td style="padding: 0 0 10px; font-size: 14px; color: ${INK}; vertical-align: top;">${escapeHtml(venue)}</td>
                       </tr>` : ''}
                       ${data.organizerName ? `<tr>
-                        <td style="padding: 0 0 10px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: ${MUTED}; vertical-align: middle;">Host</td>
+                        <td style="padding: 0 0 10px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: ${MUTED}; vertical-align: middle;">Sold by</td>
                         <td style="padding: 0 0 10px; font-size: 14px; color: ${INK}; vertical-align: middle;">${data.organizerAvatarUrl ? `<img src="${safeUrl(data.organizerAvatarUrl)}" width="22" height="22" alt="" style="border-radius: 50%; vertical-align: middle; margin-right: 8px; object-fit: cover; border: 1px solid ${BORDER};" />` : ''}<span style="vertical-align: middle; font-weight: 600;">${escapeHtml(data.organizerName)}</span></td>
                       </tr>` : ''}
                       ${isOnline && data.meetingLink ? `<tr>
@@ -186,7 +187,7 @@ export function orderSummaryTable(data: OrderEmailData): string {
                 <tr><td style="padding: 6px 20px;">
                   <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
                     ${lineItemRows}
-                    ${data.convenienceFee && data.convenienceFee > 0 ? summaryRow('Service fee', formatCurrency(data.convenienceFee, data.currency), MUTED) : ''}
+                    ${data.convenienceFee && data.convenienceFee > 0 ? summaryRow('Service & processing fees', formatCurrency(data.convenienceFee, data.currency), MUTED) : ''}
                     ${data.convenienceFeeHST && data.convenienceFeeHST > 0 ? summaryRow('HST on service fee', formatCurrency(data.convenienceFeeHST, data.currency), MUTED) : ''}
                     ${data.ticketTax && data.ticketTax > 0 ? summaryRow('Sales tax (HST 13%)', formatCurrency(data.ticketTax, data.currency), MUTED) : ''}
                     ${data.discountAmount && data.discountAmount > 0 ? summaryRow(`Discount${data.couponCode ? ` (${escapeHtml(data.couponCode)})` : ''}`, `-${formatCurrency(data.discountAmount, data.currency)}`, '#16A34A') : ''}
@@ -205,16 +206,17 @@ export function orderSummaryTable(data: OrderEmailData): string {
 }
 
 export function receiptLinks(data: OrderEmailData): string {
-  if (!(data.receiptUrl || data.invoiceUrl || data.invoicePdf)) {
-    return '';
-  }
+  // The Empiria receipt page is always available (token-authenticated, so guests
+  // can open it without a session). Stripe's own charge receipt, when present,
+  // is offered as a secondary link.
+  const token = createReceiptToken(data.orderId);
+  const receiptPageUrl = `${SHOP_URL}/receipt/${data.orderId}?t=${token}`;
   return `
-          <!-- Payment Receipt & Invoice -->
+          <!-- Receipt -->
           <tr>
             <td style="padding: 20px 32px 8px; text-align: center;">
-              ${data.receiptUrl ? `<a href="${safeUrl(data.receiptUrl)}" target="_blank" style="display: inline-block; margin: 4px; padding: 11px 22px; background: ${INK}; color: #ffffff; font-size: 14px; font-weight: 600; text-decoration: none; border-radius: 9px;">View receipt</a>` : ''}
-              ${data.invoiceUrl ? `<a href="${safeUrl(data.invoiceUrl)}" target="_blank" style="display: inline-block; margin: 4px; padding: 11px 22px; background: #ffffff; color: ${INK}; font-size: 14px; font-weight: 600; text-decoration: none; border-radius: 9px; border: 1px solid #D1D5DB;">View invoice</a>` : ''}
-              ${data.invoicePdf ? `<a href="${safeUrl(data.invoicePdf)}" target="_blank" style="display: inline-block; margin: 4px; padding: 11px 22px; background: #ffffff; color: ${INK}; font-size: 14px; font-weight: 600; text-decoration: none; border-radius: 9px; border: 1px solid #D1D5DB;">Invoice PDF</a>` : ''}
+              <a href="${receiptPageUrl}" target="_blank" style="display: inline-block; margin: 4px; padding: 11px 22px; background: ${INK}; color: #ffffff; font-size: 14px; font-weight: 600; text-decoration: none; border-radius: 9px;">View receipt</a>
+              ${data.receiptUrl ? `<div style="margin-top: 10px;"><a href="${safeUrl(data.receiptUrl)}" target="_blank" style="color: ${MUTED}; font-size: 13px; text-decoration: underline;">Stripe payment receipt</a></div>` : ''}
             </td>
           </tr>`;
 }

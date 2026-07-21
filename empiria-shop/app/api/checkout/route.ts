@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSafeSession } from '@/lib/auth0';
 import { stripe } from '@/lib/stripe';
 import { getSupabaseAdmin } from '@/lib/supabase';
+import { buildReceiptDataFromOrder } from '@/lib/receiptData';
 import { toStripeAmount } from '@/lib/utils';
 import { computeFees, computeCouponDiscount, DEFAULT_FEE_PERCENT, DEFAULT_FIXED_PER_TICKET, type CouponApplication } from '@/lib/fees';
 import { computeCrossBorderShare, type PayoutRecipient } from '@/lib/crossBorder';
@@ -1155,6 +1156,18 @@ export async function POST(request: NextRequest) {
         });
       }
 
+      // 4b. Persist the immutable receipt snapshot (no Stripe artifacts — a free
+      // order never touches Stripe). Built from the now-created order + items;
+      // failure is non-fatal (the backfill recovers it).
+      try {
+        const freeReceiptData = await buildReceiptDataFromOrder(supabase, freeOrder.id);
+        if (freeReceiptData) {
+          await supabase.from('orders').update({ receipt_data: freeReceiptData }).eq('id', freeOrder.id);
+        }
+      } catch (receiptErr) {
+        console.error('[Checkout] Free order receipt snapshot failed:', receiptErr);
+      }
+
       // 5. Confirmation email (non-blocking)
       if (freeEmail && freeTickets.length > 0) {
         try {
@@ -1452,6 +1465,23 @@ export async function POST(request: NextRequest) {
 
     let checkoutSession;
 
+    // Card-statement identity (marketplace transparency): the PaymentIntent
+    // `description` names the event + seller, and `statement_descriptor_suffix`
+    // puts the seller (or the event, for platform-owned events) on the buyer's
+    // card line. Sanitize the suffix to Stripe's allowed charset (letters/digits/
+    // spaces, ≥1 letter, ≤12 chars, uppercased) and omit it if nothing survives.
+    const organizerDisplayName = isPlatformEvent
+      ? 'Empiria Events'
+      : ownerData?.full_name || 'Empiria Events';
+    const piDescription = `${event.title} — ${organizerDisplayName}`.slice(0, 500);
+    const descriptorSuffix = (isPlatformEvent ? event.title : organizerDisplayName)
+      .replace(/[^A-Za-z0-9 ]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 12)
+      .toUpperCase();
+    const hasDescriptorLetter = /[A-Za-z]/.test(descriptorSuffix);
+
     // Unified checkout: all charges land on platform account.
     // Transfers to organizer/partners happen in the webhook.
     // Tax stays on platform for remittance.
@@ -1463,6 +1493,8 @@ export async function POST(request: NextRequest) {
         payment_intent_data: {
           transfer_group: transferGroup,
           metadata,
+          description: piDescription,
+          ...(hasDescriptorLetter && descriptorSuffix ? { statement_descriptor_suffix: descriptorSuffix } : {}),
         },
         metadata,
         success_url: `${appBaseUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
