@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { getSafeSession } from '@/lib/auth0';
 import { verifyReceiptToken } from '@/lib/receiptToken';
@@ -42,6 +42,12 @@ export default async function ReceiptPage({
   if (!allowed) {
     const session = await getSafeSession();
     const sub = session?.user?.sub ?? null;
+    // No token and no shop session: send through login (silent SSO for anyone
+    // already signed in on another Empiria app) and come straight back here.
+    // Only an AUTHENTICATED-but-unauthorized viewer falls through to 404.
+    if (!sub) {
+      redirect(`/auth/login?returnTo=${encodeURIComponent(`/receipt/${orderId}`)}`);
+    }
     if (sub) {
       if (order.user_id && order.user_id === sub) {
         allowed = true;
