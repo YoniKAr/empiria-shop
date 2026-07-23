@@ -151,7 +151,7 @@ export default async function ReceiptPage({
               <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Sold by</p>
               <p className="mt-1 text-lg font-bold text-slate-900">{receipt.seller.name}</p>
               <p className="mt-1 text-sm text-slate-500">
-                Sold via Empiria Events · a marketplace operated by Empiria Solutions Inc.
+                Sold via Empiria Events, a division of Empiria World Inc.
               </p>
               {isNonProfit && (
                 <p className="mt-1 text-sm text-slate-600">{receipt.seller.name} is a non-profit organization.</p>
@@ -248,7 +248,7 @@ export default async function ReceiptPage({
           {/* Footer */}
           <footer className="border-t border-slate-200 px-8 py-5 text-xs text-slate-500">
             <p>Questions about this order? Contact the event organizer or info@empiria.events.</p>
-            <p className="mt-1">© {new Date().getFullYear()} Empiria Solutions Inc.</p>
+            <p className="mt-1">© {new Date().getFullYear()} Empiria World Inc.</p>
           </footer>
         </article>
       </div>
