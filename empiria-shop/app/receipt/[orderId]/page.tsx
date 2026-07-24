@@ -1,8 +1,7 @@
 import type { Metadata } from 'next';
-import { notFound, redirect } from 'next/navigation';
+import { notFound } from 'next/navigation';
 import { getSupabaseAdmin } from '@/lib/supabase';
-import { getSafeSession } from '@/lib/auth0';
-import { verifyReceiptToken } from '@/lib/receiptToken';
+import { assertReceiptAccess } from '@/lib/receiptAccess';
 import { buildReceiptDataFromOrder, type ReceiptData } from '@/lib/receiptData';
 import { formatCurrency } from '@/lib/utils';
 import { formatEventDateTime, DEFAULT_TZ } from '@/lib/datetime';
@@ -34,55 +33,13 @@ export default async function ReceiptPage({
 
   if (!order) notFound();
 
-  // ── Access control ──
-  // (d) A valid share token is sufficient (buyers/guests open their own receipt
-  // from the email). Otherwise require a session user who is (a) the buyer,
-  // (b) a platform admin, or (c) the event owner / a co-organizer.
-  let allowed = verifyReceiptToken(orderId, t);
-  if (!allowed) {
-    const session = await getSafeSession();
-    const sub = session?.user?.sub ?? null;
-    // No token and no shop session: send through login (silent SSO for anyone
-    // already signed in on another Empiria app) and come straight back here.
-    // Only an AUTHENTICATED-but-unauthorized viewer falls through to 404.
-    if (!sub) {
-      redirect(`/auth/login?returnTo=${encodeURIComponent(`/receipt/${orderId}`)}`);
-    }
-    if (sub) {
-      if (order.user_id && order.user_id === sub) {
-        allowed = true;
-      } else {
-        const { data: viewer } = await supabase
-          .from('users')
-          .select('id, role')
-          .eq('auth0_id', sub)
-          .maybeSingle();
-        if (viewer?.role === 'admin') {
-          allowed = true;
-        } else {
-          // Event owner is stored as an auth0 sub; co-organizers key on users.id.
-          const { data: ev } = await supabase
-            .from('events')
-            .select('organizer_id')
-            .eq('id', order.event_id)
-            .maybeSingle();
-          if (ev?.organizer_id === sub) {
-            allowed = true;
-          } else if (viewer?.id) {
-            const { data: co } = await supabase
-              .from('event_organizers')
-              .select('id')
-              .eq('event_id', order.event_id)
-              .eq('user_id', viewer.id)
-              .maybeSingle();
-            if (co) allowed = true;
-          }
-        }
-      }
-    }
-  }
-
-  if (!allowed) notFound();
+  await assertReceiptAccess(supabase, {
+    orderId,
+    userId: order.user_id,
+    eventId: order.event_id,
+    token: t,
+    loginReturnTo: `/receipt/${orderId}`,
+  });
 
   // Use the immutable snapshot; build it live for legacy orders not yet backfilled.
   const receipt: ReceiptData | null =

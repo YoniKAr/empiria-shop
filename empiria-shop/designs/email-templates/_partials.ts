@@ -211,11 +211,13 @@ export function receiptLinks(data: OrderEmailData): string {
   // is offered as a secondary link.
   const token = createReceiptToken(data.orderId);
   const receiptPageUrl = `${SHOP_URL}/receipt/${data.orderId}?t=${token}`;
+  const donationReceiptUrl = `${SHOP_URL}/receipt/${data.orderId}/donation?t=${token}`;
   return `
           <!-- Receipt -->
           <tr>
             <td style="padding: 20px 32px 8px; text-align: center;">
               <a href="${receiptPageUrl}" target="_blank" style="display: inline-block; margin: 4px; padding: 11px 22px; background: ${INK}; color: #ffffff; font-size: 14px; font-weight: 600; text-decoration: none; border-radius: 9px;">View receipt</a>
+              ${data.donationReceiptNumber ? `<a href="${donationReceiptUrl}" target="_blank" style="display: inline-block; margin: 4px; padding: 11px 22px; background: ${ACCENT}; color: #ffffff; font-size: 14px; font-weight: 600; text-decoration: none; border-radius: 9px;">Donation receipt</a>` : ''}
               ${data.receiptUrl ? `<div style="margin-top: 10px;"><a href="${safeUrl(data.receiptUrl)}" target="_blank" style="color: ${MUTED}; font-size: 13px; text-decoration: underline;">Stripe payment receipt</a></div>` : ''}
             </td>
           </tr>`;

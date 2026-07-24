@@ -14,6 +14,7 @@ import { stripe } from '@/lib/stripe';
 import { XBORDER_RATE } from '@/lib/fees';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { buildReceiptDataFromOrder } from '@/lib/receiptData';
+import { generateDonationReceiptForOrder } from '@/lib/donationReceipt';
 import { sendOrderConfirmationEmail, sendSaleNotificationEmail } from '@/lib/email';
 import { sendEmail } from '@/lib/mailer';
 
@@ -1048,6 +1049,16 @@ async function handleCheckoutCompleted(session: any) {
       })
       .eq('id', order.id);
 
+    // 5b. Charitable donation receipt for non-profit-owned events (idempotent,
+    // non-fatal). No-op unless the event has donation receipts enabled and the
+    // owner is a registered non-profit organizer.
+    let donationReceipt: Awaited<ReturnType<typeof generateDonationReceiptForOrder>> = null;
+    try {
+      donationReceipt = await generateDonationReceiptForOrder(supabase, order.id);
+    } catch (donationErr) {
+      console.error('[Webhook] Donation receipt generation failed:', donationErr);
+    }
+
     // 6. Send confirmation email (non-blocking — failures must not break the webhook)
     if (userEmail && eventData && allTickets.length > 0) {
       try {
@@ -1084,6 +1095,7 @@ async function handleCheckoutCompleted(session: any) {
           currency: session.currency || 'cad',
           tickets: allTickets,
           receiptUrl,
+          donationReceiptNumber: donationReceipt?.order_ref ?? null,
         });
         console.log('[Webhook] Confirmation email sent to:', userEmail);
       } catch (emailError) {

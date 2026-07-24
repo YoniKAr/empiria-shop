@@ -55,6 +55,11 @@ export interface OrderEmailData {
   tickets: TicketInfo[];
   /** Stripe's own charge receipt URL — offered as a secondary link in the email. */
   receiptUrl?: string;
+  /**
+   * Set when the order has a charitable donation receipt (non-profit-owned event
+   * with receipts enabled). Non-null triggers the "Donation receipt" link.
+   */
+  donationReceiptNumber?: string | null;
   ctaLabel?: CtaLabel;
 }
 

@@ -8,6 +8,7 @@ import { getSafeSession } from '@/lib/auth0';
 import { stripe } from '@/lib/stripe';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { buildReceiptDataFromOrder } from '@/lib/receiptData';
+import { generateDonationReceiptForOrder } from '@/lib/donationReceipt';
 import { toStripeAmount } from '@/lib/utils';
 import { computeFees, computeCouponDiscount, DEFAULT_FEE_PERCENT, DEFAULT_FIXED_PER_TICKET, type CouponApplication } from '@/lib/fees';
 import { computeCrossBorderShare, type PayoutRecipient } from '@/lib/crossBorder';
@@ -1168,6 +1169,15 @@ export async function POST(request: NextRequest) {
         console.error('[Checkout] Free order receipt snapshot failed:', receiptErr);
       }
 
+      // 4c. Charitable donation receipt for non-profit-owned events (idempotent,
+      // non-fatal). No-op unless donation receipts are enabled for the event.
+      let freeDonationReceipt: Awaited<ReturnType<typeof generateDonationReceiptForOrder>> = null;
+      try {
+        freeDonationReceipt = await generateDonationReceiptForOrder(supabase, freeOrder.id);
+      } catch (donationErr) {
+        console.error('[Checkout] Free order donation receipt failed:', donationErr);
+      }
+
       // 5. Confirmation email (non-blocking)
       if (freeEmail && freeTickets.length > 0) {
         try {
@@ -1233,6 +1243,7 @@ export async function POST(request: NextRequest) {
               couponCode: couponCode_validated || '',
               currency,
               tickets: freeTickets,
+              donationReceiptNumber: freeDonationReceipt?.order_ref ?? null,
             });
           }
         } catch (emailErr) {
