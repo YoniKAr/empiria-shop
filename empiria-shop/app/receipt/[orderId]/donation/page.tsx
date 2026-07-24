@@ -190,6 +190,15 @@ export default async function DonationReceiptPage({
                 <p className="mt-1 text-xs text-slate-500">Authorized signature</p>
               </div>
             </div>
+
+            <p className="mt-4 text-[10px] leading-relaxed text-slate-400">
+              This receipt is issued by {receipt.charity.legal_name}, which is solely responsible for the
+              accuracy of the charitable information it contains, including its registration status,
+              charitable registration number, and the eligible amount of the gift. Empiria Events, a
+              division of Empiria World Inc., acts only as the ticketing platform, does not verify
+              charitable registration information, and accepts no responsibility or liability for
+              receipts issued with false or incorrect information.
+            </p>
           </div>
         </article>
       </div>
